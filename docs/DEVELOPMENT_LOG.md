@@ -76,3 +76,22 @@ Verification:
 
 - Added betting tests for pool rules and cost-gate rejection.
 - Full local verification and server deployment required before handoff.
+
+## 2026-05-07 - Final Place Odds For All Runners
+
+Goal:
+
+- Preserve every runner's final place odds for completed races, not only the three placed horses.
+- Ensure losing runners become usable negative samples for place EV, calibration, replay, and future training.
+
+Implementation:
+
+- Added `hkjc_final_place_snapshot` rows from the last live HKJC place odds tick when official result dividends only list placed horses.
+- Added `final_place_snapshot_rows()` and `freeze_final_place_snapshots()` in `src/racing_model/storage.py`.
+- Called the freeze step when auto-importing completed HKJC results and when loading historical race days.
+- Updated `/api/results` to fill `final_place_odds`, `final_place_odds_source`, and `top3_expected_value` from the latest official/live place odds source for every runner.
+- Updated the results table to show position odds and position expected value for all runners.
+
+Verification:
+
+- Added `tests/test_final_place_snapshots.py`.

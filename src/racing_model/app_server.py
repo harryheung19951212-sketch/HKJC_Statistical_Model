@@ -33,7 +33,15 @@ from .live import load_hkjc_race_day, refresh_hkjc_results_if_available
 from .model import RankingModel
 from .model_registry import model_registry_report, run_and_record_model_registry
 from .odds import build_odds_provider, odds_history, refresh_odds
-from .storage import connect, fetch_all, init_db, refresh_race_statuses, upsert_race_status
+from .storage import (
+    connect,
+    fetch_all,
+    freeze_final_place_snapshots,
+    init_db,
+    latest_odds_by_race,
+    refresh_race_statuses,
+    upsert_race_status,
+)
 from .walk_forward import run_walk_forward_versions
 from .weather import race_weather
 
@@ -741,6 +749,11 @@ def api_results(conn, model: RankingModel, race_id: str) -> dict[str, object]:
     race_rows = fetch_all(conn, "SELECT * FROM races WHERE race_id = ?", (race_id,))
     if not race_rows:
         return {"race": None, "results": []}
+    result_count = fetch_all(conn, "SELECT count(*) AS n FROM results WHERE race_id = ?", (race_id,))[0]["n"]
+    if int(result_count or 0) > 0:
+        snapshot_count = freeze_final_place_snapshots(conn, race_id, datetime.now(timezone.utc).isoformat())
+        if snapshot_count:
+            conn.commit()
     predictions = model.predict_race(build_race_features(conn, race_id))
     prediction_by_horse = {
         str(row["horse_id"]): {
@@ -748,9 +761,13 @@ def api_results(conn, model: RankingModel, race_id: str) -> dict[str, object]:
             "win_probability": row["win_probability"],
             "top3_probability": row["top3_probability"],
             "expected_value": row["expected_value"],
+            "top3_expected_value": row.get("top3_expected_value"),
+            "place_odds": row.get("place_odds"),
+            "place_odds_source": row.get("place_odds_source"),
         }
         for index, row in enumerate(predictions)
     }
+    latest_odds = latest_odds_by_race(conn, race_id)
     rows = fetch_all(
         conn,
         """
@@ -799,6 +816,14 @@ def api_results(conn, model: RankingModel, race_id: str) -> dict[str, object]:
     for row in rows:
         item = dict(row)
         item.update(prediction_by_horse.get(str(item["horse_id"]), {}))
+        latest = latest_odds.get(str(item["horse_id"]))
+        if latest:
+            item["final_place_odds"] = item.get("final_place_odds") or latest.get("place_odds")
+            item["final_place_odds_source"] = latest.get("place_source")
+            if item.get("top3_expected_value") is None and latest.get("place_odds") is not None:
+                top3_probability = item.get("top3_probability")
+                if top3_probability is not None:
+                    item["top3_expected_value"] = float(top3_probability) * float(latest["place_odds"]) - 1.0
         results.append(item)
     return {"race": dict(race_rows[0]), "results": results}
 

@@ -11,7 +11,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 LIVE_ODDS_SOURCES = {"hkjc_graphql", "hkjc_mqtt"}
-OFFICIAL_WIN_ODDS_SOURCES = LIVE_ODDS_SOURCES | {"hkjc_results_final"}
+FINAL_PLACE_SNAPSHOT_SOURCE = "hkjc_final_place_snapshot"
+OFFICIAL_WIN_ODDS_SOURCES = LIVE_ODDS_SOURCES | {"hkjc_results_final", FINAL_PLACE_SNAPSHOT_SOURCE}
 
 
 SCHEMA_SQL = """
@@ -507,7 +508,7 @@ def latest_odds_by_race(conn: sqlite3.Connection, race_id: str) -> dict[str, dic
         SELECT race_id, horse_id, timestamp, win_odds, place_odds, source
         FROM odds_ticks
         WHERE race_id = ?
-          AND source IN ('hkjc_graphql', 'hkjc_mqtt', 'hkjc_results_final')
+          AND source IN ('hkjc_graphql', 'hkjc_mqtt', 'hkjc_results_final', 'hkjc_final_place_snapshot')
         ORDER BY timestamp DESC
         """,
         (race_id,),
@@ -523,7 +524,7 @@ def latest_odds_by_race(conn: sqlite3.Connection, race_id: str) -> dict[str, dic
             live_win.setdefault(horse_id, item)
             if item.get("place_odds") is not None:
                 live_place.setdefault(horse_id, item)
-        elif item["source"] == "hkjc_results_final":
+        elif item["source"] in {"hkjc_results_final", FINAL_PLACE_SNAPSHOT_SOURCE}:
             result_win.setdefault(horse_id, item)
             if item.get("place_odds") is not None:
                 result_place.setdefault(horse_id, item)
@@ -531,11 +532,65 @@ def latest_odds_by_race(conn: sqlite3.Connection, race_id: str) -> dict[str, dic
     output: dict[str, dict[str, Any]] = {}
     for horse_id in set(live_win) | set(result_win) | set(live_place) | set(result_place):
         item = dict(live_win.get(horse_id) or result_win[horse_id])
-        place = live_place.get(horse_id) or result_place.get(horse_id)
+        place = result_place.get(horse_id) or live_place.get(horse_id)
         item["place_odds"] = place.get("place_odds") if place else None
         item["place_source"] = place.get("source") if place else None
         output[horse_id] = item
     return output
+
+
+def final_place_snapshot_rows(conn: sqlite3.Connection, race_id: str, timestamp: str) -> list[dict[str, Any]]:
+    existing_rows = fetch_all(
+        conn,
+        """
+        SELECT horse_id
+        FROM odds_ticks
+        WHERE race_id = ?
+          AND source IN ('hkjc_results_final', 'hkjc_final_place_snapshot')
+          AND place_odds IS NOT NULL
+        """,
+        (race_id,),
+    )
+    existing_place_horses = {str(row["horse_id"]) for row in existing_rows}
+    rows = fetch_all(
+        conn,
+        """
+        SELECT o.race_id, o.horse_id, o.win_odds, o.place_odds
+        FROM odds_ticks o
+        JOIN (
+          SELECT race_id, horse_id, max(timestamp) AS max_ts
+          FROM odds_ticks
+          WHERE race_id = ?
+            AND source IN ('hkjc_graphql', 'hkjc_mqtt')
+            AND place_odds IS NOT NULL
+          GROUP BY race_id, horse_id
+        ) latest
+          ON o.race_id = latest.race_id
+         AND o.horse_id = latest.horse_id
+         AND o.timestamp = latest.max_ts
+        WHERE o.place_odds IS NOT NULL
+        """,
+        (race_id,),
+    )
+    return [
+        {
+            "race_id": race_id,
+            "horse_id": row["horse_id"],
+            "timestamp": timestamp,
+            "win_odds": row["win_odds"],
+            "place_odds": row["place_odds"],
+            "source": FINAL_PLACE_SNAPSHOT_SOURCE,
+        }
+        for row in rows
+        if str(row["horse_id"]) not in existing_place_horses
+    ]
+
+
+def freeze_final_place_snapshots(conn: sqlite3.Connection, race_id: str, timestamp: str) -> int:
+    rows = final_place_snapshot_rows(conn, race_id, timestamp)
+    if not rows:
+        return 0
+    return insert_rows(conn, "odds_ticks", rows)
 
 
 def latest_raw_odds_by_race(conn: sqlite3.Connection, race_id: str) -> dict[str, sqlite3.Row]:

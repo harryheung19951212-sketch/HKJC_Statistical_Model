@@ -539,7 +539,7 @@ function renderResults(results) {
   body.innerHTML = "";
   if (!results.length) {
     summary.textContent = "未有賽果";
-    body.innerHTML = `<tr><td colspan="13" class="empty-cell">未有賽果</td></tr>`;
+    body.innerHTML = `<tr><td colspan="14" class="empty-cell">未有賽果</td></tr>`;
     return;
   }
   summary.textContent = `${results.length} 匹完成`;
@@ -558,6 +558,7 @@ function renderResults(results) {
       <td>${formatMargin(row.margin_lengths)}</td>
       <td>${formatNum(row.win_odds, 2)}</td>
       <td>${formatNum(row.final_place_odds, 2)}</td>
+      <td class="${evClass(row.top3_expected_value)}">${row.top3_expected_value === null || row.top3_expected_value === undefined ? "-" : Number(row.top3_expected_value).toFixed(3)}</td>
       <td>${row.prediction_rank || "-"}</td>
       <td>${formatPct(row.win_probability)}</td>
       <td>${formatPct(row.top3_probability)}</td>
@@ -626,6 +627,7 @@ function placeOddsSourceLabel(value) {
   if (value === "hkjc_mqtt") return "MQTT";
   if (value === "hkjc_graphql") return "官方";
   if (value === "hkjc_results_final") return "賽後";
+  if (value === "hkjc_final_place_snapshot") return "最後位置";
   return "-";
 }
 

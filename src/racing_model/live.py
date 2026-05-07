@@ -10,7 +10,7 @@ from .backtest import run_backtest
 from .model import RankingModel
 from .scrapers.base import PoliteHttpClient
 from .scrapers.hkjc import HKJCSource
-from .storage import insert_rows, upsert_race_status
+from .storage import freeze_final_place_snapshots, insert_rows, upsert_race_status
 
 
 @dataclass(frozen=True)
@@ -75,6 +75,7 @@ def refresh_hkjc_results_if_available(
     update_runner_localization(conn, runners)
     result_rows = insert_rows(conn, "results", results)
     odds_rows = insert_rows(conn, "odds_ticks", odds)
+    place_snapshot_rows = freeze_final_place_snapshots(conn, race_id, now)
     backtest = run_backtest(conn, model)
     upsert_race_status(
         conn,
@@ -88,7 +89,8 @@ def refresh_hkjc_results_if_available(
     return {
         "race_id": race_id,
         "results": result_rows,
-        "odds_ticks": odds_rows,
+        "odds_ticks": odds_rows + place_snapshot_rows,
+        "place_snapshots": place_snapshot_rows,
         "status": "resulted",
     }
 
@@ -157,6 +159,7 @@ def load_hkjc_race_day(
             if results:
                 imported_results += insert_rows(conn, "results", results)
                 imported_odds += insert_rows(conn, "odds_ticks", odds)
+                imported_odds += freeze_final_place_snapshots(conn, race_id, datetime.now(timezone.utc).isoformat())
                 upsert_race_status(conn, race_id, "resulted")
             elif runners:
                 upsert_race_status(conn, race_id, "scheduled")
