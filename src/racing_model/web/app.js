@@ -291,6 +291,7 @@ async function refreshSelectedRace(options = {}) {
   refreshFullBetting(raceKey);
   renderBettingLedger(dashboard.betting_ledger || {});
   renderOddsFeed(dashboard.odds_feed || {});
+  refreshOddsFeedPanel(raceKey);
   renderModelComparison(dashboard.model_comparison || {});
   renderOddsHistory(dashboard.odds_history || []);
   const results = dashboard.results || {};
@@ -311,6 +312,16 @@ async function refreshFullBetting(raceKey) {
     if (selectedRaceId === expectedRaceId) {
       $("system-status").textContent = `投注方法計算未完成：${error.message}`;
     }
+  }
+}
+
+async function refreshOddsFeedPanel(raceKey) {
+  const expectedRaceId = selectedRaceId;
+  try {
+    const feed = await api(`/api/odds-feed?race_id=${raceKey}`);
+    if (selectedRaceId === expectedRaceId) renderOddsFeed(feed);
+  } catch (error) {
+    if (selectedRaceId === expectedRaceId) $("feed-health-summary").textContent = `賠率健康載入失敗：${error.message}`;
   }
 }
 
@@ -668,6 +679,11 @@ function placeOddsSourceLabel(value) {
 function renderOddsFeed(feed) {
   const box = $("feed-health");
   const summary = $("feed-health-summary");
+  if (feed && feed.deferred) {
+    summary.textContent = "賠率健康載入中...";
+    box.innerHTML = `<div class="feed-empty">賠率錄影健康正在背景載入</div>`;
+    return;
+  }
   if (!feed || !feed.runner_count) {
     summary.textContent = "未有參賽馬資料";
     box.innerHTML = `<div class="feed-empty">未有參賽馬資料</div>`;

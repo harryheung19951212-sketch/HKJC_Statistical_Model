@@ -812,7 +812,7 @@ def api_race_dashboard(conn, state: AppState, race_id: str, bankroll: float, ris
         "predictions": prediction_payload,
         "betting": betting,
         "betting_ledger": betting_ledger_report(conn, race_id=race_id),
-        "odds_feed": odds_feed_health(conn, race_id, state.odds_interval_seconds),
+        "odds_feed": {"deferred": True},
         "model_comparison": dual_model_comparison(conn, model, race_id),
         "odds_history": odds_history(conn, race_id),
         "results": api_results(conn, model, race_id, policy=policy, predictions=prediction_payload.get("predictions", [])),

@@ -19,6 +19,7 @@ Changes:
 - Added `/api/race-dashboard` to return race state, race list, predictions, betting, ledger, feed health, model comparison, odds history, results, and weather in one response.
 - Added `/api/analytics-dashboard` for the analytics view so the frontend no longer chains many sequential API calls.
 - Dashboard betting now returns fast WIN/PLACE decisions first and defers heavier exotic/all-pool calculation to a background frontend refresh.
+- Odds-feed health is also deferred to a background panel refresh so slow feed-audit queries do not block the main prediction table.
 - Updated the race page to use the dashboard payload and show the active prediction policy.
 - Cleaned key visible Chinese labels in the race sidebar/status areas and improved table readability with sticky headers, zebra rows, hover state, and tabular numerals.
 - Added `tests/test_adaptive.py`.
@@ -28,7 +29,7 @@ Verification:
 - `python -m compileall -q src dashboard tests`
 - `node --check src\racing_model\web\app.js`
 - Direct execution of adaptive and pool-replay test functions because local Python does not have `pytest` installed.
-- Local smoke: `/api/race-dashboard` returned the selected race in about `187ms`, with `mode=market_blend` and `exotics_deferred=true`.
+- Local smoke: warm-cache `/api/race-dashboard` returned the selected race in about `179ms`, with `mode=market_blend`, `exotics_deferred=true`, and `odds_feed.deferred=true`.
 - Local smoke: `/api/analytics-dashboard` returned successfully; analytics remains intentionally lazy-loaded.
 
 ## 2026-05-07 - Pool-Specific Replay Settlement Report
