@@ -434,7 +434,7 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
                 )
                 self.send_json(result or {"race_id": race_id, "status": "not_hkjc_race"})
             elif path == "/api/lifecycle-step":
-                self.send_json(run_lifecycle_step(conn, self.app_state))
+                self.send_json(run_lifecycle_step(conn, self.app_state, scope="global"))
             elif path == "/api/load-race-day":
                 race_date = normalize_hkjc_date(required_query(query, "date"))
                 venue = required_query(query, "venue")
@@ -803,14 +803,16 @@ def api_results(conn, model: RankingModel, race_id: str) -> dict[str, object]:
     return {"race": dict(race_rows[0]), "results": results}
 
 
-def run_lifecycle_step(conn, state: AppState) -> dict[str, object]:
+def run_lifecycle_step(conn, state: AppState, scope: str = "active") -> dict[str, object]:
     refresh_race_statuses(conn)
-    race_id = active_refreshable_race_id(conn, state)
+    race_id = current_refreshable_race_id(conn) if scope == "global" else active_refreshable_race_id(conn, state)
     if not race_id:
         active = state.active_race()
+        message = "no_scheduled_race" if scope == "global" else "no_active_scheduled_race" if active else "no_active_race"
         return {
             "status": "idle",
-            "message": "no_active_scheduled_race" if active else "no_active_race",
+            "message": message,
+            "scope": scope,
             "active_race_id": active,
             "next_race_id": current_refreshable_race_id(conn),
         }
@@ -846,6 +848,7 @@ def run_lifecycle_step(conn, state: AppState) -> dict[str, object]:
     next_race_id = current_refreshable_race_id(conn)
     return {
         "status": "done",
+        "scope": scope,
         "race_id": race_id,
         "odds": odds,
         "exotic_dividends": exotic,

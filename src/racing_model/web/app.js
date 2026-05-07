@@ -1059,7 +1059,7 @@ async function lifecycleStep() {
     selectedHorseId = null;
     activeWatchRaceId = null;
   }
-  $("system-status").textContent = result.race_id ? `流程已處理：${result.race_id}` : "未有打開嘅未開跑場次";
+  $("system-status").textContent = result.race_id ? `全域流程已處理：${result.race_id}` : "未有未開跑場次";
   countdown = intervalSeconds;
   await loadState();
   await refreshSelectedRace();
