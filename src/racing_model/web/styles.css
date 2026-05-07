@@ -796,11 +796,30 @@ h2 {
   justify-content: space-between;
   gap: 10px;
   align-items: flex-start;
+  cursor: pointer;
+  list-style: none;
+}
+
+.coverage-card-head::-webkit-details-marker {
+  display: none;
+}
+
+.coverage-card-head::before {
+  content: "▸";
+  color: var(--blue);
+  flex: 0 0 auto;
+  font-weight: 800;
+}
+
+.coverage-card[open] .coverage-card-head::before {
+  content: "▾";
 }
 
 .coverage-card strong,
 .coverage-priority-card strong {
   display: block;
+  flex: 1;
+  min-width: 0;
   overflow-wrap: anywhere;
 }
 

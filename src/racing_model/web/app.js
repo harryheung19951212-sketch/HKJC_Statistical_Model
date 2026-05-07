@@ -842,11 +842,11 @@ function renderCoverage(data) {
 
 function renderCoverageCard(item) {
   return `
-    <div class="coverage-card status-${item.status_key}">
-      <div class="coverage-card-head">
+    <details class="coverage-card status-${item.status_key}">
+      <summary class="coverage-card-head">
         <strong>${item.id}. ${item.name}</strong>
         <span class="coverage-tag">${item.status}</span>
-      </div>
+      </summary>
       <p>${item.current_support}</p>
       <div class="coverage-meta">
         <span><b>類別</b>：${item.category_label}</span>
@@ -854,8 +854,10 @@ function renderCoverageCard(item) {
         <span><b>支援檔案</b>：${listText(item.supported_files)}</span>
         <span><b>缺口</b>：${item.gaps}</span>
         <span><b>下一步</b>：${item.next_steps}</span>
+        <span><b>模型風險</b>：${item.model_risk}</span>
+        <span><b>驗證門檻</b>：${item.validation_gate}</span>
       </div>
-    </div>
+    </details>
   `;
 }
 

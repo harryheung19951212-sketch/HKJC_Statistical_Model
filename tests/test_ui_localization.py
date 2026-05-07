@@ -51,6 +51,15 @@ def test_model_reports_are_top_level_menu_pages() -> None:
     assert '<details class="panel analytics-panel">' not in html
 
 
+def test_coverage_items_expand_on_click() -> None:
+    js = (ROOT / "src/racing_model/web/app.js").read_text(encoding="utf-8")
+
+    assert '<details class="coverage-card status-${item.status_key}">' in js
+    assert '<summary class="coverage-card-head">' in js
+    assert "<b>模型風險</b>" in js
+    assert "<b>驗證門檻</b>" in js
+
+
 def test_predictions_and_betting_payloads_prefer_chinese_names(tmp_path: Path) -> None:
     db_path = tmp_path / "racing.db"
     init_db(db_path)

@@ -58,5 +58,27 @@ def test_coverage_report_contains_all_roadmap_groups() -> None:
     assert report["priority_next_steps"]
 
 
+def test_coverage_report_is_localized_for_users() -> None:
+    with TemporaryDirectory() as temp_dir:
+        db_path = Path(temp_dir) / "racing.db"
+        load_sample_database(db_path)
+        conn = connect(db_path)
+        try:
+            report = build_coverage_report(conn)
+        finally:
+            conn.close()
+            gc.collect()
+
+    first = report["items"][0]
+    names = {item["name"] for item in report["items"]}
+    joined_sources = " ".join(first["data_sources"])
+    assert "馬匹基礎能力" in names
+    assert "臨場賠率變化" in names
+    assert first["current_support"].startswith("已使用")
+    assert "HKJC" in joined_sources
+    assert "Horse baseline ability" not in names
+    assert "Recent condition" not in names
+
+
 if __name__ == "__main__":
     test_coverage_report_contains_all_roadmap_groups()
