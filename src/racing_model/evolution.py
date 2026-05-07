@@ -338,6 +338,7 @@ def generate_codex_iteration(
         executable,
         "exec",
         "--ephemeral",
+        "--skip-git-repo-check",
         "--sandbox",
         "read-only",
         "--color",
