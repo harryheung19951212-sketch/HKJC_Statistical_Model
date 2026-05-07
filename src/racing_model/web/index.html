@@ -39,6 +39,11 @@
       <button id="mark-live" type="button">凍結/開跑</button>
       <button id="mark-scheduled" type="button">恢復刷新</button>
     </div>
+    <nav class="page-menu" aria-label="功能頁面">
+      <button class="page-nav active" type="button" data-view="race">賽事分析</button>
+      <button class="page-nav" type="button" data-view="coverage">方程式覆蓋率 / 盲點報告</button>
+      <button class="page-nav" type="button" data-view="analytics">回測 / 智能迭代中心</button>
+    </nav>
     <details class="sidebar-action">
       <summary><span>載入賽日</span><b>賽日 / 馬場</b></summary>
       <form id="race-day-form" class="race-day-form">
@@ -95,23 +100,24 @@
   </aside>
 
   <main>
-    <section class="race-header">
-      <div>
-        <p class="eyebrow" id="race-status">-</p>
-        <h2 id="race-title">請選擇場次</h2>
-        <p id="race-meta"></p>
-        <p id="weather-status"></p>
-        <p id="feed-status"></p>
-      </div>
-      <div class="metrics">
-        <div><span id="runner-count">0</span><label>馬匹</label></div>
-        <div><span id="odds-count">0</span><label>賠率/派彩</label></div>
-        <div><span id="countdown">30</span><label>下次刷新</label></div>
-      </div>
-    </section>
+    <section id="race-view" class="app-view active">
+      <section class="race-header">
+        <div>
+          <p class="eyebrow" id="race-status">-</p>
+          <h2 id="race-title">請選擇場次</h2>
+          <p id="race-meta"></p>
+          <p id="weather-status"></p>
+          <p id="feed-status"></p>
+        </div>
+        <div class="metrics">
+          <div><span id="runner-count">0</span><label>馬匹</label></div>
+          <div><span id="odds-count">0</span><label>賠率/派彩</label></div>
+          <div><span id="countdown">30</span><label>下次刷新</label></div>
+        </div>
+      </section>
 
-    <section class="grid">
-      <div class="panel betting-panel">
+      <section class="grid">
+        <div class="panel betting-panel">
         <div class="panel-head betting-head">
           <h3>即場投注建議</h3>
           <div class="betting-controls">
@@ -208,19 +214,22 @@
         </div>
       </div>
 
-      <div class="panel history-panel">
+        <div class="panel history-panel">
         <div class="panel-head">
           <h3>歷史賠率數據</h3>
           <span>最新記錄</span>
         </div>
         <div id="odds-history" class="history odds-history-grid"></div>
-      </div>
+        </div>
+      </section>
+    </section>
 
-      <details class="panel coverage-panel">
-        <summary class="panel-head coverage-summary-head">
+    <section id="coverage-view" class="app-view">
+      <div class="panel coverage-panel">
+        <div class="panel-head coverage-summary-head">
           <h3>方程式覆蓋率 / 盲點報告</h3>
-          <span>開合</span>
-        </summary>
+          <span>模型補洞</span>
+        </div>
         <div class="coverage-content">
           <p id="coverage-objective" class="quality-note"></p>
           <div id="coverage-summary" class="coverage-summary"></div>
@@ -235,13 +244,15 @@
             </div>
           </div>
         </div>
-      </details>
+      </div>
+    </section>
 
-      <details class="panel analytics-panel">
-        <summary class="panel-head analytics-summary">
+    <section id="analytics-view" class="app-view">
+      <div class="panel analytics-panel">
+        <div class="panel-head analytics-summary">
           <h3>回測 / 智能迭代中心</h3>
-          <span>開合</span>
-        </summary>
+          <span>OOS / ROI / 校準</span>
+        </div>
         <div class="analytics-content">
           <div class="subpanel analytics-backtest">
             <h4>回測</h4>
@@ -313,7 +324,7 @@
             <pre id="gpt-iteration-notes" class="gpt-notes">未執行</pre>
           </div>
         </div>
-      </details>
+      </div>
     </section>
   </main>
 

@@ -38,6 +38,19 @@ def test_manual_lifecycle_button_is_named_global_update() -> None:
     assert "流程一步" not in html
 
 
+def test_model_reports_are_top_level_menu_pages() -> None:
+    html = (ROOT / "src/racing_model/web/index.html").read_text(encoding="utf-8")
+
+    assert '<nav class="page-menu" aria-label="功能頁面">' in html
+    assert 'data-view="race">賽事分析</button>' in html
+    assert 'data-view="coverage">方程式覆蓋率 / 盲點報告</button>' in html
+    assert 'data-view="analytics">回測 / 智能迭代中心</button>' in html
+    assert '<section id="coverage-view" class="app-view">' in html
+    assert '<section id="analytics-view" class="app-view">' in html
+    assert '<details class="panel coverage-panel">' not in html
+    assert '<details class="panel analytics-panel">' not in html
+
+
 def test_predictions_and_betting_payloads_prefer_chinese_names(tmp_path: Path) -> None:
     db_path = tmp_path / "racing.db"
     init_db(db_path)

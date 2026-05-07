@@ -127,6 +127,24 @@ aside {
   white-space: nowrap;
 }
 
+.page-menu {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.page-nav {
+  text-align: left;
+  justify-content: flex-start;
+  background: #101722;
+  border-color: rgba(255,255,255,.14);
+}
+
+.page-nav.active {
+  background: #1763a6;
+  border-color: #61a6e8;
+}
+
 .race-day-form {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -314,6 +332,14 @@ nav {
 }
 
 main { padding: 24px; min-width: 0; }
+
+.app-view {
+  display: none;
+}
+
+.app-view.active {
+  display: block;
+}
 
 .race-header {
   display: flex;
@@ -683,43 +709,6 @@ h2 {
 .panel-subhead span {
   color: var(--muted);
   font-size: 12px;
-}
-
-.analytics-summary,
-.coverage-summary-head {
-  cursor: pointer;
-  list-style: none;
-}
-
-.analytics-summary::-webkit-details-marker,
-.coverage-summary-head::-webkit-details-marker {
-  display: none;
-}
-
-.analytics-summary::after,
-.coverage-summary-head::after {
-  content: "+";
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  color: var(--blue);
-  font-weight: 800;
-}
-
-.analytics-panel[open] .analytics-summary::after {
-  content: "-";
-}
-
-.coverage-panel[open] .coverage-summary-head::after {
-  content: "-";
-}
-
-.analytics-panel:not([open]) .analytics-summary,
-.coverage-panel:not([open]) .coverage-summary-head {
-  border-bottom: 0;
 }
 
 .coverage-content {

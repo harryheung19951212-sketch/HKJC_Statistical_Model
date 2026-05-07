@@ -10,6 +10,8 @@ let autoFollowRace = true;
 const raceFolderState = { upcoming: true, resulted: false };
 const raceDateFolderState = {};
 let activeWatchRaceId = null;
+let currentView = "race";
+const viewDataLoaded = { coverage: false, analytics: false };
 
 const text = {
   scheduled: "\u672a\u958b\u8dd1",
@@ -162,6 +164,7 @@ function renderRaceDateFolder(statusKey, date, items) {
     `;
     item.addEventListener("click", () => {
       if (activeWatchRaceId && activeWatchRaceId !== race.race_id) sleepSelectedRace();
+      switchAppView("race");
       selectedRaceId = race.race_id;
       autoFollowRace = false;
       activeWatchRaceId = null;
@@ -205,6 +208,30 @@ function renderLifecycle(data) {
 
 function selectedRace() {
   return races.find((race) => race.race_id === selectedRaceId);
+}
+
+async function switchAppView(view) {
+  currentView = view;
+  document.querySelectorAll(".app-view").forEach((item) => {
+    item.classList.toggle("active", item.id === `${view}-view`);
+  });
+  document.querySelectorAll(".page-nav").forEach((item) => {
+    item.classList.toggle("active", item.dataset.view === view);
+  });
+
+  if (view !== "race") {
+    sleepSelectedRace();
+  }
+  if (view === "race") {
+    activeWatchRaceId = null;
+    countdown = 1;
+  } else if (view === "coverage" && !viewDataLoaded.coverage) {
+    await refreshCoverage();
+    viewDataLoaded.coverage = true;
+  } else if (view === "analytics" && !viewDataLoaded.analytics) {
+    await refreshModelReports({ includeCoverage: false });
+    viewDataLoaded.analytics = true;
+  }
 }
 
 function renderRaceHeader() {
@@ -268,7 +295,8 @@ async function refreshSelectedRace(options = {}) {
   renderWeather(weather);
 }
 
-async function refreshModelReports() {
+async function refreshModelReports(options = {}) {
+  const includeCoverage = options.includeCoverage !== false;
   const backtest = await api("/api/backtest");
   renderBacktest(backtest);
   const evolution = await api("/api/evolution");
@@ -281,8 +309,12 @@ async function refreshModelReports() {
   renderModelRegistry(registry);
   const quality = await api("/api/data-quality");
   renderDataQuality(quality);
-  const coverage = await api("/api/coverage");
-  renderCoverage(coverage);
+  if (includeCoverage) {
+    const coverage = await api("/api/coverage");
+    renderCoverage(coverage);
+    viewDataLoaded.coverage = true;
+  }
+  viewDataLoaded.analytics = true;
 }
 
 function renderWeather(weather) {
@@ -772,6 +804,7 @@ function renderDataQuality(data) {
 async function refreshCoverage() {
   const coverage = await api("/api/coverage");
   renderCoverage(coverage);
+  viewDataLoaded.coverage = true;
 }
 
 function renderCoverage(data) {
@@ -1062,7 +1095,13 @@ async function lifecycleStep() {
   $("system-status").textContent = result.race_id ? `全域流程已處理：${result.race_id}` : "未有未開跑場次";
   countdown = intervalSeconds;
   await loadState();
-  await refreshSelectedRace();
+  if (currentView === "race") {
+    await refreshSelectedRace();
+  } else if (currentView === "coverage") {
+    await refreshCoverage();
+  } else if (currentView === "analytics") {
+    await refreshModelReports({ includeCoverage: false });
+  }
 }
 
 async function markLive() {
@@ -1185,6 +1224,11 @@ function watchBackfillJob(jobId) {
 }
 
 async function boot() {
+  document.querySelectorAll(".page-nav").forEach((button) => {
+    button.addEventListener("click", () => {
+      switchAppView(button.dataset.view || "race");
+    });
+  });
   $("refresh-now").addEventListener("click", manualRefreshOdds);
   $("refresh-results").addEventListener("click", refreshResults);
   $("lifecycle-step").addEventListener("click", lifecycleStep);
@@ -1212,10 +1256,10 @@ async function boot() {
   window.addEventListener("beforeunload", sleepSelectedRace);
   await loadState();
   await loadRaces();
-  await refreshSelectedRace({ full: true });
+  await refreshSelectedRace({ full: false });
   countdown = intervalSeconds;
   setInterval(async () => {
-    if (document.hidden) {
+    if (document.hidden || currentView !== "race") {
       countdown = intervalSeconds;
       return;
     }
