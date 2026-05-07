@@ -4,6 +4,7 @@ import re
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from .backtest import run_backtest
 from .model import RankingModel
@@ -37,6 +38,17 @@ def refresh_hkjc_results_if_available(
     ref = parse_hkjc_race_id(race_id)
     if not ref:
         return None
+    if is_future_hkjc_race_date(ref.race_date):
+        now = datetime.now(timezone.utc).isoformat()
+        upsert_race_status(
+            conn,
+            race_id,
+            "scheduled",
+            last_result_refresh_at=now,
+            notes="future_race_results_not_available",
+        )
+        conn.commit()
+        return {"race_id": race_id, "results": 0, "odds_ticks": 0, "status": "scheduled"}
 
     source = HKJCSource(PoliteHttpClient(user_agent, delay_seconds))
     fetched = source.fetch_results_page(ref.race_date, ref.venue, ref.race_no)
@@ -105,12 +117,15 @@ def load_hkjc_race_day(
         if first_race_id is None:
             first_race_id = race_id
         try:
-            result = source.fetch_results_page(race_date, venue, race_no)
-            try:
-                chinese_result = source.fetch_chinese_results_page(race_date, venue, race_no).body
-            except Exception:
-                chinese_result = None
-            parsed_result = source.parse_results(result.body, race_date, venue, race_no, chinese_result)
+            future_race = is_future_hkjc_race_date(race_date)
+            parsed_result = {"results": [], "odds_ticks": [], "races": [], "runners": []}
+            if not future_race:
+                result = source.fetch_results_page(race_date, venue, race_no)
+                try:
+                    chinese_result = source.fetch_chinese_results_page(race_date, venue, race_no).body
+                except Exception:
+                    chinese_result = None
+                parsed_result = source.parse_results(result.body, race_date, venue, race_no, chinese_result)
             results = parsed_result.get("results", [])
             odds = parsed_result.get("odds_ticks", [])
             result_races = parsed_result.get("races", [])
@@ -209,3 +224,13 @@ def usable_races(races: object) -> list[dict[str, object]]:
         and row.get("going") not in {None, ""}
         and int(row.get("distance_m") or 0) > 0
     ]
+
+
+def is_future_hkjc_race_date(race_date: str) -> bool:
+    normalized = str(race_date or "").replace("-", "/")
+    try:
+        target = datetime.strptime(normalized, "%Y/%m/%d").date()
+    except ValueError:
+        return False
+    today_hk = datetime.now(ZoneInfo("Asia/Hong_Kong")).date()
+    return target > today_hk

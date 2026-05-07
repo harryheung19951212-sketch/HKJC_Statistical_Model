@@ -7,6 +7,8 @@ let backfillJobTimer = null;
 let currentPredictions = [];
 let selectedHorseId = null;
 let autoFollowRace = true;
+const raceFolderState = { upcoming: true, resulted: false };
+const raceDateFolderState = {};
 
 const text = {
   scheduled: "\u672a\u958b\u8dd1",
@@ -105,10 +107,55 @@ async function loadRaces() {
 function renderRaceList() {
   const list = $("race-list");
   list.innerHTML = "";
-  for (const race of races) {
+  const grouped = {
+    upcoming: races.filter((race) => race.status !== "resulted"),
+    resulted: races.filter((race) => race.status === "resulted"),
+  };
+  [
+    ["upcoming", "未進行"],
+    ["resulted", "已完賽"],
+  ].forEach(([key, label]) => {
+    const folder = document.createElement("details");
+    folder.className = `race-folder race-folder-${key}`;
+    folder.open = Boolean(raceFolderState[key] || grouped[key].some((race) => race.race_id === selectedRaceId));
+    folder.addEventListener("toggle", () => {
+      raceFolderState[key] = folder.open;
+    });
+
+    const summary = document.createElement("summary");
+    summary.innerHTML = `<span>${label}</span><b>${grouped[key].length}</b>`;
+    folder.appendChild(summary);
+
+    const byDate = groupByRaceDate(grouped[key]);
+    Object.keys(byDate).sort((a, b) => key === "resulted" ? b.localeCompare(a) : a.localeCompare(b)).forEach((date) => {
+      folder.appendChild(renderRaceDateFolder(key, date, byDate[date]));
+    });
+    list.appendChild(folder);
+  });
+}
+
+function renderRaceDateFolder(statusKey, date, items) {
+  const key = `${statusKey}:${date}`;
+  const folder = document.createElement("details");
+  folder.className = "race-date-folder";
+  const containsSelected = items.some((race) => race.race_id === selectedRaceId);
+  folder.open = raceDateFolderState[key] ?? (statusKey === "upcoming" || containsSelected);
+  folder.addEventListener("toggle", () => {
+    raceDateFolderState[key] = folder.open;
+  });
+
+  const summary = document.createElement("summary");
+  const trackNames = [...new Set(items.map((race) => localTrack(race.track)).filter(Boolean))].join(" / ");
+  summary.innerHTML = `<span>${formatDateLabel(date)} ${trackNames}</span><b>${items.length}</b>`;
+  folder.appendChild(summary);
+
+  items.forEach((race) => {
     const item = document.createElement("button");
     item.className = `race-item ${race.race_id === selectedRaceId ? "active" : ""}`;
-    item.innerHTML = `<strong>${race.race_id}</strong><span>${localTrack(race.track)} ${race.distance_m}\u7c73 | ${localStatus(race.status)}</span>`;
+    item.innerHTML = `
+      <strong>${raceNoLabel(race.race_id)}</strong>
+      <span>${localTrack(race.track)} ${race.distance_m}\u7c73 | ${localStatus(race.status)}</span>
+    `;
     item.addEventListener("click", () => {
       selectedRaceId = race.race_id;
       autoFollowRace = false;
@@ -116,8 +163,30 @@ function renderRaceList() {
       renderRaceList();
       refreshSelectedRace();
     });
-    list.appendChild(item);
-  }
+    folder.appendChild(item);
+  });
+  return folder;
+}
+
+function groupByRaceDate(items) {
+  return items.reduce((groups, race) => {
+    const date = race.date || "未有日期";
+    if (!groups[date]) groups[date] = [];
+    groups[date].push(race);
+    return groups;
+  }, {});
+}
+
+function formatDateLabel(value) {
+  const textValue = String(value || "");
+  const match = textValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return textValue;
+  return `${Number(match[2])}月${Number(match[3])}日`;
+}
+
+function raceNoLabel(raceId) {
+  const match = String(raceId || "").match(/-(\d{2})$/);
+  return match ? `第 ${Number(match[1])} 場` : raceId;
 }
 
 function renderLifecycle(data) {

@@ -179,6 +179,73 @@ nav {
   gap: 8px;
 }
 
+.race-folder,
+.race-date-folder {
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 6px;
+  background: rgba(255,255,255,.03);
+  overflow: hidden;
+}
+
+.race-folder > summary,
+.race-date-folder > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #fff;
+  padding: 10px 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.race-folder > summary::-webkit-details-marker,
+.race-date-folder > summary::-webkit-details-marker {
+  display: none;
+}
+
+.race-folder > summary::before,
+.race-date-folder > summary::before {
+  content: "▸";
+  color: #8fc7ff;
+  flex: 0 0 auto;
+}
+
+.race-folder[open] > summary::before,
+.race-date-folder[open] > summary::before {
+  content: "▾";
+}
+
+.race-folder > summary span,
+.race-date-folder > summary span {
+  flex: 1;
+  min-width: 0;
+}
+
+.race-folder > summary b,
+.race-date-folder > summary b {
+  color: #b9c4d2;
+  font-size: 12px;
+}
+
+.race-date-folder {
+  margin: 0 8px 8px;
+  background: rgba(6,22,38,.42);
+}
+
+.race-date-folder > summary {
+  padding: 8px 10px;
+  color: #dce8f3;
+  font-size: 13px;
+}
+
+.race-date-folder .race-item {
+  margin: 0 8px 8px;
+  width: calc(100% - 16px);
+}
+
 .race-item {
   border: 1px solid rgba(255,255,255,.08);
   border-radius: 6px;

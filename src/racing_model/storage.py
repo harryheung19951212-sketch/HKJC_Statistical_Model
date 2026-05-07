@@ -4,8 +4,10 @@ import csv
 import re
 import sqlite3
 from collections.abc import Iterable
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 
 LIVE_ODDS_SOURCES = {"hkjc_graphql", "hkjc_mqtt"}
@@ -587,10 +589,13 @@ def upsert_race_status(
 def refresh_race_statuses(conn: sqlite3.Connection) -> None:
     race_ids = [row["race_id"] for row in fetch_all(conn, "SELECT race_id FROM races")]
     for race_id in race_ids:
+        race_rows = fetch_all(conn, "SELECT date FROM races WHERE race_id = ?", (race_id,))
+        race_date = race_rows[0]["date"] if race_rows else ""
         runner_count = fetch_all(conn, "SELECT count(*) AS n FROM runners WHERE race_id = ?", (race_id,))[0]["n"]
         result_count = fetch_all(conn, "SELECT count(*) AS n FROM results WHERE race_id = ?", (race_id,))[0]["n"]
-        odds_count = fetch_all(conn, "SELECT count(*) AS n FROM odds_ticks WHERE race_id = ?", (race_id,))[0]["n"]
-        if runner_count and result_count >= runner_count:
+        if is_future_race_date(race_date):
+            status = "scheduled"
+        elif runner_count and result_count >= runner_count:
             status = "resulted"
         elif race_status(conn, race_id) and race_status(conn, race_id)["status"] == "live":
             status = "live"
@@ -598,3 +603,12 @@ def refresh_race_statuses(conn: sqlite3.Connection) -> None:
             status = "scheduled"
         upsert_race_status(conn, race_id, status)
     conn.commit()
+
+
+def is_future_race_date(value: object) -> bool:
+    text = str(value or "").replace("-", "/")
+    try:
+        target = datetime.strptime(text, "%Y/%m/%d").date()
+    except ValueError:
+        return False
+    return target > datetime.now(ZoneInfo("Asia/Hong_Kong")).date()
