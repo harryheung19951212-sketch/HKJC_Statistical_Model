@@ -1,9 +1,11 @@
 from racing_model.scrapers.hkjc import (
+    HKJCSource,
     merge_runner_localization,
     parse_chinese_racecard_runners,
     parse_racecard_runners,
     parse_result_rows,
 )
+from racing_model.scrapers.base import PoliteHttpClient
 
 
 def test_parse_hkjc_tokenized_racecard_rows() -> None:
@@ -142,6 +144,69 @@ def test_parse_hkjc_tokenized_result_rows() -> None:
     assert rows[1]["finish_position"] == 2
     assert rows[1]["margin_lengths"] == 1.25
     assert rows[1]["place_odds"] == 8.95
+
+
+def test_parse_results_builds_fallback_race_and_runners() -> None:
+    lines = [
+        "RACE 1 (665)",
+        "Class 5 - 1650M - (40-0)",
+        "Going :",
+        "GOOD",
+        "OSMANTHUS HANDICAP",
+        "Course :",
+        "ALL WEATHER TRACK",
+        "HK$ 875,000",
+        "Pla.",
+        "Horse No.",
+        "Horse",
+        "Jockey",
+        "Trainer",
+        "Act. Wt.",
+        "Declar. Horse Wt.",
+        "Dr.",
+        "LBW",
+        "Running",
+        "Position",
+        "Finish Time",
+        "Win Odds",
+        "1",
+        "9",
+        "MEEPMEEP",
+        "(H234)",
+        "H Bowman",
+        "J Size",
+        "128",
+        "1101",
+        "2",
+        "---",
+        "7",
+        "7",
+        "5",
+        "1",
+        "1:40.31",
+        "3.8",
+        "Dividend",
+        "Pool",
+        "Winning Combination",
+        "Dividend (HK$)",
+        "WIN",
+        "9",
+        "38.00",
+    ]
+    source = HKJCSource(PoliteHttpClient("test", 0))
+
+    parsed = source.parse_results("\n".join(f"<div>{line}</div>" for line in lines), "2026/05/06", "ST", 1)
+
+    assert parsed["races"][0]["race_id"] == "HK20260506-ST-01"
+    assert parsed["races"][0]["course"] == "ALL WEATHER TRACK"
+    assert parsed["races"][0]["distance_m"] == 1650
+    assert parsed["runners"][0]["horse_id"] == "H234"
+    assert parsed["runners"][0]["horse_no"] == 9
+    assert parsed["runners"][0]["horse_name"] == "MEEPMEEP"
+    assert parsed["runners"][0]["draw"] == 2
+    assert parsed["runners"][0]["weight_lbs"] == 128.0
+    assert parsed["results"][0]["finish_position"] == 1
+    assert parsed["odds_ticks"][0]["source"] == "hkjc_results_final"
 
 
 def test_merge_chinese_runner_names() -> None:

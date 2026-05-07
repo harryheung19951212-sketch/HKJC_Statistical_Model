@@ -83,14 +83,31 @@ class HKJCSource:
     ) -> dict[str, list[dict[str, Any]]]:
         lines = html_lines(html)
         race_id = make_race_id(race_date, venue, race_no)
+        race = parse_results_metadata(lines, race_date, venue, race_no)
         raw_results = parse_result_rows(lines, race_id)
         results = [
             {
                 key: value
                 for key, value in row.items()
-                if key not in {"horse_no", "win_odds", "place_odds"}
+                if key
+                not in {
+                    "horse_no",
+                    "horse_name",
+                    "jockey",
+                    "trainer",
+                    "draw",
+                    "weight_lbs",
+                    "running_style",
+                    "win_odds",
+                    "place_odds",
+                }
             }
             for row in raw_results
+        ]
+        runners = [
+            result_runner_from_row(row)
+            for row in raw_results
+            if row.get("horse_id") and row.get("horse_name")
         ]
         odds = [
             {
@@ -104,7 +121,7 @@ class HKJCSource:
             for row in raw_results
             if row.get("win_odds") is not None
         ]
-        return {"results": results, "odds_ticks": odds}
+        return {"races": [race] if race else [], "runners": runners, "results": results, "odds_ticks": odds}
 
     def parse_trackwork(
         self,
@@ -166,6 +183,64 @@ def parse_racecard_metadata(
         "class_rating": class_rating,
         "prize": float(prize_match.group(1).replace(",", "")) if prize_match else 0.0,
         "race_name": race_line,
+    }
+
+
+def parse_results_metadata(
+    lines: list[str],
+    race_date: str,
+    venue: str,
+    race_no: int,
+) -> dict[str, Any] | None:
+    race_index = next(
+        (index for index, line in enumerate(lines) if re.match(rf"RACE\s+{race_no}\b", line, re.I)),
+        None,
+    )
+    if race_index is None:
+        return None
+    class_line = lines[race_index + 1] if race_index + 1 < len(lines) else ""
+    race_name = lines[race_index + 4] if race_index + 4 < len(lines) else lines[race_index]
+    prize_line = next((line for line in lines[race_index : race_index + 12] if line.upper().startswith("HK$")), "")
+    going = value_after_label(lines, race_index, "Going :")
+    course = value_after_label(lines, race_index, "Course :")
+    distance_match = re.search(r"(\d{3,4})M", class_line, re.I)
+    class_match = re.search(r"(Class\s+\d+)", class_line, re.I)
+    prize_match = re.search(r"HK\$\s*([\d,]+)", prize_line, re.I)
+    return {
+        "race_id": make_race_id(race_date, venue, race_no),
+        "date": normalize_date(race_date),
+        "track": COURSE_NAMES.get(venue.upper(), venue.upper()),
+        "course": course,
+        "distance_m": int(distance_match.group(1)) if distance_match else 0,
+        "going": going,
+        "class_rating": class_match.group(1) if class_match else class_line,
+        "prize": float(prize_match.group(1).replace(",", "")) if prize_match else 0.0,
+        "race_name": race_name,
+    }
+
+
+def value_after_label(lines: list[str], start: int, label: str) -> str:
+    index = find_line(lines, label, start=start)
+    if index is None or index + 1 >= len(lines):
+        return ""
+    return lines[index + 1]
+
+
+def result_runner_from_row(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "race_id": row["race_id"],
+        "horse_id": row["horse_id"],
+        "horse_no": row.get("horse_no"),
+        "horse_name": row.get("horse_name") or row["horse_id"],
+        "jockey": row.get("jockey") or "unknown",
+        "trainer": row.get("trainer") or "unknown",
+        "draw": row.get("draw") or 0,
+        "weight_lbs": row.get("weight_lbs") or 0.0,
+        "official_rating": 0.0,
+        "age": 0,
+        "sex": "U",
+        "running_style": row.get("running_style") or "unknown",
+        "gear": "from_result",
     }
 
 
@@ -511,12 +586,17 @@ def parse_result_tokens(tokens: list[str], race_id: str) -> list[dict[str, Any]]
             cursor += 1
             trainer = tokens[cursor]
             cursor += 1
-            cursor += 1  # actual weight
+            weight_lbs = float(tokens[cursor]) if looks_like_decimal(tokens[cursor]) else 0.0
+            cursor += 1
             cursor += 1  # declared horse weight
-            cursor += 1  # draw
+            draw = int(tokens[cursor]) if is_int(tokens[cursor]) else 0
+            cursor += 1
             lbw = tokens[cursor]
             cursor += 1
+            running_positions = []
             while cursor < len(tokens) and not looks_like_finish_time(tokens[cursor]):
+                if is_int(tokens[cursor]):
+                    running_positions.append(int(tokens[cursor]))
                 cursor += 1
             finish_time = time_to_seconds(tokens[cursor])
             cursor += 1
@@ -526,6 +606,12 @@ def parse_result_tokens(tokens: list[str], race_id: str) -> list[dict[str, Any]]
                     "race_id": race_id,
                     "horse_no": horse_no,
                     "horse_id": horse_id,
+                    "horse_name": horse_name,
+                    "jockey": jockey,
+                    "trainer": trainer,
+                    "draw": draw,
+                    "weight_lbs": weight_lbs,
+                    "running_style": infer_running_style_from_positions(running_positions),
                     "finish_position": place,
                     "finish_time_sec": finish_time,
                     "margin_lengths": margin_to_lengths(lbw),
@@ -547,6 +633,19 @@ def attach_place_dividends(rows: list[dict[str, Any]], place_dividends: dict[int
         horse_no = row.get("horse_no")
         row["place_odds"] = place_dividends.get(int(horse_no)) if horse_no is not None else None
     return rows
+
+
+def infer_running_style_from_positions(positions: list[int]) -> str:
+    if not positions:
+        return "unknown"
+    early = positions[0]
+    if early <= 2:
+        return "leader"
+    if early <= 5:
+        return "pace"
+    if early >= 9:
+        return "closer"
+    return "stalker"
 
 
 def parse_place_dividends(lines: list[str]) -> dict[int, float]:

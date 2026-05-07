@@ -99,23 +99,34 @@ def load_hkjc_race_day(
         if first_race_id is None:
             first_race_id = race_id
         try:
-            racecard = source.fetch_racecard_page(race_date, venue, race_no)
-            chinese_card = source.fetch_chinese_racecard_page(race_date, venue, race_no)
-            parsed_card = source.parse_racecard(
-                racecard.body,
-                race_date,
-                venue,
-                race_no,
-                chinese_card.body,
-            )
-            races = parsed_card.get("races", [])
-            runners = parsed_card.get("runners", [])
-            imported_races += insert_rows(conn, "races", races)
-            imported_runners += insert_rows(conn, "runners", runners)
-            upsert_race_status(conn, race_id, "scheduled")
-
             result = source.fetch_results_page(race_date, venue, race_no)
             parsed_result = source.parse_results(result.body, race_date, venue, race_no)
+            results = parsed_result.get("results", [])
+            odds = parsed_result.get("odds_ticks", [])
+            result_races = parsed_result.get("races", [])
+            result_runners = parsed_result.get("runners", [])
+
+            try:
+                racecard = source.fetch_racecard_page(race_date, venue, race_no)
+                chinese_card = source.fetch_chinese_racecard_page(race_date, venue, race_no)
+                parsed_card = source.parse_racecard(
+                    racecard.body,
+                    race_date,
+                    venue,
+                    race_no,
+                    chinese_card.body,
+                )
+                races = usable_races(parsed_card.get("races", [])) or usable_races(result_races)
+                runners = parsed_card.get("runners", []) or result_runners
+            except Exception:
+                races = usable_races(result_races)
+                runners = result_runners
+
+            imported_races += insert_rows(conn, "races", races)
+            imported_runners += insert_rows(conn, "runners", runners)
+            if races:
+                upsert_race_status(conn, race_id, "scheduled")
+
             results = parsed_result.get("results", [])
             odds = parsed_result.get("odds_ticks", [])
             if results:
@@ -143,3 +154,14 @@ def load_hkjc_race_day(
         "error_details": errors,
         "first_race_id": first_race_id,
     }
+
+
+def usable_races(races: object) -> list[dict[str, object]]:
+    rows = [dict(row) for row in races] if isinstance(races, list) else []
+    return [
+        row
+        for row in rows
+        if row.get("course") not in {None, ""}
+        and row.get("going") not in {None, ""}
+        and int(row.get("distance_m") or 0) > 0
+    ]
