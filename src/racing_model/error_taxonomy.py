@@ -7,7 +7,7 @@ from typing import Any
 
 from .features import build_race_features
 from .model import RankingModel
-from .storage import fetch_all
+from .storage import fetch_all, insert_rows
 
 
 CATEGORY_LABELS = {
@@ -347,22 +347,7 @@ def review(
 def replace_persisted_reviews(conn: sqlite3.Connection, reviews: list[dict[str, Any]]) -> None:
     now = datetime.now(timezone.utc).isoformat()
     conn.execute("DELETE FROM race_error_reviews")
-    for row in reviews:
-        conn.execute(
-            """
-            INSERT OR REPLACE INTO race_error_reviews (
-              race_id, review_key, category, severity, horse_id, horse_no, horse_name,
-              model_rank, finish_position, probability, expected_value, odds,
-              evidence, recommendation, created_at, updated_at
-            )
-            VALUES (
-              :race_id, :review_key, :category, :severity, :horse_id, :horse_no, :horse_name,
-              :model_rank, :finish_position, :probability, :expected_value, :odds,
-              :evidence, :recommendation, :created_at, :updated_at
-            )
-            """,
-            {**row, "created_at": now, "updated_at": now},
-        )
+    insert_rows(conn, "race_error_reviews", [{**row, "created_at": now, "updated_at": now} for row in reviews])
     conn.commit()
 
 

@@ -500,7 +500,13 @@ def normalize_hkjc_date(value: str) -> str:
 
 def scalar(conn: sqlite3.Connection, sql: str) -> int:
     row = conn.execute(sql).fetchone()
-    return int(row[0] or 0)
+    if row is None:
+        return 0
+    if isinstance(row, dict):
+        value = next(iter(row.values()), 0)
+    else:
+        value = row[0]
+    return int(value or 0)
 
 
 def issue_row(issue_id: str, label: str, count: int) -> dict[str, Any]:

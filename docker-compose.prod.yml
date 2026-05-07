@@ -6,6 +6,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env.production
+    environment:
+      DATABASE_URL: postgresql://racing_model:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.production}@postgres:5432/racing_model
     ports:
       - "8765:8765"
     volumes:

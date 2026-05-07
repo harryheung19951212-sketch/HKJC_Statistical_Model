@@ -12,7 +12,7 @@ except ImportError:  # pragma: no cover - optional dependency
 
 @dataclass(frozen=True)
 class Settings:
-    db_path: Path
+    db_path: Path | str
     openai_api_key: str | None
     openai_model: str
     codex_cli_command: str
@@ -37,7 +37,7 @@ def get_settings() -> Settings:
         load_simple_env(Path(".env"), override=True)
 
     return Settings(
-        db_path=Path(os.getenv("RACING_DB_PATH", "data/racing.db")),
+        db_path=os.getenv("DATABASE_URL") or Path(os.getenv("RACING_DB_PATH", "data/racing.db")),
         openai_api_key=os.getenv("OPENAI_API_KEY") or None,
         openai_model=os.getenv("OPENAI_MODEL", "gpt-5.5"),
         codex_cli_command=os.getenv("RACING_CODEX_CLI", "codex"),

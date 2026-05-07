@@ -14,6 +14,7 @@ from .backfill import (
 )
 from .backtest import run_backtest
 from .config import get_settings
+from .db_migrate import database_counts, migrate_sqlite_to_database
 from .evolution import evaluate_model_evolution, generate_codex_iteration, generate_openai_iteration
 from .features import build_race_features, build_training_races
 from .gpt_report import generate_report
@@ -40,6 +41,11 @@ def main() -> None:
 
     sub.add_parser("init-db")
     sub.add_parser("import-sample")
+
+    migrate_parser = sub.add_parser("migrate-sqlite-to-db")
+    migrate_parser.add_argument("--sqlite-path", default="data/racing.db")
+    migrate_parser.add_argument("--target", default=None, help="DATABASE_URL or SQLite path. Defaults to current app DB.")
+    migrate_parser.add_argument("--replace", action="store_true")
 
     import_parser = sub.add_parser("import-csv")
     import_parser.add_argument("--dir", default="data/import")
@@ -112,6 +118,13 @@ def main() -> None:
     if args.command == "init-db":
         init_db(settings.db_path)
         print(f"Initialized {settings.db_path}")
+        return
+
+    if args.command == "migrate-sqlite-to-db":
+        target = args.target or settings.db_path
+        result = migrate_sqlite_to_database(args.sqlite_path, target, replace=args.replace)
+        result["counts"] = database_counts(target)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
         return
 
     if args.command == "serve":

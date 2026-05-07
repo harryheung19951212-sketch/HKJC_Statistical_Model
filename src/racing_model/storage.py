@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import re
 import sqlite3
 from collections.abc import Iterable
 from pathlib import Path
@@ -119,8 +120,80 @@ CREATE TABLE IF NOT EXISTS race_error_reviews (
 """
 
 
-def connect(db_path: Path | str) -> sqlite3.Connection:
-    path = Path(db_path)
+TABLE_PRIMARY_KEYS = {
+    "races": ["race_id"],
+    "runners": ["race_id", "horse_id"],
+    "results": ["race_id", "horse_id"],
+    "workouts": ["horse_id", "date", "work_type", "distance_m"],
+    "odds_ticks": ["race_id", "horse_id", "timestamp", "source"],
+    "raw_snapshots": ["source", "url", "fetched_at"],
+    "race_status": ["race_id"],
+    "race_error_reviews": ["race_id", "review_key"],
+}
+
+
+class PostgresConnection:
+    def __init__(self, url: str) -> None:
+        try:
+            import psycopg
+            from psycopg.rows import dict_row
+        except ImportError as exc:  # pragma: no cover - optional production dependency
+            raise RuntimeError("Install psycopg[binary] to use PostgreSQL storage.") from exc
+        self.raw = psycopg.connect(url, row_factory=dict_row)
+
+    def __enter__(self) -> "PostgresConnection":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        if exc_type:
+            self.raw.rollback()
+        else:
+            self.raw.commit()
+        self.raw.close()
+
+    def execute(self, sql: str, params: Any = ()) -> Any:
+        statement, values = translate_postgres_sql(sql, params)
+        if not statement:
+            return EmptyCursor()
+        return self.raw.execute(statement, values)
+
+    def executemany(self, sql: str, params_seq: Iterable[Any]) -> Any:
+        statement, _ = translate_postgres_sql(sql, ())
+        with self.raw.cursor() as cursor:
+            cursor.executemany(statement, list(params_seq))
+            return cursor
+
+    def executescript(self, sql: str) -> None:
+        for statement in sql.split(";"):
+            translated, params = translate_postgres_sql(statement, ())
+            if translated:
+                self.raw.execute(translated, params)
+
+    def commit(self) -> None:
+        self.raw.commit()
+
+    def rollback(self) -> None:
+        self.raw.rollback()
+
+    def close(self) -> None:
+        self.raw.close()
+
+
+class EmptyCursor:
+    rowcount = 0
+
+    def fetchone(self) -> None:
+        return None
+
+    def fetchall(self) -> list[Any]:
+        return []
+
+
+def connect(db_path: Path | str) -> sqlite3.Connection | PostgresConnection:
+    target = str(db_path)
+    if is_postgres_url(target):
+        return PostgresConnection(target)
+    path = Path(target)
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
@@ -181,11 +254,29 @@ def insert_rows(conn: sqlite3.Connection, table: str, rows: Iterable[dict[str, A
         for row in rows
     ]
     columns = list(rows[0].keys())
-    placeholders = ", ".join("?" for _ in columns)
     col_sql = ", ".join(columns)
-    sql = f"INSERT OR REPLACE INTO {table} ({col_sql}) VALUES ({placeholders})"
     values = [[row.get(column) for column in columns] for row in rows]
-    conn.executemany(sql, values)
+    if is_postgres_connection(conn):
+        placeholders = ", ".join("%s" for _ in columns)
+        conflict = TABLE_PRIMARY_KEYS.get(table, [])
+        update_columns = [column for column in columns if column not in conflict]
+        if conflict and update_columns:
+            conflict_sql = ", ".join(conflict)
+            update_sql = ", ".join(f"{column} = EXCLUDED.{column}" for column in update_columns)
+            sql = (
+                f"INSERT INTO {table} ({col_sql}) VALUES ({placeholders}) "
+                f"ON CONFLICT ({conflict_sql}) DO UPDATE SET {update_sql}"
+            )
+        elif conflict:
+            conflict_sql = ", ".join(conflict)
+            sql = f"INSERT INTO {table} ({col_sql}) VALUES ({placeholders}) ON CONFLICT ({conflict_sql}) DO NOTHING"
+        else:
+            sql = f"INSERT INTO {table} ({col_sql}) VALUES ({placeholders})"
+        conn.executemany(sql, values)
+    else:
+        placeholders = ", ".join("?" for _ in columns)
+        sql = f"INSERT OR REPLACE INTO {table} ({col_sql}) VALUES ({placeholders})"
+        conn.executemany(sql, values)
     return len(rows)
 
 
@@ -196,21 +287,51 @@ def import_csv(conn: sqlite3.Connection, table: str, csv_path: Path | str) -> in
 
 
 def table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    if is_postgres_connection(conn):
+        rows = conn.execute(
+            """
+            SELECT column_name AS name
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = %s
+            """,
+            (table,),
+        ).fetchall()
+        return {row["name"] for row in rows}
     return {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
 
 
 def clean_row(row: dict[str, Any]) -> dict[str, Any]:
-    cleaned: dict[str, Any] = {}
-    for key, value in row.items():
-        if value == "":
-            cleaned[key] = None
-        else:
-            cleaned[key] = value
-    return cleaned
+    return dict(row)
 
 
 def fetch_all(conn: sqlite3.Connection, sql: str, params: tuple[Any, ...] = ()) -> list[sqlite3.Row]:
     return list(conn.execute(sql, params))
+
+
+def is_postgres_url(value: str) -> bool:
+    return value.startswith(("postgres://", "postgresql://"))
+
+
+def is_postgres_connection(conn: object) -> bool:
+    return isinstance(conn, PostgresConnection)
+
+
+def translate_postgres_sql(sql: str, params: Any) -> tuple[str, Any]:
+    statement = sql.strip()
+    if not statement or statement.upper().startswith("PRAGMA "):
+        return "", params
+    statement = re.sub(r"\bINSERT\s+OR\s+IGNORE\s+INTO\b", "INSERT INTO", statement, flags=re.I)
+    if "ON CONFLICT" not in statement.upper() and re.match(r"INSERT\s+INTO\s+\w+", statement, re.I):
+        table_match = re.match(r"INSERT\s+INTO\s+(\w+)\s*\(([^)]+)\)", statement, re.I | re.S)
+        if table_match and "OR IGNORE" in sql.upper():
+            table = table_match.group(1)
+            conflict = TABLE_PRIMARY_KEYS.get(table, [])
+            if conflict:
+                statement = f"{statement} ON CONFLICT ({', '.join(conflict)}) DO NOTHING"
+    if isinstance(params, dict):
+        statement = re.sub(r":([A-Za-z_][A-Za-z0-9_]*)", r"%(\1)s", statement)
+        return statement, params
+    return statement.replace("?", "%s"), params
 
 
 def latest_odds_by_race(conn: sqlite3.Connection, race_id: str) -> dict[str, dict[str, Any]]:
@@ -296,15 +417,7 @@ def upsert_race_status(
         merged = dict(current)
         merged.update({key: value for key, value in values.items() if value is not None or key in {"status", "notes"}})
         values = merged
-    conn.execute(
-        """
-        INSERT OR REPLACE INTO race_status
-          (race_id, status, last_odds_refresh_at, last_result_refresh_at, last_backtest_at, notes)
-        VALUES
-          (:race_id, :status, :last_odds_refresh_at, :last_result_refresh_at, :last_backtest_at, :notes)
-        """,
-        values,
-    )
+    insert_rows(conn, "race_status", [values])
 
 
 def refresh_race_statuses(conn: sqlite3.Connection) -> None:

@@ -14,9 +14,10 @@ dependencies = []
 dashboard = ["streamlit>=1.35", "plotly>=5.22"]
 gpt = ["openai>=1.0", "python-dotenv>=1.0"]
 scraper = []
-live = ["paho-mqtt>=2.1"]
+live = ["paho-mqtt>=2.1", "psycopg[binary]>=3.2"]
 all = [
   "paho-mqtt>=2.1",
+  "psycopg[binary]>=3.2",
   "python-dotenv>=1.0",
   "openai>=1.0",
   "streamlit>=1.35",
