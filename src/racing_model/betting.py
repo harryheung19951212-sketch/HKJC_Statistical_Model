@@ -51,6 +51,7 @@ def build_betting_decisions(
     bankroll: float = 10_000.0,
     risk_profile: str = "standard",
     exotic_dividends: dict[tuple[str, str], dict[str, Any]] | None = None,
+    include_exotics: bool = True,
 ) -> dict[str, Any]:
     profile = RISK_PROFILES.get(risk_profile, RISK_PROFILES["standard"])
     bankroll = max(float(bankroll or 0), 0.0)
@@ -83,8 +84,8 @@ def build_betting_decisions(
             )
         )
 
-    exotic_candidates = build_exotic_candidates(predictions, race_status, exotic_dividends=exotic_dividends)
-    exotic_decisions = build_exotic_decisions(exotic_candidates, race_status, bankroll, profile)
+    exotic_candidates = build_exotic_candidates(predictions, race_status, exotic_dividends=exotic_dividends) if include_exotics else []
+    exotic_decisions = build_exotic_decisions(exotic_candidates, race_status, bankroll, profile) if include_exotics else []
     active = [decision for decision in [*decisions, *exotic_decisions] if decision["recommended_stake"] > 0]
     max_race_stake = round(bankroll * profile.max_race_fraction, 2)
     raw_total = sum(float(item["recommended_stake"]) for item in active)
@@ -127,6 +128,7 @@ def build_betting_decisions(
         "exotic_decisions": exotic_decisions,
         "exotic_candidates": exotic_candidates,
         "upgrade_paths": build_upgrade_paths(exotic_candidates),
+        "exotics_deferred": not include_exotics,
     }
 
 

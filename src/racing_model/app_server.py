@@ -361,9 +361,21 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
                 race_id = required_query(query, "race_id")
                 bankroll = query_float(query, "bankroll", 10000.0)
                 risk = query.get("risk", ["standard"])[0] or "standard"
+                include_exotics = query_bool(query, "include_exotics", True)
                 model = self.app_state.model()
                 policy = self.app_state.prediction_policy(conn, model)
-                self.send_json(api_betting(conn, model, race_id, bankroll, risk, self.app_state.model_path, policy=policy))
+                self.send_json(
+                    api_betting(
+                        conn,
+                        model,
+                        race_id,
+                        bankroll,
+                        risk,
+                        self.app_state.model_path,
+                        policy=policy,
+                        include_exotics=include_exotics,
+                    )
+                )
             elif path == "/api/exotic-dividends":
                 race_id = required_query(query, "race_id")
                 self.send_json(exotic_dividend_report(conn, race_id))
@@ -791,6 +803,7 @@ def api_race_dashboard(conn, state: AppState, race_id: str, bankroll: float, ris
         state.model_path,
         predictions=prediction_payload.get("predictions", []),
         policy=policy,
+        include_exotics=False,
     )
     return {
         "state": api_state(conn, state),
@@ -846,6 +859,7 @@ def api_betting(
     model_path: Path | str | None = None,
     predictions: list[dict[str, object]] | None = None,
     policy: dict[str, object] | None = None,
+    include_exotics: bool = True,
 ) -> dict[str, object]:
     race_rows = fetch_all(conn, "SELECT * FROM races WHERE race_id = ?", (race_id,))
     if not race_rows:
@@ -860,6 +874,7 @@ def api_betting(
         bankroll=bankroll,
         risk_profile=risk,
         exotic_dividends=exotic_lookup,
+        include_exotics=include_exotics,
     )
     race = dict(race_rows[0])
     payload["race"] = race

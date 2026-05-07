@@ -288,6 +288,7 @@ async function refreshSelectedRace(options = {}) {
   renderRunnerDetail(currentPredictions.find((row) => row.horse_id === selectedHorseId));
   renderPredictionPolicy(payload.policy || {});
   renderBetting(dashboard.betting || {});
+  refreshFullBetting(raceKey);
   renderBettingLedger(dashboard.betting_ledger || {});
   renderOddsFeed(dashboard.odds_feed || {});
   renderModelComparison(dashboard.model_comparison || {});
@@ -296,6 +297,21 @@ async function refreshSelectedRace(options = {}) {
   renderResults(results.results || [], results.place_odds_completeness);
   renderWeather(dashboard.weather || {});
   if (full) await refreshModelReports();
+}
+
+async function refreshFullBetting(raceKey) {
+  const expectedRaceId = selectedRaceId;
+  try {
+    const betting = await api(`/api/betting?race_id=${raceKey}&bankroll=${encodeURIComponent(bettingBankroll())}&risk=${encodeURIComponent(bettingRisk())}&include_exotics=1`);
+    if (selectedRaceId !== expectedRaceId) return;
+    renderBetting(betting);
+    const ledger = await api(`/api/betting-ledger?race_id=${raceKey}`);
+    if (selectedRaceId === expectedRaceId) renderBettingLedger(ledger);
+  } catch (error) {
+    if (selectedRaceId === expectedRaceId) {
+      $("system-status").textContent = `投注方法計算未完成：${error.message}`;
+    }
+  }
 }
 
 async function refreshModelReports(options = {}) {
@@ -365,16 +381,18 @@ function renderBetting(data) {
   `;
   const tickets = data.tickets || [];
   const exoticHtml = renderExoticSection(data.exotic_candidates || [], data.upgrade_paths || []);
+  const deferredHtml = data.exotics_deferred ? `<div class="betting-empty">複式及全投注方法建議計算中...</div>` : "";
   if (!tickets.length) {
     const top = (data.decisions || []).slice(0, 4);
     box.innerHTML = `
       <div class="betting-empty">未有符合風險條件嘅下注建議</div>
       ${top.map(renderDecisionCard).join("")}
+      ${deferredHtml}
       ${exoticHtml}
     `;
     return;
   }
-  box.innerHTML = `${tickets.slice(0, 8).map(renderDecisionCard).join("")}${exoticHtml}`;
+  box.innerHTML = `${tickets.slice(0, 8).map(renderDecisionCard).join("")}${deferredHtml}${exoticHtml}`;
 }
 
 function renderDecisionCard(row) {
