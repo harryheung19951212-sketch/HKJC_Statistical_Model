@@ -433,6 +433,7 @@ h2 {
 
 .betting-panel,
 .feed-panel,
+.comparison-panel,
 .history-panel,
 .results-panel,
 .coverage-panel,
@@ -541,6 +542,52 @@ h2 {
 
 .feed-table tr.feed-missing {
   background: #fff8f6;
+}
+
+.model-comparison {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.comparison-empty {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.comparison-cards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.comparison-cards div {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  background: #fbfcfd;
+}
+
+.comparison-cards label {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.comparison-cards strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+
+.comparison-table {
+  min-width: 980px;
+}
+
+.comparison-table tr.comparison-swing {
+  background: #f7faff;
 }
 
 .betting-tickets {
@@ -1402,6 +1449,7 @@ td:nth-child(4), th:nth-child(4) {
   .predictions-panel,
   .betting-panel,
   .feed-panel,
+  .comparison-panel,
   .detail-panel,
   .odds-panel,
   .results-panel,
@@ -1420,6 +1468,7 @@ td:nth-child(4), th:nth-child(4) {
   .version-grid { grid-template-columns: 1fr; }
   .quality-grid { grid-template-columns: repeat(2, 1fr); }
   .feed-cards { grid-template-columns: repeat(2, 1fr); }
+  .comparison-cards { grid-template-columns: repeat(2, 1fr); }
   .odds-history-grid { grid-template-columns: 1fr; }
   .betting-summary { grid-template-columns: repeat(2, 1fr); }
   .ticket {
@@ -1438,6 +1487,7 @@ td:nth-child(4), th:nth-child(4) {
   .analytics-panel .stat-list,
   .quality-grid,
   .feed-cards,
+  .comparison-cards,
   .coverage-summary,
   .betting-summary,
   .ticket-metrics {

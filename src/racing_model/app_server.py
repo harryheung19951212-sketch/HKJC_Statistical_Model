@@ -32,6 +32,7 @@ from .feed_health import odds_feed_health
 from .features import build_race_features
 from .live import load_hkjc_race_day, refresh_hkjc_results_if_available
 from .model import RankingModel
+from .model_compare import dual_model_comparison
 from .model_registry import model_registry_report, run_and_record_model_registry
 from .odds import (
     backfill_final_place_odds,
@@ -324,6 +325,9 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
             elif path == "/api/predictions":
                 race_id = required_query(query, "race_id")
                 self.send_json(api_predictions(conn, self.app_state.model(), race_id))
+            elif path == "/api/model-comparison":
+                race_id = required_query(query, "race_id")
+                self.send_json(dual_model_comparison(conn, self.app_state.model(), race_id))
             elif path == "/api/betting":
                 race_id = required_query(query, "race_id")
                 bankroll = query_float(query, "bankroll", 10000.0)

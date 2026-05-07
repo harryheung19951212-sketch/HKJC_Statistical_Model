@@ -289,6 +289,8 @@ async function refreshSelectedRace(options = {}) {
   if (full) await refreshModelReports();
   const feed = await api(`/api/odds-feed?race_id=${encodeURIComponent(selectedRaceId)}`);
   renderOddsFeed(feed);
+  const comparison = await api(`/api/model-comparison?race_id=${encodeURIComponent(selectedRaceId)}`);
+  renderModelComparison(comparison);
   const history = await api(`/api/odds-history?race_id=${encodeURIComponent(selectedRaceId)}`);
   renderOddsHistory(history);
   const results = await api(`/api/results?race_id=${encodeURIComponent(selectedRaceId)}`);
@@ -674,6 +676,82 @@ function renderOddsFeed(feed) {
       </table>
     </div>
   `;
+}
+
+function renderModelComparison(data) {
+  const box = $("model-comparison");
+  const summary = $("comparison-summary");
+  const runners = data && data.runners ? data.runners : [];
+  if (!runners.length) {
+    summary.textContent = "未有對照資料";
+    box.innerHTML = `<div class="comparison-empty">未有對照資料</div>`;
+    return;
+  }
+  const info = data.summary || {};
+  summary.textContent = comparisonSummaryText(info);
+  box.innerHTML = `
+    <div class="comparison-cards">
+      <div><label>純能力首選</label><strong>${info.top_ability_name || "-"}</strong></div>
+      <div><label>市場融合首選</label><strong>${info.top_market_name || "-"}</strong></div>
+      <div><label>首選一致</label><strong class="${info.top_pick_same ? "positive" : "negative"}">${info.top_pick_same ? "一致" : "不同"}</strong></div>
+      <div><label>最大排名擺動</label><strong>${info.max_rank_swing || 0}</strong></div>
+    </div>
+    <div class="table-wrap">
+      <table class="comparison-table">
+        <thead>
+          <tr>
+            <th>馬號</th>
+            <th>馬匹</th>
+            <th>純能力排名</th>
+            <th>市場排名</th>
+            <th>變化</th>
+            <th>純能力勝率</th>
+            <th>市場勝率</th>
+            <th>獨贏賠率</th>
+            <th>EV</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${runners.map(renderComparisonRow).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderComparisonRow(row) {
+  const swingClass = Math.abs(Number(row.rank_delta || 0)) >= 3 ? "comparison-swing" : "";
+  return `
+    <tr class="${swingClass}">
+      <td>${row.horse_no || "-"}</td>
+      <td><strong>${localizedHorse(row)}</strong><br><span>${row.horse_id}</span></td>
+      <td>${row.ability_rank || "-"}</td>
+      <td>${row.market_rank || "-"}</td>
+      <td class="${rankDeltaClass(row.rank_delta)}">${formatRankDelta(row.rank_delta)}</td>
+      <td>${formatPct(row.ability_win_probability)}</td>
+      <td>${formatPct(row.market_win_probability)}</td>
+      <td>${formatNum(row.latest_win_odds, 2)}</td>
+      <td class="${evClass(row.expected_value)}">${row.expected_value === null || row.expected_value === undefined ? "-" : Number(row.expected_value).toFixed(3)}</td>
+    </tr>
+  `;
+}
+
+function comparisonSummaryText(info) {
+  const same = info.top_pick_same ? "首選一致" : "首選不同";
+  return `${same} | 擺動 ${info.rank_disagreement || 0} | 移除市場特徵 ${(info.market_features_removed || []).length}`;
+}
+
+function formatRankDelta(value) {
+  const number = Number(value || 0);
+  if (!number) return "-";
+  return `${number > 0 ? "+" : ""}${number}`;
+}
+
+function rankDeltaClass(value) {
+  const number = Number(value || 0);
+  if (number > 0) return "positive";
+  if (number < 0) return "negative";
+  return "";
 }
 
 function renderFeedRunnerRow(row) {

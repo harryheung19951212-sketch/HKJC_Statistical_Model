@@ -145,3 +145,24 @@ Verification:
 - `python -m compileall -q src dashboard tests`
 - `node --check src/racing_model/web/app.js`
 - Direct execution of feed-health and final-place test functions because local Python does not have `pytest` installed.
+
+## 2026-05-07 - Dual Track Model Comparison
+
+Goal:
+
+- Compare pure ability ranking against the current market-fusion ranking on the same race screen.
+- Make it visible when market odds or late-money features are pulling the model away from fundamentals.
+
+Implementation:
+
+- Added `src/racing_model/model_compare.py`.
+- Added `/api/model-comparison?race_id=...`.
+- The ability track masks `market_implied` and all late-flow features while keeping horse ability, form, draw, rider/trainer, workout, pace, and same-day track-bias features.
+- Added a `雙軌模型對照` UI panel showing pure ability top pick, market-fusion top pick, whether they agree, maximum rank swing, and each runner's rank/probability under both tracks.
+- Added `tests/test_model_compare.py`.
+
+Verification:
+
+- `python -m compileall -q src dashboard tests`
+- `node --check src/racing_model/web/app.js`
+- Direct execution of model-comparison, feed-health, and final-place test functions because local Python does not have `pytest` installed.
