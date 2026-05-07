@@ -28,6 +28,9 @@ FEATURE_LABELS_ZH = {
     "odds_delta_30s": "30秒賠率流",
     "late_steam": "臨場熱捧",
     "late_drift": "臨場轉冷",
+    "same_day_inside_bias": "同日內檔偏差",
+    "same_day_outside_bias": "同日外檔偏差",
+    "same_day_pace_bias": "同日跑法偏差",
 }
 
 
@@ -149,6 +152,9 @@ class RankingModel:
                     "odds_delta_30s": runner.features.get("odds_delta_30s", 0.0),
                     "late_steam": runner.features.get("late_steam", 0.0),
                     "late_drift": runner.features.get("late_drift", 0.0),
+                    "same_day_inside_bias": runner.features.get("same_day_inside_bias", 0.0),
+                    "same_day_outside_bias": runner.features.get("same_day_outside_bias", 0.0),
+                    "same_day_pace_bias": runner.features.get("same_day_pace_bias", 0.0),
                     "place_market_probability": place_market_probability,
                     "value_gap": value_gap,
                     "top3_value_gap": top3_value_gap,

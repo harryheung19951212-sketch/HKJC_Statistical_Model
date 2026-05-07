@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Any
 
 from .storage import fetch_all, latest_odds_by_race
+from .track_bias import same_day_track_bias, track_bias_features
 
 
 FEATURE_NAMES = [
@@ -30,6 +31,9 @@ FEATURE_NAMES = [
     "odds_delta_30s",
     "late_steam",
     "late_drift",
+    "same_day_inside_bias",
+    "same_day_outside_bias",
+    "same_day_pace_bias",
 ]
 
 LATE_MARKET_FLOW_FEATURES = [
@@ -38,6 +42,12 @@ LATE_MARKET_FLOW_FEATURES = [
     "odds_delta_30s",
     "late_steam",
     "late_drift",
+]
+
+SAME_DAY_TRACK_BIAS_FEATURES = [
+    "same_day_inside_bias",
+    "same_day_outside_bias",
+    "same_day_pace_bias",
 ]
 
 
@@ -75,6 +85,7 @@ def build_race_features(conn: sqlite3.Connection, race_id: str) -> list[RunnerFe
     }
     all_runner_count = max(len(runners), 1)
     late_flow = late_market_flow(conn, race_id)
+    track_bias = same_day_track_bias(conn, race_id)
 
     output: list[RunnerFeatures] = []
     for runner in runners:
@@ -84,6 +95,12 @@ def build_race_features(conn: sqlite3.Connection, race_id: str) -> list[RunnerFe
         latest_win_odds_source = str(latest["source"]) if latest and "source" in latest.keys() and latest["source"] else None
         latest_place_odds = float(latest["place_odds"]) if latest and latest["place_odds"] else None
         latest_place_odds_source = str(latest["place_source"]) if latest and "place_source" in latest.keys() and latest["place_source"] else None
+        bias_features = track_bias_features(
+            track_bias,
+            int(runner["draw"]),
+            all_runner_count,
+            str(runner["running_style"] or ""),
+        )
         feature_values = {
             "official_rating": float(runner["official_rating"] or 0),
             "weight_lbs": float(runner["weight_lbs"] or 0),
@@ -104,6 +121,9 @@ def build_race_features(conn: sqlite3.Connection, race_id: str) -> list[RunnerFe
             "odds_delta_30s": late_flow.get(horse_id, {}).get("odds_delta_30s", 0.0),
             "late_steam": late_flow.get(horse_id, {}).get("late_steam", 0.0),
             "late_drift": late_flow.get(horse_id, {}).get("late_drift", 0.0),
+            "same_day_inside_bias": bias_features["same_day_inside_bias"],
+            "same_day_outside_bias": bias_features["same_day_outside_bias"],
+            "same_day_pace_bias": bias_features["same_day_pace_bias"],
         }
         result = results.get(horse_id)
         output.append(

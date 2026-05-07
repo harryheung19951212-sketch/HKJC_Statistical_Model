@@ -5,7 +5,13 @@ import sqlite3
 from dataclasses import dataclass
 from typing import Any
 
-from .features import FEATURE_NAMES, LATE_MARKET_FLOW_FEATURES, RunnerFeatures, build_race_features
+from .features import (
+    FEATURE_NAMES,
+    LATE_MARKET_FLOW_FEATURES,
+    SAME_DAY_TRACK_BIAS_FEATURES,
+    RunnerFeatures,
+    build_race_features,
+)
 from .model import RankingModel, softmax
 from .storage import fetch_all
 
@@ -23,11 +29,12 @@ def default_variants() -> list[ModelVariant]:
     market_features = {"market_implied", *LATE_MARKET_FLOW_FEATURES}
     no_market = [name for name in FEATURE_NAMES if name not in market_features]
     no_late_flow = [name for name in FEATURE_NAMES if name not in set(LATE_MARKET_FLOW_FEATURES)]
+    no_track_bias = [name for name in FEATURE_NAMES if name not in set(SAME_DAY_TRACK_BIAS_FEATURES)]
     return [
         ModelVariant(
             "baseline",
             "Baseline",
-            "現有全特徵模型，包含市場賠率機率及臨場賠率流。",
+            "現有全特徵模型，包含市場賠率機率、臨場賠率流及同日跑道偏差。",
             list(FEATURE_NAMES),
         ),
         ModelVariant(
@@ -35,6 +42,12 @@ def default_variants() -> list[ModelVariant]:
             "No Late Flow",
             "保留市場機率，但移除最後 5/2/0.5 分鐘賠率流，用來驗證 late-flow 是否真有提升。",
             no_late_flow,
+        ),
+        ModelVariant(
+            "no_track_bias",
+            "No Track Bias",
+            "保留市場及 late-flow，但移除同日跑道偏差，用來驗證 bias replay 是否真有提升。",
+            no_track_bias,
         ),
         ModelVariant(
             "no_market",

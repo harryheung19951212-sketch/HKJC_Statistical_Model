@@ -410,6 +410,9 @@ function renderRunnerDetail(row) {
     <div class="stat"><label>2分鐘賠率流</label><strong class="${evClass(row.odds_delta_2m)}">${formatSigned(row.odds_delta_2m)}</strong></div>
     <div class="stat"><label>30秒賠率流</label><strong class="${evClass(row.odds_delta_30s)}">${formatSigned(row.odds_delta_30s)}</strong></div>
     <div class="stat"><label>熱捧/轉冷</label><strong>${formatSigned(row.late_steam)} / ${formatSigned(row.late_drift)}</strong></div>
+    <div class="stat"><label>同日內檔偏差</label><strong class="${evClass(row.same_day_inside_bias)}">${formatSigned(row.same_day_inside_bias)}</strong></div>
+    <div class="stat"><label>同日外檔偏差</label><strong class="${evClass(row.same_day_outside_bias)}">${formatSigned(row.same_day_outside_bias)}</strong></div>
+    <div class="stat"><label>同日跑法偏差</label><strong class="${evClass(row.same_day_pace_bias)}">${formatSigned(row.same_day_pace_bias)}</strong></div>
     <div class="factor-list">
       ${renderFactorSection("\u6b63\u9762\u56e0\u7d20", explanation.positive || [], "positive")}
       ${renderFactorSection("\u8ca0\u9762\u56e0\u7d20", explanation.negative || [], "negative")}
