@@ -9,6 +9,7 @@ let selectedHorseId = null;
 let autoFollowRace = true;
 const raceFolderState = { upcoming: true, resulted: false };
 const raceDateFolderState = {};
+let activeWatchRaceId = null;
 
 const text = {
   scheduled: "\u672a\u958b\u8dd1",
@@ -84,15 +85,18 @@ function requiredDateValue(id) {
 async function loadState() {
   const state = await api("/api/state");
   intervalSeconds = Number(state.odds_interval_seconds || 30);
-  $("system-status").textContent = `\u6bcf ${intervalSeconds} \u79d2\u81ea\u52d5\u5237\u65b0\u8ce0\u7387/\u7d44\u5408\u6d3e\u5f69`;
+  const active = state.active_race_id ? `｜使用中：${raceNoLabel(state.active_race_id)}` : "｜未有打開場次";
+  $("system-status").textContent = `每 ${intervalSeconds} 秒只刷新已打開場次 ${active}`;
   if (!selectedRaceId && state.current_race_id) selectedRaceId = state.current_race_id;
   const lifecycle = await api("/api/lifecycle");
   renderLifecycle(lifecycle);
-  if (autoFollowRace && selectedRaceId && lifecycle.refreshable_race_id) {
+  if (autoFollowRace && selectedRaceId && lifecycle.next_scheduled_race_id) {
     const selected = races.find((race) => race.race_id === selectedRaceId);
-    if (selected && selected.status === "resulted" && lifecycle.refreshable_race_id !== selectedRaceId) {
-      selectedRaceId = lifecycle.refreshable_race_id;
+    if (selected && selected.status === "resulted" && lifecycle.next_scheduled_race_id !== selectedRaceId) {
+      sleepSelectedRace();
+      selectedRaceId = lifecycle.next_scheduled_race_id;
       selectedHorseId = null;
+      activeWatchRaceId = null;
     }
   }
 }
@@ -157,8 +161,10 @@ function renderRaceDateFolder(statusKey, date, items) {
       <span>${localTrack(race.track)} ${race.distance_m}\u7c73 | ${localStatus(race.status)}</span>
     `;
     item.addEventListener("click", () => {
+      if (activeWatchRaceId && activeWatchRaceId !== race.race_id) sleepSelectedRace();
       selectedRaceId = race.race_id;
       autoFollowRace = false;
+      activeWatchRaceId = null;
       countdown = intervalSeconds;
       renderRaceList();
       refreshSelectedRace();
@@ -191,8 +197,8 @@ function raceNoLabel(raceId) {
 
 function renderLifecycle(data) {
   const counts = data.counts || {};
-  $("lifecycle-mode").textContent = data.mode === "auto_refresh_scheduled_only" ? "只更新未開跑" : "-";
-  $("lifecycle-current").textContent = data.refreshable_race_id || "-";
+  $("lifecycle-mode").textContent = data.mode === "active_race_only" ? "只更新已打開場次" : "-";
+  $("lifecycle-current").textContent = data.active_race_id || "-";
   $("lifecycle-frozen").textContent = data.frozen_race_id || "-";
   $("lifecycle-resulted").textContent = counts.resulted || 0;
 }
@@ -218,8 +224,28 @@ function renderRaceHeader() {
   $("refresh-now").disabled = isResulted || race.status === "live";
 }
 
-async function refreshSelectedRace() {
+async function watchSelectedRace() {
+  if (!selectedRaceId || document.hidden) return null;
+  const payload = await api(`/api/watch-race?race_id=${encodeURIComponent(selectedRaceId)}`, { method: "POST" });
+  if (payload.active_race_id) activeWatchRaceId = payload.active_race_id;
+  return payload;
+}
+
+function sleepSelectedRace() {
+  if (!activeWatchRaceId) return;
+  const raceId = encodeURIComponent(activeWatchRaceId);
+  activeWatchRaceId = null;
+  if (navigator.sendBeacon) {
+    navigator.sendBeacon(`/api/sleep-race?race_id=${raceId}`);
+    return;
+  }
+  api(`/api/sleep-race?race_id=${raceId}`, { method: "POST", keepalive: true }).catch(() => {});
+}
+
+async function refreshSelectedRace(options = {}) {
   if (!selectedRaceId) return;
+  const full = Boolean(options.full);
+  await watchSelectedRace();
   await loadRaces();
   const payload = await api(`/api/predictions?race_id=${encodeURIComponent(selectedRaceId)}`);
   currentPredictions = payload.predictions || [];
@@ -231,6 +257,18 @@ async function refreshSelectedRace() {
   renderRunnerDetail(currentPredictions.find((row) => row.horse_id === selectedHorseId));
   const betting = await api(`/api/betting?race_id=${encodeURIComponent(selectedRaceId)}&bankroll=${encodeURIComponent(bettingBankroll())}&risk=${encodeURIComponent(bettingRisk())}`);
   renderBetting(betting);
+  const ledger = await api(`/api/betting-ledger?race_id=${encodeURIComponent(selectedRaceId)}`);
+  renderBettingLedger(ledger);
+  if (full) await refreshModelReports();
+  const history = await api(`/api/odds-history?race_id=${encodeURIComponent(selectedRaceId)}`);
+  renderOddsHistory(history);
+  const results = await api(`/api/results?race_id=${encodeURIComponent(selectedRaceId)}`);
+  renderResults(results.results || []);
+  const weather = await api(`/api/weather?race_id=${encodeURIComponent(selectedRaceId)}`);
+  renderWeather(weather);
+}
+
+async function refreshModelReports() {
   const backtest = await api("/api/backtest");
   renderBacktest(backtest);
   const evolution = await api("/api/evolution");
@@ -241,18 +279,10 @@ async function refreshSelectedRace() {
   renderModelVersions(modelVersions);
   const registry = await api("/api/model-registry");
   renderModelRegistry(registry);
-  const ledger = await api(`/api/betting-ledger?race_id=${encodeURIComponent(selectedRaceId)}`);
-  renderBettingLedger(ledger);
   const quality = await api("/api/data-quality");
   renderDataQuality(quality);
   const coverage = await api("/api/coverage");
   renderCoverage(coverage);
-  const history = await api(`/api/odds-history?race_id=${encodeURIComponent(selectedRaceId)}`);
-  renderOddsHistory(history);
-  const results = await api(`/api/results?race_id=${encodeURIComponent(selectedRaceId)}`);
-  renderResults(results.results || []);
-  const weather = await api(`/api/weather?race_id=${encodeURIComponent(selectedRaceId)}`);
-  renderWeather(weather);
 }
 
 function renderWeather(weather) {
@@ -808,7 +838,7 @@ async function repairData() {
   $("repair-message").textContent = `已補回 ${repair.inserted_runners || 0} 匹缺失馬匹，並重新訓練模型。`;
   renderDataQuality(result.quality || {});
   if (result.model_versions) renderModelVersions(result.model_versions);
-  await refreshSelectedRace();
+  await refreshSelectedRace({ full: true });
 }
 
 async function completeRunners() {
@@ -818,7 +848,7 @@ async function completeRunners() {
   $("completion-message").textContent = `已檢查 ${completion.races_checked || 0} 場，更新 ${completion.updated_runners || 0} 匹馬。`;
   renderDataQuality(result.quality || {});
   if (result.model_versions) renderModelVersions(result.model_versions);
-  await refreshSelectedRace();
+  await refreshSelectedRace({ full: true });
 }
 
 function renderCalibration(rows) {
@@ -1023,12 +1053,13 @@ async function manualRefreshOdds() {
 
 async function lifecycleStep() {
   const result = await api("/api/lifecycle-step", { method: "POST" });
-  if (result.next_race_id && result.next_race_id !== selectedRaceId) {
+  if (autoFollowRace && result.next_race_id && result.next_race_id !== selectedRaceId) {
+    sleepSelectedRace();
     selectedRaceId = result.next_race_id;
     selectedHorseId = null;
-    autoFollowRace = true;
+    activeWatchRaceId = null;
   }
-  $("system-status").textContent = result.race_id ? `流程已處理：${result.race_id}` : "未有未開跑場次";
+  $("system-status").textContent = result.race_id ? `流程已處理：${result.race_id}` : "未有打開嘅未開跑場次";
   countdown = intervalSeconds;
   await loadState();
   await refreshSelectedRace();
@@ -1060,9 +1091,11 @@ async function refreshResults() {
   const result = await api(`/api/refresh-results?race_id=${encodeURIComponent(selectedRaceId)}`, { method: "POST" });
   if (result.status === "resulted") {
     const lifecycle = await api("/api/lifecycle");
-    if (autoFollowRace && lifecycle.refreshable_race_id) {
-      selectedRaceId = lifecycle.refreshable_race_id;
+    if (autoFollowRace && lifecycle.next_scheduled_race_id) {
+      sleepSelectedRace();
+      selectedRaceId = lifecycle.next_scheduled_race_id;
       selectedHorseId = null;
+      activeWatchRaceId = null;
     }
   }
   await refreshSelectedRace();
@@ -1096,7 +1129,8 @@ function watchRaceDayJob(jobId) {
       const result = job.result || {};
       $("race-day-message").textContent = `${text.loadDone}\uff1a${result.imported_races || 0} \u5834\uff0c${result.errors || 0} \u500b\u932f\u8aa4`;
       selectedRaceId = result.first_race_id || selectedRaceId;
-      await refreshSelectedRace();
+      activeWatchRaceId = null;
+      await refreshSelectedRace({ full: true });
     }
     if (job.status === "error") {
       clearInterval(raceDayJobTimer);
@@ -1140,7 +1174,8 @@ function watchBackfillJob(jobId) {
       const training = result.training || {};
       $("backfill-message").textContent = `完成：${result.imported_races || 0} 場，${result.imported_results || 0} 份賽果，重訓 ${training.training_races || 0} 場`;
       if (result.first_race_id) selectedRaceId = result.first_race_id;
-      await refreshSelectedRace();
+      activeWatchRaceId = null;
+      await refreshSelectedRace({ full: true });
     }
     if (job.status === "error") {
       clearInterval(backfillJobTimer);
@@ -1165,17 +1200,30 @@ async function boot() {
   $("refresh-error-taxonomy").addEventListener("click", refreshErrorTaxonomy);
   $("race-day-form").addEventListener("submit", loadRaceDay);
   $("backfill-form").addEventListener("submit", loadBackfill);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      sleepSelectedRace();
+      $("system-status").textContent = "畫面休眠中，暫停即時刷新";
+      return;
+    }
+    activeWatchRaceId = null;
+    countdown = 1;
+  });
+  window.addEventListener("beforeunload", sleepSelectedRace);
   await loadState();
   await loadRaces();
-  await refreshCoverage();
-  await refreshSelectedRace();
+  await refreshSelectedRace({ full: true });
   countdown = intervalSeconds;
   setInterval(async () => {
+    if (document.hidden) {
+      countdown = intervalSeconds;
+      return;
+    }
     countdown -= 1;
     if (countdown <= 0) {
       countdown = intervalSeconds;
       await loadState();
-      await refreshSelectedRace();
+      await refreshSelectedRace({ full: false });
     }
     $("countdown").textContent = countdown;
   }, 1000);

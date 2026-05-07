@@ -50,11 +50,51 @@ class AppState:
         self.thread: threading.Thread | None = None
         self.jobs: dict[str, dict[str, object]] = {}
         self.jobs_lock = threading.Lock()
+        self.active_race_id: str | None = None
+        self.active_race_seen_at = 0.0
+        self.active_race_ttl_seconds = max(90, odds_interval_seconds * 3)
+        self.active_race_lock = threading.Lock()
 
     def model(self) -> RankingModel:
         if self.model_path.exists():
             return RankingModel.load(self.model_path)
         return RankingModel.new()
+
+    def focus_race(self, race_id: str, now: float | None = None) -> dict[str, object]:
+        timestamp = time.monotonic() if now is None else now
+        with self.active_race_lock:
+            self.active_race_id = race_id
+            self.active_race_seen_at = timestamp
+        return {
+            "active_race_id": race_id,
+            "expires_in_seconds": self.active_race_ttl_seconds,
+        }
+
+    def sleep_race(self, race_id: str | None = None) -> dict[str, object]:
+        with self.active_race_lock:
+            if race_id is None or race_id == self.active_race_id:
+                self.active_race_id = None
+                self.active_race_seen_at = 0.0
+        return {"active_race_id": self.active_race_id}
+
+    def active_race(self, now: float | None = None) -> str | None:
+        timestamp = time.monotonic() if now is None else now
+        with self.active_race_lock:
+            if not self.active_race_id:
+                return None
+            if timestamp - self.active_race_seen_at > self.active_race_ttl_seconds:
+                self.active_race_id = None
+                self.active_race_seen_at = 0.0
+                return None
+            return self.active_race_id
+
+    def active_race_expires_in(self, now: float | None = None) -> int:
+        timestamp = time.monotonic() if now is None else now
+        with self.active_race_lock:
+            if not self.active_race_id:
+                return 0
+            remaining = self.active_race_ttl_seconds - (timestamp - self.active_race_seen_at)
+            return max(0, int(remaining))
 
     def start_refresh_loop(self) -> None:
         if self.thread and self.thread.is_alive():
@@ -330,6 +370,18 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
                     )
                 except Exception as exc:
                     self.send_json({"race_id": race_id, "inserted": 0, "status": "error", "error": str(exc)})
+            elif path == "/api/watch-race":
+                race_id = required_query(query, "race_id")
+                status = race_lifecycle_status(conn, race_id)
+                if status == "missing":
+                    self.send_json({"race_id": race_id, "status": "missing", "active_race_id": None})
+                    return
+                payload = self.app_state.focus_race(race_id)
+                payload.update({"race_id": race_id, "status": status, "mode": "active_race_only"})
+                self.send_json(payload)
+            elif path == "/api/sleep-race":
+                race_id = query.get("race_id", [None])[0]
+                self.send_json(self.app_state.sleep_race(race_id))
             elif path == "/api/mark-resulted":
                 race_id = required_query(query, "race_id")
                 upsert_race_status(
@@ -567,7 +619,9 @@ def api_state(conn, state: AppState) -> dict[str, object]:
         "model_path": str(state.model_path),
         "odds_interval_seconds": state.odds_interval_seconds,
         "odds_provider": state.settings.odds_provider,
-        "current_race_id": current_race_id(conn),
+        "current_race_id": state.active_race() or current_race_id(conn),
+        "active_race_id": state.active_race(),
+        "active_race_expires_in_seconds": state.active_race_expires_in(),
     }
 
 
@@ -583,7 +637,8 @@ def api_lifecycle(conn, state: AppState) -> dict[str, object]:
         """,
     )
     counts = {row["status"]: row["n"] for row in rows}
-    current = current_refreshable_race_id(conn)
+    active = state.active_race()
+    current = active_refreshable_race_id(conn, state)
     frozen_rows = fetch_all(
         conn,
         """
@@ -610,6 +665,9 @@ def api_lifecycle(conn, state: AppState) -> dict[str, object]:
         "odds_provider": state.settings.odds_provider,
         "odds_interval_seconds": state.odds_interval_seconds,
         "refreshable_race_id": current,
+        "active_race_id": active,
+        "active_race_expires_in_seconds": state.active_race_expires_in(),
+        "next_scheduled_race_id": current_refreshable_race_id(conn),
         "frozen_race_id": frozen_rows[0]["race_id"] if frozen_rows else None,
         "latest_resulted_race_id": latest_resulted[0]["race_id"] if latest_resulted else None,
         "counts": {
@@ -617,7 +675,7 @@ def api_lifecycle(conn, state: AppState) -> dict[str, object]:
             "live": counts.get("live", 0),
             "resulted": counts.get("resulted", 0),
         },
-        "mode": "auto_refresh_scheduled_only",
+        "mode": "active_race_only",
     }
 
 
@@ -747,9 +805,15 @@ def api_results(conn, model: RankingModel, race_id: str) -> dict[str, object]:
 
 def run_lifecycle_step(conn, state: AppState) -> dict[str, object]:
     refresh_race_statuses(conn)
-    race_id = current_refreshable_race_id(conn)
+    race_id = active_refreshable_race_id(conn, state)
     if not race_id:
-        return {"status": "idle", "message": "no_scheduled_race"}
+        active = state.active_race()
+        return {
+            "status": "idle",
+            "message": "no_active_scheduled_race" if active else "no_active_race",
+            "active_race_id": active,
+            "next_race_id": current_refreshable_race_id(conn),
+        }
 
     odds = {"inserted": 0, "status": "skipped"}
     exotic = {"inserted": 0, "status": "skipped"}
@@ -813,6 +877,15 @@ def current_refreshable_race_id(conn) -> str | None:
     if rows:
         return rows[0]["race_id"]
     return None
+
+
+def active_refreshable_race_id(conn, state: AppState) -> str | None:
+    race_id = state.active_race()
+    if not race_id:
+        return None
+    if race_lifecycle_status(conn, race_id) != "scheduled":
+        return None
+    return race_id
 
 
 def race_lifecycle_status(conn, race_id: str) -> str:
