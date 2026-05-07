@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from racing_model.db_migrate import database_counts, migrate_sqlite_to_database
+from racing_model.db_migrate import database_counts, display_database_target, migrate_sqlite_to_database
 from racing_model.storage import connect, init_db, insert_rows, translate_postgres_sql
 
 
@@ -74,3 +74,10 @@ def test_postgres_sql_translation_supports_existing_placeholders() -> None:
     assert positional_params == ("HK20260506-ST-01",)
     assert named == "UPDATE race_status SET status = %(status)s WHERE race_id = %(race_id)s"
     assert named_params["status"] == "resulted"
+
+
+def test_display_database_target_redacts_postgres_password() -> None:
+    target = display_database_target("postgresql://racing_model:secret@postgres:5432/racing_model")
+
+    assert target == "postgresql://racing_model:***@postgres:5432/racing_model"
+    assert "secret" not in target
