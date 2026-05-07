@@ -26,6 +26,7 @@ from .gpt_report import generate_report
 from .html_report import export_race_report
 from .model import RankingModel
 from .model_registry import model_registry_report, run_and_record_model_registry
+from .odds import backfill_final_place_odds, build_official_odds_provider
 from .scrapers.base import PoliteHttpClient
 from .scrapers.hkjc import HKJCSource, write_hkjc_csv_bundle
 from .storage import connect, import_csv, init_db
@@ -104,6 +105,9 @@ def main() -> None:
 
     refresh_exotic_parser = sub.add_parser("refresh-exotic-dividends")
     refresh_exotic_parser.add_argument("--race-id", required=True)
+
+    final_place_parser = sub.add_parser("backfill-final-place-odds")
+    final_place_parser.add_argument("--race-id", default=None, help="Defaults to every resulted race.")
 
     quality_parser = sub.add_parser("data-quality")
 
@@ -199,6 +203,7 @@ def main() -> None:
         "betting-ledger",
         "import-exotic-dividends",
         "refresh-exotic-dividends",
+        "backfill-final-place-odds",
     }:
         init_db(settings.db_path)
 
@@ -288,6 +293,28 @@ def main() -> None:
         elif args.command == "refresh-exotic-dividends":
             result = refresh_exotic_dividends(conn, args.race_id, build_exotic_dividend_provider(settings))
             result["report"] = exotic_dividend_report(conn, args.race_id)
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        elif args.command == "backfill-final-place-odds":
+            if args.race_id:
+                result = backfill_final_place_odds(conn, args.race_id, build_official_odds_provider(settings))
+            else:
+                race_ids = [
+                    row["race_id"]
+                    for row in conn.execute(
+                        """
+                        SELECT DISTINCT race_id
+                        FROM results
+                        ORDER BY race_id
+                        """
+                    )
+                ]
+                result = {
+                    "status": "done",
+                    "races": [
+                        backfill_final_place_odds(conn, race_id, build_official_odds_provider(settings))
+                        for race_id in race_ids
+                    ],
+                }
             print(json.dumps(result, indent=2, ensure_ascii=False))
         elif args.command == "data-quality":
             print(json.dumps(data_quality_report(conn), indent=2, ensure_ascii=False))

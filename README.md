@@ -75,6 +75,7 @@ Historical HKJC backfill and data quality checks:
 
 ```powershell
 racing-model backfill-hkjc --start 2026/05/06 --end 2026/05/06 --venue ST --races 10
+racing-model backfill-final-place-odds --race-id HK20260506-ST-01
 racing-model data-quality
 racing-model repair-data
 ```

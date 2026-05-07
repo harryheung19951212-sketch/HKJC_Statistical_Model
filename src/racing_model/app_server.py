@@ -32,10 +32,17 @@ from .features import build_race_features
 from .live import load_hkjc_race_day, refresh_hkjc_results_if_available
 from .model import RankingModel
 from .model_registry import model_registry_report, run_and_record_model_registry
-from .odds import build_odds_provider, odds_history, refresh_odds
+from .odds import (
+    backfill_final_place_odds,
+    build_odds_provider,
+    build_official_odds_provider,
+    odds_history,
+    refresh_odds,
+)
 from .storage import (
     connect,
     fetch_all,
+    final_place_odds_completeness,
     freeze_final_place_snapshots,
     init_db,
     latest_odds_by_race,
@@ -440,7 +447,22 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
                     self.app_state.settings.user_agent,
                     self.app_state.settings.request_delay_seconds,
                 )
+                if result and result.get("status") == "resulted":
+                    result["final_place_backfill"] = backfill_final_place_odds(
+                        conn,
+                        race_id,
+                        build_official_odds_provider(self.app_state.settings),
+                    )
                 self.send_json(result or {"race_id": race_id, "status": "not_hkjc_race"})
+            elif path == "/api/backfill-final-place-odds":
+                race_id = required_query(query, "race_id")
+                self.send_json(
+                    backfill_final_place_odds(
+                        conn,
+                        race_id,
+                        build_official_odds_provider(self.app_state.settings),
+                    )
+                )
             elif path == "/api/lifecycle-step":
                 self.send_json(run_lifecycle_step(conn, self.app_state, scope="global"))
             elif path == "/api/load-race-day":
@@ -825,7 +847,11 @@ def api_results(conn, model: RankingModel, race_id: str) -> dict[str, object]:
                 if top3_probability is not None:
                     item["top3_expected_value"] = float(top3_probability) * float(latest["place_odds"]) - 1.0
         results.append(item)
-    return {"race": dict(race_rows[0]), "results": results}
+    return {
+        "race": dict(race_rows[0]),
+        "results": results,
+        "place_odds_completeness": final_place_odds_completeness(conn, race_id),
+    }
 
 
 def run_lifecycle_step(conn, state: AppState, scope: str = "active") -> dict[str, object]:
@@ -870,6 +896,12 @@ def run_lifecycle_step(conn, state: AppState, scope: str = "active") -> dict[str
         state.settings.user_agent,
         state.settings.request_delay_seconds,
     )
+    if result and result.get("status") == "resulted":
+        result["final_place_backfill"] = backfill_final_place_odds(
+            conn,
+            race_id,
+            build_official_odds_provider(state.settings),
+        )
     next_race_id = current_refreshable_race_id(conn)
     return {
         "status": "done",

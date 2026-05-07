@@ -2,7 +2,22 @@ from pathlib import Path
 
 from racing_model.app_server import api_results
 from racing_model.model import RankingModel
+from racing_model.odds import backfill_final_place_odds
 from racing_model.storage import connect, fetch_all, final_place_snapshot_rows, init_db, insert_rows
+
+
+class FakeOfficialPlaceProvider:
+    source_name = "hkjc_graphql"
+    active_source = "hkjc_graphql"
+    last_error = None
+
+    def fetch_odds(self, conn, race_id):
+        return [
+            official_odds("H001", 3.0, 1.3),
+            official_odds("H002", 5.0, 1.8),
+            official_odds("H003", 8.0, 2.2),
+            official_odds("H004", 20.0, 5.5),
+        ]
 
 
 def test_final_place_snapshot_preserves_all_runner_place_odds(tmp_path: Path) -> None:
@@ -73,6 +88,60 @@ def test_final_place_snapshot_preserves_all_runner_place_odds(tmp_path: Path) ->
     assert result_by_horse["H004"]["top3_expected_value"] is not None
 
 
+def test_official_final_place_backfill_adds_every_runner(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    with connect(db_path) as conn:
+        insert_rows(
+            conn,
+            "races",
+            [
+                {
+                    "race_id": "HK20260506-ST-01",
+                    "date": "2026-05-06",
+                    "track": "Sha Tin",
+                    "course": "Turf",
+                    "distance_m": 1200,
+                    "going": "Good",
+                    "class_rating": "Class 4",
+                    "prize": 1000000,
+                    "race_name": "Test",
+                }
+            ],
+        )
+        insert_rows(
+            conn,
+            "runners",
+            [runner("H001", 1), runner("H002", 2), runner("H003", 3), runner("H004", 4)],
+        )
+        insert_rows(
+            conn,
+            "results",
+            [result("H001", 1), result("H002", 2), result("H003", 3), result("H004", 4)],
+        )
+        insert_rows(
+            conn,
+            "odds_ticks",
+            [
+                odds("H001", 3.0, 1.3, "hkjc_results_final"),
+                odds("H002", 5.0, 1.8, "hkjc_results_final"),
+                odds("H003", 8.0, 2.2, "hkjc_results_final"),
+                odds("H004", 20.0, None, "hkjc_results_final"),
+            ],
+        )
+        conn.commit()
+
+        backfill = backfill_final_place_odds(conn, "HK20260506-ST-01", FakeOfficialPlaceProvider())
+        report = api_results(conn, RankingModel.new(), "HK20260506-ST-01")
+
+    assert backfill["status"] == "done"
+    assert backfill["after"]["place_odds_count"] == 4
+    result_by_horse = {row["horse_id"]: row for row in report["results"]}
+    assert result_by_horse["H004"]["final_place_odds"] == 5.5
+    assert result_by_horse["H004"]["final_place_odds_source"] == "hkjc_final_place_backfill"
+    assert report["place_odds_completeness"]["complete"] is True
+
+
 def runner(horse_id: str, horse_no: int) -> dict[str, object]:
     return {
         "race_id": "HK20260506-ST-01",
@@ -107,7 +176,7 @@ def result(horse_id: str, position: int) -> dict[str, object]:
     }
 
 
-def odds(horse_id: str, win_odds: float, place_odds: float, source: str) -> dict[str, object]:
+def odds(horse_id: str, win_odds: float, place_odds: float | None, source: str) -> dict[str, object]:
     return {
         "race_id": "HK20260506-ST-01",
         "horse_id": horse_id,
@@ -115,4 +184,15 @@ def odds(horse_id: str, win_odds: float, place_odds: float, source: str) -> dict
         "win_odds": win_odds,
         "place_odds": place_odds,
         "source": source,
+    }
+
+
+def official_odds(horse_id: str, win_odds: float, place_odds: float) -> dict[str, object]:
+    return {
+        "race_id": "HK20260506-ST-01",
+        "horse_id": horse_id,
+        "timestamp": "2026-05-06T12:01:00+08:00",
+        "win_odds": win_odds,
+        "place_odds": place_odds,
+        "source": "hkjc_graphql",
     }

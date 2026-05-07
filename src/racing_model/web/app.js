@@ -290,7 +290,7 @@ async function refreshSelectedRace(options = {}) {
   const history = await api(`/api/odds-history?race_id=${encodeURIComponent(selectedRaceId)}`);
   renderOddsHistory(history);
   const results = await api(`/api/results?race_id=${encodeURIComponent(selectedRaceId)}`);
-  renderResults(results.results || []);
+  renderResults(results.results || [], results.place_odds_completeness);
   const weather = await api(`/api/weather?race_id=${encodeURIComponent(selectedRaceId)}`);
   renderWeather(weather);
 }
@@ -533,7 +533,7 @@ function renderPredictions(predictions) {
   });
 }
 
-function renderResults(results) {
+function renderResults(results, completeness = null) {
   const body = $("results-body");
   const summary = $("results-summary");
   body.innerHTML = "";
@@ -542,7 +542,7 @@ function renderResults(results) {
     body.innerHTML = `<tr><td colspan="14" class="empty-cell">未有賽果</td></tr>`;
     return;
   }
-  summary.textContent = `${results.length} 匹完成`;
+  summary.textContent = resultSummaryText(results, completeness);
   results.forEach((row) => {
     const tr = document.createElement("tr");
     const position = Number(row.finish_position);
@@ -628,7 +628,17 @@ function placeOddsSourceLabel(value) {
   if (value === "hkjc_graphql") return "官方";
   if (value === "hkjc_results_final") return "賽後";
   if (value === "hkjc_final_place_snapshot") return "最後位置";
+  if (value === "hkjc_final_place_backfill") return "官方補抓";
   return "-";
+}
+
+function resultSummaryText(results, completeness) {
+  const total = results.length;
+  if (!completeness || !completeness.runner_count) return `${total} 匹馬`;
+  const count = Number(completeness.place_odds_count || 0);
+  const runnerCount = Number(completeness.runner_count || total);
+  if (count >= runnerCount) return `${total} 匹馬 | 位置賠率 ${count}/${runnerCount}`;
+  return `${total} 匹馬 | 位置賠率 ${count}/${runnerCount} | 缺 ${runnerCount - count} 匹（官方歷史賠率未補齊）`;
 }
 
 function renderFactorSection(title, factors, kind) {

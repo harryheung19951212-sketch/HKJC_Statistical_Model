@@ -95,3 +95,32 @@ Implementation:
 Verification:
 
 - Added `tests/test_final_place_snapshots.py`.
+
+## 2026-05-07 - Official Final Place Odds Backfill
+
+Goal:
+
+- Backfill completed-race place odds for every runner from official HKJC WIN/PLA odds sources where available.
+- Avoid estimated or synthetic place odds for completed races, because those rows would pollute model training and place-EV calibration.
+
+Implementation:
+
+- Added `hkjc_final_place_backfill` as an official final-place source.
+- Added official-only `backfill_final_place_odds()` and `build_official_odds_provider()` in `src/racing_model/odds.py`; the chain never falls back to development snapshot odds.
+- Updated the HKJC GraphQL query to match the betting SPA whitelist shape and decode gzip responses.
+- Added `/api/backfill-final-place-odds` and wired `/api/refresh-results` / lifecycle steps to attempt official final-place backfill after results are imported.
+- Added `backfill-final-place-odds` CLI command for one race or all resulted races.
+- Added `/api/results` place-odds completeness metadata and UI summary text such as `位置賠率 3/14`.
+- Fixed MQTT callback handling when the broker rejects empty credentials, preventing background callback exceptions.
+
+Reality check:
+
+- For `HK20260506-ST-01`, HKJC GraphQL currently returns no historical WIN/PLA oddsNodes, so no missing runner place odds can be filled from the official source after the fact.
+- The system now records this as source unavailable instead of estimating values. Future race days with live GraphQL/MQTT ticks will preserve all runners automatically.
+
+Verification:
+
+- `python -m compileall -q src dashboard tests`
+- `node --check src/racing_model/web/app.js`
+- Direct execution of `tests/test_final_place_snapshots.py` test functions because local Python does not have `pytest` installed.
+- `python -m racing_model.cli backfill-final-place-odds --race-id HK20260506-ST-01` confirmed official historical oddsNodes are unavailable for that old race and left missing rows unfilled.

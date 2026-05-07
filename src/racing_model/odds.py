@@ -5,6 +5,7 @@ import random
 import sqlite3
 import ssl
 import time
+import gzip
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Protocol
@@ -12,7 +13,15 @@ from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 from .live import parse_hkjc_race_id
-from .storage import fetch_all, insert_rows, latest_raw_odds_by_race, race_status, upsert_race_status
+from .storage import (
+    FINAL_PLACE_BACKFILL_SOURCE,
+    fetch_all,
+    final_place_odds_completeness,
+    insert_rows,
+    latest_raw_odds_by_race,
+    race_status,
+    upsert_race_status,
+)
 
 
 HORSE_ODDS_QUERY = """
@@ -24,11 +33,29 @@ query racing($date: String, $venueCode: String, $oddsTypes: [OddsType], $raceNo:
       sellStatus
       oddsType
       lastUpdateTime
+      guarantee
+      minTicketCost
+      name_en
+      name_ch
+      leg {
+        number
+        races
+      }
+      cWinSelections {
+        composite
+        name_ch
+        name_en
+        starters
+      }
       oddsNodes {
         combString
         oddsValue
         hotFavourite
         oddsDropValue
+        bankerOdds {
+          combString
+          oddsValue
+        }
       }
     }
   }
@@ -116,16 +143,26 @@ class HKJCGraphQLOddsProvider:
             data=body,
             headers={
                 "Content-Type": "application/json",
-                "User-Agent": self.user_agent,
-                "Accept": "application/json",
+                "User-Agent": browser_compatible_user_agent(self.user_agent),
+                "Accept": "application/json, text/plain, */*",
+                "Origin": "https://bet.hkjc.com",
+                "Referer": f"https://bet.hkjc.com/ch/racing/wp/{ref.race_date.replace('/', '-')}/{ref.venue}/{ref.race_no}",
             },
         )
         try:
             with urlopen(request, timeout=10) as response:
-                data = json.loads(response.read().decode("utf-8", errors="replace"))
+                raw_bytes = response.read()
+                if raw_bytes.startswith(b"\x1f\x8b"):
+                    raw_bytes = gzip.decompress(raw_bytes)
+                raw = raw_bytes.decode("utf-8", errors="replace")
+                data = json.loads(raw)
         except (OSError, URLError, TimeoutError) as exc:
             self.last_error = str(exc)
             raise RuntimeError(f"HKJC GraphQL request failed: {exc}") from exc
+        except json.JSONDecodeError as exc:
+            snippet = raw[:120] if "raw" in locals() else ""
+            self.last_error = f"invalid JSON: {snippet}"
+            raise RuntimeError(f"HKJC GraphQL returned invalid JSON: {snippet}") from exc
 
         if data.get("errors"):
             message = data["errors"][0].get("message", str(data["errors"][0]))
@@ -155,9 +192,19 @@ class HKJCGraphQLOddsProvider:
 
         timestamp = last_update or datetime.now(timezone.utc).isoformat()
         rows = []
-        for runner_no, win_odds in win_by_no.items():
+        latest_existing = latest_raw_odds_by_race(conn, race_id)
+        for runner_no in sorted(
+            set(win_by_no) | set(place_by_no),
+            key=lambda value: (0, int(value)) if value.isdigit() else (1, value),
+        ):
             horse_id = horse_id_by_no.get(runner_no)
             if not horse_id:
+                continue
+            win_odds = win_by_no.get(runner_no)
+            if win_odds is None:
+                existing = latest_existing.get(horse_id)
+                win_odds = float(existing["win_odds"]) if existing and existing["win_odds"] is not None else None
+            if win_odds is None:
                 continue
             rows.append(
                 {
@@ -170,7 +217,7 @@ class HKJCGraphQLOddsProvider:
                 }
             )
         if not rows:
-            raise RuntimeError("HKJC GraphQL returned no WIN odds rows.")
+            raise RuntimeError("HKJC GraphQL returned no WIN/PLA odds rows.")
         self.last_error = None
         return rows
 
@@ -199,6 +246,27 @@ class AutoOddsProvider:
         for row in rows:
             row["source"] = f"{self.fallback_provider.source_name}_fallback"
         return rows
+
+
+@dataclass
+class OfficialOddsProviderChain:
+    providers: list[OddsProvider]
+    source_name: str = "official_chain"
+    last_error: str | None = None
+    active_source: str = ""
+
+    def fetch_odds(self, conn: sqlite3.Connection, race_id: str) -> list[dict[str, object]]:
+        errors = []
+        for provider in self.providers:
+            try:
+                rows = provider.fetch_odds(conn, race_id)
+                self.active_source = provider.source_name
+                self.last_error = None
+                return rows
+            except Exception as exc:
+                errors.append(f"{provider.source_name}: {exc}")
+        self.last_error = " | ".join(errors)
+        raise RuntimeError(self.last_error or "No official odds provider configured.")
 
 
 @dataclass
@@ -242,8 +310,9 @@ class HKJCMQTTOddsProvider:
 
         def on_connect(client, userdata, flags, reason_code, properties=None):
             nonlocal connected
-            if str(reason_code) == "Success" or int(reason_code) == 0:
-                connected = True
+            if not mqtt_reason_success(reason_code):
+                return
+            connected = True
             client.subscribe([(win_topic, 0), (pla_topic, 0), (reply_topic, 0)])
             props = Properties(PacketTypes.PUBLISH)
             props.UserProperty = [("Trace-Id", f"racing_model_{client_id}")]
@@ -310,6 +379,27 @@ def build_odds_provider(settings) -> OddsProvider:
     return AutoOddsProvider([graphql, mqtt], fallback)
 
 
+def build_official_odds_provider(settings) -> OddsProvider:
+    graphql = HKJCGraphQLOddsProvider(settings.hkjc_graphql_url, settings.user_agent)
+    providers: list[OddsProvider] = [graphql]
+    mqtt_configured = bool(settings.hkjc_mqtt_username and settings.hkjc_mqtt_password)
+    mqtt = None
+    if mqtt_configured:
+        mqtt = HKJCMQTTOddsProvider(
+            settings.hkjc_mqtt_host,
+            settings.hkjc_mqtt_port,
+            settings.hkjc_mqtt_username,
+            settings.hkjc_mqtt_password,
+            settings.hkjc_mqtt_wait_seconds,
+        )
+    provider = (settings.odds_provider or "auto").lower()
+    if provider == "mqtt" and mqtt:
+        return OfficialOddsProviderChain([mqtt, graphql])
+    if mqtt:
+        providers.append(mqtt)
+    return OfficialOddsProviderChain(providers)
+
+
 def refresh_odds(
     conn: sqlite3.Connection,
     race_id: str,
@@ -338,6 +428,72 @@ def refresh_odds(
     )
     conn.commit()
     return inserted
+
+
+def backfill_final_place_odds(
+    conn: sqlite3.Connection,
+    race_id: str,
+    provider: OddsProvider,
+) -> dict[str, object]:
+    result_count = fetch_all(conn, "SELECT count(*) AS n FROM results WHERE race_id = ?", (race_id,))[0]["n"]
+    if not int(result_count or 0):
+        return {"race_id": race_id, "status": "skipped", "reason": "results_not_available", "inserted": 0}
+
+    before = final_place_odds_completeness(conn, race_id)
+    try:
+        rows = provider.fetch_odds(conn, race_id)
+    except Exception as exc:
+        now = datetime.now(timezone.utc).isoformat()
+        upsert_race_status(
+            conn,
+            race_id,
+            "resulted",
+            last_odds_refresh_at=now,
+            notes=f"final_place_backfill_failed; error={str(exc)[:180]}",
+        )
+        conn.commit()
+        after = final_place_odds_completeness(conn, race_id)
+        return {
+            "race_id": race_id,
+            "status": "source_unavailable",
+            "inserted": 0,
+            "error": str(exc),
+            "before": before,
+            "after": after,
+        }
+
+    backfill_rows = []
+    for row in rows:
+        if row.get("place_odds") is None:
+            continue
+        backfill_rows.append(
+            {
+                "race_id": race_id,
+                "horse_id": row["horse_id"],
+                "timestamp": row.get("timestamp") or datetime.now(timezone.utc).isoformat(),
+                "win_odds": row["win_odds"],
+                "place_odds": row["place_odds"],
+                "source": FINAL_PLACE_BACKFILL_SOURCE,
+            }
+        )
+    inserted = insert_rows(conn, "odds_ticks", backfill_rows)
+    source = getattr(provider, "active_source", provider.source_name)
+    now = datetime.now(timezone.utc).isoformat()
+    after = final_place_odds_completeness(conn, race_id)
+    note = f"final_place_backfill={source}; inserted={inserted}; place_odds={after['place_odds_count']}/{after['runner_count']}"
+    if not after["complete"]:
+        note += "; official_source_missing_some_runners"
+    upsert_race_status(conn, race_id, "resulted", last_odds_refresh_at=now, notes=note)
+    conn.commit()
+    return {
+        "race_id": race_id,
+        "status": "done" if backfill_rows else "no_official_place_odds",
+        "source": source,
+        "inserted": inserted,
+        "official_rows": len(backfill_rows),
+        "before": before,
+        "after": after,
+    }
 
 
 def odds_history(conn: sqlite3.Connection, race_id: str, limit: int = 300) -> list[dict[str, object]]:
@@ -372,6 +528,26 @@ def parse_odds_value(value: object) -> float | None:
         return float(str(value).replace(",", ""))
     except ValueError:
         return None
+
+
+def browser_compatible_user_agent(user_agent: str) -> str:
+    if "Mozilla/" in user_agent:
+        return user_agent
+    return (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        f"Chrome/124.0 Safari/537.36 {user_agent}"
+    )
+
+
+def mqtt_reason_success(reason_code: object) -> bool:
+    if str(reason_code) == "Success":
+        return True
+    value = getattr(reason_code, "value", reason_code)
+    try:
+        return int(value) == 0
+    except (TypeError, ValueError):
+        return False
 
 
 def mqtt_messages_to_rows(
