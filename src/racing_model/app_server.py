@@ -21,7 +21,7 @@ from .backfill import (
     train_model_if_requested,
 )
 from .betting import build_betting_decisions
-from .config import get_settings
+from .config import display_database_target, get_settings
 from .coverage import build_coverage_report
 from .error_taxonomy import error_taxonomy_report
 from .evolution import evaluate_model_evolution, generate_codex_iteration, generate_openai_iteration
@@ -493,7 +493,7 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
 def api_state(conn, state: AppState) -> dict[str, object]:
     return {
         "now": datetime.now(timezone.utc).isoformat(),
-        "db_path": str(state.settings.db_path),
+        "db_path": display_database_target(state.settings.db_path),
         "model_path": str(state.model_path),
         "odds_interval_seconds": state.odds_interval_seconds,
         "odds_provider": state.settings.odds_provider,

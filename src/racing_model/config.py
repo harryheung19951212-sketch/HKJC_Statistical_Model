@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 try:
     from dotenv import load_dotenv
@@ -68,3 +69,17 @@ def load_simple_env(path: Path, override: bool = False) -> None:
         value = value.strip().strip('"').strip("'")
         if key and (override or key not in os.environ):
             os.environ[key] = value
+
+
+def display_database_target(target: Path | str) -> str:
+    value = str(target)
+    if not value.startswith(("postgres://", "postgresql://")):
+        return value
+    parts = urlsplit(value)
+    if not parts.password:
+        return value
+    username = parts.username or ""
+    hostname = parts.hostname or ""
+    port = f":{parts.port}" if parts.port else ""
+    auth = f"{username}:***@" if username else ""
+    return urlunsplit((parts.scheme, f"{auth}{hostname}{port}", parts.path, parts.query, parts.fragment))

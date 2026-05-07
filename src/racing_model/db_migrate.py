@@ -3,8 +3,8 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
 
+from .config import display_database_target
 from .storage import connect, fetch_all, init_db, insert_rows
 
 
@@ -56,17 +56,3 @@ def database_counts(target: Path | str) -> dict[str, int]:
             table: int(fetch_all(conn, f"SELECT count(*) AS n FROM {table}")[0]["n"])
             for table in MIGRATION_TABLES
         }
-
-
-def display_database_target(target: Path | str) -> str:
-    value = str(target)
-    if not value.startswith(("postgres://", "postgresql://")):
-        return value
-    parts = urlsplit(value)
-    if not parts.password:
-        return value
-    username = parts.username or ""
-    hostname = parts.hostname or ""
-    port = f":{parts.port}" if parts.port else ""
-    auth = f"{username}:***@" if username else ""
-    return urlunsplit((parts.scheme, f"{auth}{hostname}{port}", parts.path, parts.query, parts.fragment))

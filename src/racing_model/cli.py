@@ -13,7 +13,7 @@ from .backfill import (
     train_model_if_requested,
 )
 from .backtest import run_backtest
-from .config import get_settings
+from .config import display_database_target, get_settings
 from .db_migrate import database_counts, migrate_sqlite_to_database
 from .evolution import evaluate_model_evolution, generate_codex_iteration, generate_openai_iteration
 from .features import build_race_features, build_training_races
@@ -117,7 +117,7 @@ def main() -> None:
 
     if args.command == "init-db":
         init_db(settings.db_path)
-        print(f"Initialized {settings.db_path}")
+        print(f"Initialized {display_database_target(settings.db_path)}")
         return
 
     if args.command == "migrate-sqlite-to-db":
