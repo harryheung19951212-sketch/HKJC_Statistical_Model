@@ -208,7 +208,7 @@ function renderBetting(data) {
     <div><label>本場上限</label><strong>${formatMoney(data.max_race_stake)}</strong></div>
     <div><label>建議總注</label><strong>${formatMoney(data.total_recommended_stake)}</strong></div>
     <div><label>Kelly</label><strong>${formatPct(settings.fractional_kelly)}</strong></div>
-    <div><label>EV門檻</label><strong>${formatPct(settings.min_expected_value)}</strong></div>
+    <div><label>期望值門檻</label><strong>${formatPct(settings.min_expected_value)}</strong></div>
     <div><label>狀態</label><strong>${localStatus(data.race_status)}</strong></div>
   `;
   const tickets = data.tickets || [];
@@ -237,8 +237,8 @@ function renderDecisionCard(row) {
         <div><label>機率</label><strong>${formatPct(row.probability)}</strong></div>
         <div><label>賠率</label><strong>${formatNum(row.odds, 2)}</strong></div>
         <div><label>公允</label><strong>${formatNum(row.fair_odds, 2)}</strong></div>
-        <div><label>Edge</label><strong class="${evClass(row.edge)}">${formatPct(row.edge)}</strong></div>
-        <div><label>EV</label><strong class="${evClass(row.expected_value)}">${row.expected_value === null ? "-" : Number(row.expected_value).toFixed(3)}</strong></div>
+        <div><label>價值差</label><strong class="${evClass(row.edge)}">${formatPct(row.edge)}</strong></div>
+        <div><label>期望值</label><strong class="${evClass(row.expected_value)}">${row.expected_value === null ? "-" : Number(row.expected_value).toFixed(3)}</strong></div>
         <div><label>注碼</label><strong>${formatMoney(row.recommended_stake)}</strong></div>
       </div>
       <div class="ticket-action">${row.action}</div>
@@ -429,15 +429,15 @@ function renderRunnerDetail(row) {
     <p class="runner-subtitle">
       \u99ac\u865f ${row.horse_no || "-"} | \u6a94\u4f4d ${row.draw || "-"} | ${row.horse_id}<br>
       \u9a0e\u5e2b\uff1a${localizedJockey(row)} | \u7df4\u99ac\u5e2b\uff1a${localizedTrainer(row)}<br>
-      \u7368\u8d0f\u52dd\u7387\uff1a${formatPct(row.win_probability)} | \u5165\u4e09\u7532\uff1a${formatPct(row.top3_probability)} | \u4f4d\u7f6eEV\uff1a${row.top3_expected_value === null ? "-" : Number(row.top3_expected_value).toFixed(3)}<br>
+      \u7368\u8d0f\u52dd\u7387\uff1a${formatPct(row.win_probability)} | \u5165\u4e09\u7532\uff1a${formatPct(row.top3_probability)} | \u4f4d\u7f6e\u671f\u671b\u503c\uff1a${row.top3_expected_value === null ? "-" : Number(row.top3_expected_value).toFixed(3)}<br>
       \u4e09\u7532\u4f86\u6e90\uff1a${top3SourceLabel(row.top3_model_source)}
     </p>
     <div class="stat"><label>\u5165\u4e09\u7532\u6a5f\u7387</label><strong>${formatPct(row.top3_probability)}</strong></div>
     <div class="stat"><label>\u7368\u8d0f\u8ce0\u7387</label><strong>${formatNum(row.latest_win_odds, 2)}</strong></div>
-    <div class="stat"><label>\u7368\u8d0fEV</label><strong class="${evClass(row.expected_value)}">${row.expected_value === null ? "-" : Number(row.expected_value).toFixed(3)}</strong></div>
+    <div class="stat"><label>\u7368\u8d0f\u671f\u671b\u503c</label><strong class="${evClass(row.expected_value)}">${row.expected_value === null ? "-" : Number(row.expected_value).toFixed(3)}</strong></div>
     <div class="stat"><label>\u4f4d\u7f6e\u8ce0\u7387</label><strong>${formatNum(row.place_odds, 2)} ${placeOddsSourceLabel(row.place_odds_source)}</strong></div>
     <div class="stat"><label>\u4f4d\u7f6e\u5e02\u5834</label><strong>${formatPct(row.place_market_probability)}</strong></div>
-    <div class="stat"><label>\u4f4d\u7f6eEV</label><strong class="${evClass(row.top3_expected_value)}">${row.top3_expected_value === null ? "-" : Number(row.top3_expected_value).toFixed(3)}</strong></div>
+    <div class="stat"><label>\u4f4d\u7f6e\u671f\u671b\u503c</label><strong class="${evClass(row.top3_expected_value)}">${row.top3_expected_value === null ? "-" : Number(row.top3_expected_value).toFixed(3)}</strong></div>
     <div class="stat"><label>\u4f4d\u7f6e\u50f9\u503c\u5dee</label><strong class="${evClass(row.top3_value_gap)}">${formatPct(row.top3_value_gap)}</strong></div>
     <div class="stat"><label>5分鐘賠率流</label><strong class="${evClass(row.odds_delta_5m)}">${formatSigned(row.odds_delta_5m)}</strong></div>
     <div class="stat"><label>2分鐘賠率流</label><strong class="${evClass(row.odds_delta_2m)}">${formatSigned(row.odds_delta_2m)}</strong></div>
@@ -506,11 +506,11 @@ function renderBacktest(data) {
     <div class="stat"><label>\u7368\u8d0f\u6ce8\u6578</label><strong>${data.bets}</strong></div>
     <div class="stat"><label>\u7368\u8d0f\u547d\u4e2d</label><strong>${data.wins}</strong></div>
     <div class="stat"><label>\u7368\u8d0f\u547d\u4e2d\u7387</label><strong>${formatPct(data.hit_rate)}</strong></div>
-    <div class="stat"><label>\u7368\u8d0fROI</label><strong class="${evClass(data.roi)}">${formatPct(data.roi)}</strong></div>
+    <div class="stat"><label>\u7368\u8d0f\u56de\u5831\u7387</label><strong class="${evClass(data.roi)}">${formatPct(data.roi)}</strong></div>
     <div class="stat"><label>\u4f4d\u7f6e\u6ce8\u6578</label><strong>${data.place_bets}</strong></div>
     <div class="stat"><label>\u4f4d\u7f6e\u547d\u4e2d</label><strong>${data.place_wins}</strong></div>
     <div class="stat"><label>\u4f4d\u7f6e\u547d\u4e2d\u7387</label><strong>${formatPct(data.place_hit_rate)}</strong></div>
-    <div class="stat"><label>\u4f4d\u7f6eROI</label><strong class="${evClass(data.place_roi)}">${formatPct(data.place_roi)}</strong></div>
+    <div class="stat"><label>\u4f4d\u7f6e\u56de\u5831\u7387</label><strong class="${evClass(data.place_roi)}">${formatPct(data.place_roi)}</strong></div>
     <div class="stat"><label>\u4f4d\u7f6e\u6295\u6ce8\u984d</label><strong>${formatNum(data.place_staked, 2)}</strong></div>
     <div class="stat"><label>\u4f4d\u7f6e\u6d3e\u5f69</label><strong>${formatNum(data.place_returned, 2)}</strong></div>
   `;
@@ -522,9 +522,9 @@ function renderEvolution(report) {
     <div class="stat"><label>已評估場次</label><strong>${metrics.races || 0}</strong></div>
     <div class="stat"><label>首選命中率</label><strong>${formatPct(metrics.top_pick_hit_rate)}</strong></div>
     <div class="stat"><label>頭馬平均勝率</label><strong>${formatPct(metrics.mean_winner_probability)}</strong></div>
-    <div class="stat"><label>Log Loss</label><strong>${formatNum(metrics.log_loss, 3)}</strong></div>
-    <div class="stat"><label>Brier Score</label><strong>${formatNum(metrics.brier_score, 3)}</strong></div>
-    <div class="stat"><label>Value ROI</label><strong class="${evClass(metrics.value_roi)}">${formatPct(metrics.value_roi)}</strong></div>
+    <div class="stat"><label>對數損失</label><strong>${formatNum(metrics.log_loss, 3)}</strong></div>
+    <div class="stat"><label>布萊爾分數</label><strong>${formatNum(metrics.brier_score, 3)}</strong></div>
+    <div class="stat"><label>價值回報率</label><strong class="${evClass(metrics.value_roi)}">${formatPct(metrics.value_roi)}</strong></div>
   `;
   renderCalibration(report.calibration || []);
   renderEvolutionIdeas(report.ideas || [], report.data_quality || []);
@@ -550,12 +550,12 @@ function renderModelVersions(data) {
         </div>
         <p>${version.description}</p>
         <div class="version-metrics">
-          <div><label>Fold</label><b>${metrics.races || 0}</b></div>
+          <div><label>驗證場次</label><b>${metrics.races || 0}</b></div>
           <div><label>首選</label><b>${formatPct(metrics.top_pick_hit_rate)}</b></div>
-          <div><label>Log Loss</label><b>${formatNum(metrics.log_loss, 3)}</b></div>
-          <div><label>Brier</label><b>${formatNum(metrics.brier_score, 3)}</b></div>
+          <div><label>對數損失</label><b>${formatNum(metrics.log_loss, 3)}</b></div>
+          <div><label>布萊爾</label><b>${formatNum(metrics.brier_score, 3)}</b></div>
           <div><label>頭馬排名</label><b>${formatNum(metrics.avg_winner_rank, 1)}</b></div>
-          <div><label>Value ROI</label><b class="${evClass(metrics.value_roi)}">${formatPct(metrics.value_roi)}</b></div>
+          <div><label>價值回報率</label><b class="${evClass(metrics.value_roi)}">${formatPct(metrics.value_roi)}</b></div>
         </div>
         <span class="version-verdict">${version.verdict}</span>
       </div>

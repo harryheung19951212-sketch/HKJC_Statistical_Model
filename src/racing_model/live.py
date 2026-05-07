@@ -40,9 +40,14 @@ def refresh_hkjc_results_if_available(
 
     source = HKJCSource(PoliteHttpClient(user_agent, delay_seconds))
     fetched = source.fetch_results_page(ref.race_date, ref.venue, ref.race_no)
-    parsed = source.parse_results(fetched.body, ref.race_date, ref.venue, ref.race_no)
+    try:
+        chinese = source.fetch_chinese_results_page(ref.race_date, ref.venue, ref.race_no).body
+    except Exception:
+        chinese = None
+    parsed = source.parse_results(fetched.body, ref.race_date, ref.venue, ref.race_no, chinese)
     results = parsed.get("results", [])
     odds = parsed.get("odds_ticks", [])
+    runners = parsed.get("runners", [])
     now = datetime.now(timezone.utc).isoformat()
     if not results:
         upsert_race_status(
@@ -55,6 +60,7 @@ def refresh_hkjc_results_if_available(
         conn.commit()
         return {"race_id": race_id, "results": 0, "odds_ticks": 0, "status": "scheduled"}
 
+    update_runner_localization(conn, runners)
     result_rows = insert_rows(conn, "results", results)
     odds_rows = insert_rows(conn, "odds_ticks", odds)
     backtest = run_backtest(conn, model)
@@ -100,7 +106,11 @@ def load_hkjc_race_day(
             first_race_id = race_id
         try:
             result = source.fetch_results_page(race_date, venue, race_no)
-            parsed_result = source.parse_results(result.body, race_date, venue, race_no)
+            try:
+                chinese_result = source.fetch_chinese_results_page(race_date, venue, race_no).body
+            except Exception:
+                chinese_result = None
+            parsed_result = source.parse_results(result.body, race_date, venue, race_no, chinese_result)
             results = parsed_result.get("results", [])
             odds = parsed_result.get("odds_ticks", [])
             result_races = parsed_result.get("races", [])
@@ -154,6 +164,40 @@ def load_hkjc_race_day(
         "error_details": errors,
         "first_race_id": first_race_id,
     }
+
+
+def update_runner_localization(conn: sqlite3.Connection, runners: object) -> int:
+    if not isinstance(runners, list):
+        return 0
+    updated = 0
+    for runner in runners:
+        if not isinstance(runner, dict) or not runner.get("horse_id"):
+            continue
+        cursor = conn.execute(
+            """
+            UPDATE runners
+            SET
+              horse_name_zh = CASE WHEN COALESCE(:horse_name_zh, '') != '' THEN :horse_name_zh ELSE horse_name_zh END,
+              jockey_zh = CASE WHEN COALESCE(:jockey_zh, '') != '' THEN :jockey_zh ELSE jockey_zh END,
+              trainer_zh = CASE WHEN COALESCE(:trainer_zh, '') != '' THEN :trainer_zh ELSE trainer_zh END
+            WHERE race_id = :race_id
+              AND horse_id = :horse_id
+              AND (
+                COALESCE(horse_name_zh, '') = ''
+                OR COALESCE(jockey_zh, '') = ''
+                OR COALESCE(trainer_zh, '') = ''
+              )
+            """,
+            {
+                "race_id": runner.get("race_id"),
+                "horse_id": runner.get("horse_id"),
+                "horse_name_zh": runner.get("horse_name_zh") or "",
+                "jockey_zh": runner.get("jockey_zh") or "",
+                "trainer_zh": runner.get("trainer_zh") or "",
+            },
+        )
+        updated += cursor.rowcount
+    return updated
 
 
 def usable_races(races: object) -> list[dict[str, object]]:

@@ -2,6 +2,7 @@ from racing_model.scrapers.hkjc import (
     HKJCSource,
     merge_runner_localization,
     parse_chinese_racecard_runners,
+    parse_chinese_result_runners,
     parse_racecard_runners,
     parse_result_rows,
 )
@@ -255,3 +256,55 @@ def test_merge_chinese_runner_names() -> None:
     assert merged[0]["horse_name_zh"] == "光輝歲月"
     assert merged[0]["jockey_zh"] == "霍宏聲"
     assert merged[0]["trainer_zh"] == "游達榮"
+
+
+def test_parse_chinese_result_runner_localization() -> None:
+    lines = [
+        "名次",
+        "馬號",
+        "馬名",
+        "騎師",
+        "練馬師",
+        "實際",
+        "負磅",
+        "排位",
+        "體重",
+        "檔位",
+        "頭馬",
+        "距離",
+        "沿途",
+        "走位",
+        "完成",
+        "時間",
+        "獨贏",
+        "賠率",
+        "1",
+        "7",
+        "熾烈神駒",
+        "(J157)",
+        "潘頓",
+        "沈集成",
+        "122",
+        "1268",
+        "2",
+        "---",
+        "2",
+        "2",
+        "1",
+        "1:08.88",
+        "3.2",
+        "派彩",
+    ]
+
+    rows = parse_chinese_result_runners(lines, "HK20260506-ST-09")
+
+    assert rows == [
+        {
+            "race_id": "HK20260506-ST-09",
+            "horse_no": 7,
+            "horse_id": "J157",
+            "horse_name_zh": "熾烈神駒",
+            "jockey_zh": "潘頓",
+            "trainer_zh": "沈集成",
+        }
+    ]

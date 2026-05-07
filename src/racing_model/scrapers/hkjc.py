@@ -37,6 +37,9 @@ class HKJCSource:
     def fetch_results_page(self, race_date: str, venue: str, race_no: int) -> FetchResult:
         return self.client.fetch(self.results_url(race_date, venue, race_no))
 
+    def fetch_chinese_results_page(self, race_date: str, venue: str, race_no: int) -> FetchResult:
+        return self.client.fetch(self.results_url(race_date, venue, race_no, language="Chinese"))
+
     def fetch_trackwork_page(self, race_date: str, venue: str, race_no: int) -> FetchResult:
         return self.client.fetch(self.trackwork_url(race_date, venue, race_no))
 
@@ -46,9 +49,9 @@ class HKJCSource:
             f"?RaceDate={race_date}&Racecourse={venue}&RaceNo={race_no}"
         )
 
-    def results_url(self, race_date: str, venue: str, race_no: int) -> str:
+    def results_url(self, race_date: str, venue: str, race_no: int, language: str = "English") -> str:
         return (
-            f"{self.base_url}/racing/information/English/Racing/LocalResults.aspx"
+            f"{self.base_url}/racing/information/{language}/Racing/LocalResults.aspx"
             f"?RaceDate={race_date}&Racecourse={venue}&RaceNo={race_no}"
         )
 
@@ -80,6 +83,7 @@ class HKJCSource:
         race_date: str,
         venue: str,
         race_no: int,
+        chinese_html: str | None = None,
     ) -> dict[str, list[dict[str, Any]]]:
         lines = html_lines(html)
         race_id = make_race_id(race_date, venue, race_no)
@@ -109,6 +113,9 @@ class HKJCSource:
             for row in raw_results
             if row.get("horse_id") and row.get("horse_name")
         ]
+        if chinese_html:
+            zh_rows = parse_chinese_result_runners(html_lines(chinese_html), race_id)
+            runners = merge_runner_localization(runners, zh_rows)
         odds = [
             {
                 "race_id": race_id,
@@ -626,6 +633,34 @@ def parse_result_tokens(tokens: list[str], race_id: str) -> list[dict[str, Any]]
         except (IndexError, ValueError):
             index += 1
     return dedupe_by_key(rows, "horse_id")
+
+
+def parse_chinese_result_runners(lines: list[str], race_id: str) -> list[dict[str, Any]]:
+    start = find_result_table_start(lines, ["名次", "馬號", "馬名"])
+    if start is None:
+        return []
+    end = find_line(lines, "派彩", start=start + 1)
+    if end is None:
+        end = find_line(lines, "Dividend", start=start + 1)
+    rows = parse_result_tokens(lines[start + 1 : end if end is not None else len(lines)], race_id)
+    return [
+        {
+            "race_id": row["race_id"],
+            "horse_no": row.get("horse_no"),
+            "horse_id": row["horse_id"],
+            "horse_name_zh": row.get("horse_name") or "",
+            "jockey_zh": row.get("jockey") or "",
+            "trainer_zh": row.get("trainer") or "",
+        }
+        for row in rows
+    ]
+
+
+def find_result_table_start(lines: list[str], labels: list[str]) -> int | None:
+    for index in range(len(lines) - len(labels) + 1):
+        if all(labels[offset] in lines[index + offset] for offset in range(len(labels))):
+            return index
+    return None
 
 
 def attach_place_dividends(rows: list[dict[str, Any]], place_dividends: dict[int, float]) -> list[dict[str, Any]]:

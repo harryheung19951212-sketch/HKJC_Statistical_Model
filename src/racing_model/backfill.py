@@ -229,7 +229,15 @@ def load_racecard_for_completion(
         chinese_body = Path(chinese).read_text(encoding="utf-8", errors="ignore")
     else:
         chinese_body = source.fetch_chinese_racecard_page(race_date, venue, race_no).body
-    return source.parse_racecard(english_body, race_date, venue, race_no, chinese_body)
+    parsed = source.parse_racecard(english_body, race_date, venue, race_no, chinese_body)
+    if parsed.get("runners"):
+        return parsed
+    result_body = source.fetch_results_page(race_date, venue, race_no).body
+    try:
+        chinese_result_body = source.fetch_chinese_results_page(race_date, venue, race_no).body
+    except Exception:
+        chinese_result_body = None
+    return source.parse_results(result_body, race_date, venue, race_no, chinese_result_body)
 
 
 def latest_raw_snapshot(
