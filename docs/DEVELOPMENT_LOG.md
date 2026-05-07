@@ -17,6 +17,7 @@ Changes:
   - `market_blend` when market-fusion track leads.
 - In `market_blend`, model probabilities are blended with normalized HKJC implied probabilities, then EV and value gaps are recalculated.
 - Cold dashboard requests now use a fast policy default and refresh the formal dual-track policy in a background thread, so policy calibration does not block the race page.
+- Background policy refresh is deliberately delayed for 2 seconds after a cold request so it does not compete with the first dashboard response.
 - Added `/api/race-dashboard` to return race state, race list, predictions, betting, ledger, feed health, model comparison, odds history, results, and weather in one response.
 - Added `/api/analytics-dashboard` for the analytics view so the frontend no longer chains many sequential API calls.
 - Dashboard betting now returns fast WIN/PLACE decisions first and defers heavier exotic/all-pool calculation to a background frontend refresh.

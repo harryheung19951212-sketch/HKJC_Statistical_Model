@@ -94,6 +94,7 @@ class AppState:
 
     def refresh_prediction_policy_cache(self) -> None:
         try:
+            time.sleep(2.0)
             with connect(self.settings.db_path) as conn:
                 policy = adaptive_prediction_policy(conn, self.model())
         except Exception:
