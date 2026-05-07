@@ -837,23 +837,12 @@ def api_race_dashboard(conn, state: AppState, race_id: str, bankroll: float, ris
     model = state.model()
     policy = state.prediction_policy(conn, model)
     prediction_payload = api_predictions(conn, model, race_id, policy)
-    betting = api_betting(
-        conn,
-        model,
-        race_id,
-        bankroll,
-        risk,
-        state.model_path,
-        predictions=prediction_payload.get("predictions", []),
-        policy=policy,
-        include_exotics=False,
-    )
     return {
         "lifecycle": api_lifecycle(conn, state),
         "races": api_races(conn),
         "predictions": prediction_payload,
-        "betting": betting,
-        "betting_ledger": betting_ledger_report(conn, race_id=race_id),
+        "betting": {"deferred": True},
+        "betting_ledger": {"deferred": True, "summary": {}, "items": []},
         "odds_feed": {"deferred": True},
         "model_comparison": {"deferred": True},
         "odds_history": [],

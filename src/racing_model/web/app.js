@@ -404,6 +404,14 @@ function bettingRisk() {
 function renderBetting(data) {
   const summary = $("betting-summary");
   const box = $("betting-tickets");
+  if (data && data.deferred) {
+    summary.innerHTML = `
+      <div><label>狀態</label><strong>計算中</strong></div>
+      <div><label>投注方法</label><strong>背景載入</strong></div>
+    `;
+    box.innerHTML = `<div class="betting-empty">投注建議計算中...</div>`;
+    return;
+  }
   const settings = data.risk_settings || {};
   const poolCount = Object.keys(data.pool_rules || {}).length;
   summary.innerHTML = `
@@ -1085,6 +1093,12 @@ async function runModelRegistry() {
 }
 
 function renderBettingLedger(data) {
+  if (data && data.deferred) {
+    $("betting-ledger-summary").innerHTML = `<div class="stat"><label>狀態</label><strong>載入中</strong></div>`;
+    $("betting-ledger-note").textContent = "";
+    $("betting-ledger-list").innerHTML = `<p class="runner-subtitle">投注留痕載入中...</p>`;
+    return;
+  }
   const summary = data.summary || {};
   $("betting-ledger-summary").innerHTML = `
     <div class="stat"><label>建議數</label><strong>${summary.recommendations || 0}</strong></div>
