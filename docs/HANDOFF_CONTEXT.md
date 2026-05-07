@@ -70,6 +70,10 @@ Do not commit `.env`, local SQLite databases, raw snapshots, generated reports, 
   - Place backtest avoids leaking final dividend results.
   - Walk-forward model version comparison.
   - Calibration and diagnostic summaries.
+  - Persistent model registry stores out-of-sample run summaries and promotion-gate labels.
+- Betting recommendation ledger:
+  - Active WIN/PLACE recommendations are stored with suggested odds, probability, EV, edge and stake.
+  - Reconciliation compares recommendations with final odds/results to calculate P/L, slippage and CLV reference.
 - Codex CLI integration:
   - Uses local `codex` CLI instead of OpenAI API key.
   - Intended model: GPT-5.5.
@@ -126,6 +130,8 @@ The next Codex should avoid generic UI expansion. Prioritize the equation engine
 5. Add same-day track bias after each race and update later-race predictions.
 6. Add error taxonomy database so every losing decision has a reason category.
 7. Add exposure control across correlated bets, especially shared banker/legs across QPL/TRIO/TCE/FIRST4/QUARTET.
+
+Current high-priority gap after the betting ledger: extend the ledger from WIN/PLACE to exotic pools once official/probable dividends are available, then make CLV/slippage part of the hard promotion gate after enough live recommendations are reconciled.
 
 ## Important Design Principle
 

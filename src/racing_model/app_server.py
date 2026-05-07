@@ -21,6 +21,7 @@ from .backfill import (
     train_model_if_requested,
 )
 from .betting import build_betting_decisions
+from .betting_ledger import betting_ledger_report, reconcile_betting_ledger, record_betting_payload
 from .config import display_database_target, get_settings
 from .coverage import build_coverage_report
 from .error_taxonomy import error_taxonomy_report
@@ -266,7 +267,10 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
                 race_id = required_query(query, "race_id")
                 bankroll = query_float(query, "bankroll", 10000.0)
                 risk = query.get("risk", ["standard"])[0] or "standard"
-                self.send_json(api_betting(conn, self.app_state.model(), race_id, bankroll, risk))
+                self.send_json(api_betting(conn, self.app_state.model(), race_id, bankroll, risk, self.app_state.model_path))
+            elif path == "/api/betting-ledger":
+                race_id = query.get("race_id", [None])[0]
+                self.send_json(betting_ledger_report(conn, race_id=race_id))
             else:
                 self.send_error(404)
 
@@ -471,6 +475,11 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
                         stake=stake,
                     )
                 )
+            elif path == "/api/betting-ledger/reconcile":
+                race_id = query.get("race_id", [None])[0]
+                result = reconcile_betting_ledger(conn, race_id=race_id)
+                result["ledger"] = betting_ledger_report(conn, race_id=race_id)
+                self.send_json(result)
             else:
                 self.send_error(404)
 
@@ -605,6 +614,7 @@ def api_betting(
     race_id: str,
     bankroll: float,
     risk: str,
+    model_path: Path | str | None = None,
 ) -> dict[str, object]:
     race_rows = fetch_all(conn, "SELECT * FROM races WHERE race_id = ?", (race_id,))
     if not race_rows:
@@ -612,7 +622,10 @@ def api_betting(
     predictions = model.predict_race(build_race_features(conn, race_id))
     status = race_lifecycle_status(conn, race_id)
     payload = build_betting_decisions(predictions, status, bankroll=bankroll, risk_profile=risk)
-    payload["race"] = dict(race_rows[0])
+    race = dict(race_rows[0])
+    payload["race"] = race
+    if model_path is not None:
+        payload["ledger"] = record_betting_payload(conn, race, payload, model_path)
     return payload
 
 

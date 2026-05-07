@@ -14,6 +14,7 @@ from .backfill import (
     train_model_if_requested,
 )
 from .backtest import run_backtest
+from .betting_ledger import betting_ledger_report, reconcile_betting_ledger
 from .config import display_database_target, get_settings
 from .db_migrate import database_counts, migrate_sqlite_to_database
 from .evolution import evaluate_model_evolution, generate_codex_iteration, generate_openai_iteration
@@ -87,6 +88,10 @@ def main() -> None:
     registry_parser.add_argument("--min-train-races", type=int, default=1)
     registry_parser.add_argument("--epochs", type=int, default=80)
     registry_parser.add_argument("--min-ev", type=float, default=0.05)
+
+    ledger_parser = sub.add_parser("betting-ledger")
+    ledger_parser.add_argument("--race-id", default=None)
+    ledger_parser.add_argument("--reconcile", action="store_true")
 
     quality_parser = sub.add_parser("data-quality")
 
@@ -175,7 +180,7 @@ def main() -> None:
         )
         return
 
-    if args.command in {"import-sample", "import-csv", "model-registry"}:
+    if args.command in {"import-sample", "import-csv", "model-registry", "betting-ledger"}:
         init_db(settings.db_path)
 
     with connect(settings.db_path) as conn:
@@ -242,6 +247,13 @@ def main() -> None:
                 )
             else:
                 result = model_registry_report(conn)
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        elif args.command == "betting-ledger":
+            if args.reconcile:
+                result = reconcile_betting_ledger(conn, race_id=args.race_id)
+                result["ledger"] = betting_ledger_report(conn, race_id=args.race_id)
+            else:
+                result = betting_ledger_report(conn, race_id=args.race_id)
             print(json.dumps(result, indent=2, ensure_ascii=False))
         elif args.command == "data-quality":
             print(json.dumps(data_quality_report(conn), indent=2, ensure_ascii=False))

@@ -18,6 +18,7 @@ MIGRATION_TABLES = [
     "race_status",
     "race_error_reviews",
     "model_registry_runs",
+    "betting_recommendations",
 ]
 
 

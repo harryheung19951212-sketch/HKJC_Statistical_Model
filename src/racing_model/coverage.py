@@ -66,7 +66,17 @@ def build_coverage_report(conn: sqlite3.Connection) -> dict[str, Any]:
 
 
 def database_snapshot(conn: sqlite3.Connection) -> dict[str, int]:
-    tables = ["races", "runners", "results", "workouts", "odds_ticks", "raw_snapshots", "race_status"]
+    tables = [
+        "races",
+        "runners",
+        "results",
+        "workouts",
+        "odds_ticks",
+        "raw_snapshots",
+        "race_status",
+        "model_registry_runs",
+        "betting_recommendations",
+    ]
     snapshot: dict[str, int] = {}
     for table in tables:
         try:
@@ -472,10 +482,10 @@ def coverage_items() -> list[dict[str, Any]]:
             "Walk-forward promotion gates",
             STATUS_PARTIAL,
             ["results.csv", "walk-forward variants"],
-            ["src/racing_model/walk_forward.py", "src/racing_model/evolution.py"],
-            "Walk-forward version center compares model variants.",
-            "There is no automated block/promotion workflow for model JSON replacement.",
-            "Add promotion gate command that refuses upgrades without out-of-sample improvement.",
+            ["src/racing_model/walk_forward.py", "src/racing_model/evolution.py", "src/racing_model/model_registry.py"],
+            "Walk-forward version center and persistent model_registry_runs compare variants and label promotion gate status.",
+            "No automated model JSON replacement workflow yet, and CLV is still only monitored until enough live ledger samples exist.",
+            "Add explicit promote command that refuses model replacement unless registry, calibration, drawdown and CLV gates pass.",
             "Very high: prevents random weight/UI iteration from corrupting the equation.",
             "Gate on log loss, Brier, hit rate, ROI and drawdown with minimum sample sizes.",
             1,
@@ -517,12 +527,12 @@ def coverage_items() -> list[dict[str, Any]]:
             31,
             "blind_spot",
             "Execution slippage",
-            STATUS_MISSING,
+            STATUS_PARTIAL,
             ["odds_ticks", "recommended tickets", "final odds"],
-            [],
-            "Final live/result odds can be stored.",
-            "Suggested odds, bet-time odds and final odds are not recorded separately per recommendation.",
-            "Persist recommendation snapshots with suggested odds and later reconcile final odds.",
+            ["src/racing_model/betting_ledger.py", "src/racing_model/storage.py", "src/racing_model/web/app.js"],
+            "betting_recommendations stores active WIN/PLACE recommendations with suggested odds and reconciles against final odds/results.",
+            "Bet-time execution confirmation and exotic-pool slippage are still absent.",
+            "Add explicit bet-time confirmation and extend ledger to exotic pools once official/probable dividends are available.",
             "High: tote movement can erase edge after the model recommends a bet.",
             "Replay decisions using bet-time odds and final odds; report slippage-adjusted ROI.",
             2,

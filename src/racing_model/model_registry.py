@@ -75,7 +75,7 @@ def model_registry_report(conn: sqlite3.Connection, limit: int = 12) -> dict[str
         "summary": registry_summary(runs),
         "runs": runs,
         "latest_report": latest_report,
-        "clv_status": "未有完整下注時賠率與收市前賠率分離，CLV 暫不可作升級 gate。",
+        "clv_status": "投注決策留痕已可保存建議賠率並對照最後賠率；未累積足夠已對數建議前，CLV 只作監控，不作強制升級 gate。",
     }
 
 

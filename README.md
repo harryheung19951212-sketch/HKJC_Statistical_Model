@@ -25,6 +25,8 @@ For handoff to another Codex session, read:
 - Preserves final live odds for resulted or in-running races.
 - Calculates win/place fair odds, edge, expected value, fractional Kelly, and risk-capped stake suggestions.
 - Builds exotic-pool candidates for quinella, quinella place, exacta, trio, tierce, first four, and quartet.
+- Saves active betting recommendations to a ledger and reconciles them against final odds/results for P/L, slippage, and CLV reference.
+- Stores out-of-sample model-registry runs with promotion-gate labels.
 - Includes a polite scraper framework for public pages, with rate limiting and raw snapshot storage.
 
 This is deliberately built as a transparent MVP. It avoids automatic betting and keeps data access configurable so you can respect each data provider's terms.
@@ -62,6 +64,8 @@ Walk-forward model version comparison:
 
 ```powershell
 racing-model walk-forward --epochs 80
+racing-model model-registry --run --epochs 80
+racing-model betting-ledger --reconcile
 ```
 
 Historical HKJC backfill and data quality checks:
@@ -186,4 +190,4 @@ Expected columns:
 2. Add official/probable exotic-pool dividend ingestion so exotic candidates can become real EV decisions.
 3. Add late market-flow features from final 5 minutes, 2 minutes, and 30 seconds.
 4. Add same-day track-bias learning after each completed race.
-5. Add error taxonomy and model promotion gates so Codex CLI iterations only advance when walk-forward results improve.
+5. Extend betting-ledger reconciliation to exotic pools after official/probable dividend ingestion.

@@ -141,6 +141,44 @@ CREATE TABLE IF NOT EXISTS model_registry_runs (
   recommendation TEXT NOT NULL DEFAULT '',
   report_json TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS betting_recommendations (
+  recommendation_id TEXT PRIMARY KEY,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT 'api_betting',
+  model_path TEXT NOT NULL DEFAULT '',
+  race_id TEXT NOT NULL,
+  race_date TEXT NOT NULL DEFAULT '',
+  market TEXT NOT NULL,
+  market_label TEXT NOT NULL DEFAULT '',
+  horse_id TEXT NOT NULL,
+  horse_no INTEGER,
+  horse_name TEXT NOT NULL DEFAULT '',
+  model_rank INTEGER NOT NULL DEFAULT 0,
+  risk_profile TEXT NOT NULL DEFAULT '',
+  bankroll REAL NOT NULL DEFAULT 0,
+  probability REAL,
+  recommended_odds REAL,
+  odds_source TEXT NOT NULL DEFAULT '',
+  fair_odds REAL,
+  market_probability REAL,
+  edge REAL,
+  expected_value REAL,
+  recommended_stake REAL NOT NULL DEFAULT 0,
+  race_status_at_recommendation TEXT NOT NULL DEFAULT '',
+  action TEXT NOT NULL DEFAULT '',
+  reason TEXT NOT NULL DEFAULT '',
+  final_odds REAL,
+  finish_position INTEGER,
+  outcome_win INTEGER,
+  returned REAL,
+  profit REAL,
+  clv REAL,
+  slippage REAL,
+  reconciled_at TEXT,
+  reconciliation_status TEXT NOT NULL DEFAULT 'pending'
+);
 """
 
 
@@ -154,6 +192,7 @@ TABLE_PRIMARY_KEYS = {
     "race_status": ["race_id"],
     "race_error_reviews": ["race_id", "review_key"],
     "model_registry_runs": ["run_id"],
+    "betting_recommendations": ["recommendation_id"],
 }
 
 
@@ -286,6 +325,47 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
           promotion_gate TEXT NOT NULL DEFAULT 'sample_insufficient',
           recommendation TEXT NOT NULL DEFAULT '',
           report_json TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS betting_recommendations (
+          recommendation_id TEXT PRIMARY KEY,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          source TEXT NOT NULL DEFAULT 'api_betting',
+          model_path TEXT NOT NULL DEFAULT '',
+          race_id TEXT NOT NULL,
+          race_date TEXT NOT NULL DEFAULT '',
+          market TEXT NOT NULL,
+          market_label TEXT NOT NULL DEFAULT '',
+          horse_id TEXT NOT NULL,
+          horse_no INTEGER,
+          horse_name TEXT NOT NULL DEFAULT '',
+          model_rank INTEGER NOT NULL DEFAULT 0,
+          risk_profile TEXT NOT NULL DEFAULT '',
+          bankroll REAL NOT NULL DEFAULT 0,
+          probability REAL,
+          recommended_odds REAL,
+          odds_source TEXT NOT NULL DEFAULT '',
+          fair_odds REAL,
+          market_probability REAL,
+          edge REAL,
+          expected_value REAL,
+          recommended_stake REAL NOT NULL DEFAULT 0,
+          race_status_at_recommendation TEXT NOT NULL DEFAULT '',
+          action TEXT NOT NULL DEFAULT '',
+          reason TEXT NOT NULL DEFAULT '',
+          final_odds REAL,
+          finish_position INTEGER,
+          outcome_win INTEGER,
+          returned REAL,
+          profit REAL,
+          clv REAL,
+          slippage REAL,
+          reconciled_at TEXT,
+          reconciliation_status TEXT NOT NULL DEFAULT 'pending'
         )
         """
     )

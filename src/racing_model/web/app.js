@@ -172,6 +172,8 @@ async function refreshSelectedRace() {
   renderModelVersions(modelVersions);
   const registry = await api("/api/model-registry");
   renderModelRegistry(registry);
+  const ledger = await api(`/api/betting-ledger?race_id=${encodeURIComponent(selectedRaceId)}`);
+  renderBettingLedger(ledger);
   const quality = await api("/api/data-quality");
   renderDataQuality(quality);
   const coverage = await api("/api/coverage");
@@ -602,6 +604,49 @@ async function runModelRegistry() {
   renderModelRegistry(await api("/api/model-registry"));
   if (result.report) renderModelVersions(result.report);
   $("system-status").textContent = `OOS 評估已保存：${(result.run || {}).promotion_gate_label || "-"}`;
+}
+
+function renderBettingLedger(data) {
+  const summary = data.summary || {};
+  $("betting-ledger-summary").innerHTML = `
+    <div class="stat"><label>建議數</label><strong>${summary.recommendations || 0}</strong></div>
+    <div class="stat"><label>已對數</label><strong>${summary.reconciled || 0}</strong></div>
+    <div class="stat"><label>未對數</label><strong>${summary.pending || 0}</strong></div>
+    <div class="stat"><label>實際回報率</label><strong class="${evClass(summary.roi)}">${formatPct(summary.roi)}</strong></div>
+    <div class="stat"><label>命中率</label><strong>${formatPct(summary.hit_rate)}</strong></div>
+    <div class="stat"><label>平均 CLV</label><strong class="${evClass(summary.avg_clv)}">${summary.avg_clv === null || summary.avg_clv === undefined ? "-" : formatPct(summary.avg_clv)}</strong></div>
+  `;
+  $("betting-ledger-note").textContent = data.clv_note || "";
+  const items = data.items || [];
+  if (!items.length) {
+    $("betting-ledger-list").innerHTML = `<p class="runner-subtitle">本場未有已保存投注建議</p>`;
+    return;
+  }
+  $("betting-ledger-list").innerHTML = items.slice(0, 10).map((row) => `
+    <div class="ledger-card ${row.reconciliation_status === "reconciled" ? "reconciled" : ""}">
+      <div class="version-head">
+        <strong>${row.market_label || row.market}｜${row.horse_no || "-"} ${row.horse_name || row.horse_id}</strong>
+        <span>${row.reconciliation_status === "reconciled" ? "已對數" : "未對數"}</span>
+      </div>
+      <p>${formatTimestamp(row.created_at)}｜${row.reason || ""}</p>
+      <div class="version-metrics">
+        <div><label>建議賠率</label><b>${formatNum(row.recommended_odds, 2)}</b></div>
+        <div><label>最後賠率</label><b>${formatNum(row.final_odds, 2)}</b></div>
+        <div><label>期望值</label><b class="${evClass(row.expected_value)}">${formatSigned(row.expected_value, 3)}</b></div>
+        <div><label>注碼</label><b>${formatMoney(row.recommended_stake)}</b></div>
+        <div><label>盈虧</label><b class="${evClass(row.profit)}">${formatMoney(row.profit)}</b></div>
+        <div><label>CLV</label><b class="${evClass(row.clv)}">${row.clv === null || row.clv === undefined ? "-" : formatPct(row.clv)}</b></div>
+      </div>
+    </div>
+  `).join("");
+}
+
+async function reconcileBettingLedger() {
+  if (!selectedRaceId) return;
+  $("system-status").textContent = "投注留痕對數中...";
+  const result = await api(`/api/betting-ledger/reconcile?race_id=${encodeURIComponent(selectedRaceId)}`, { method: "POST" });
+  renderBettingLedger(result.ledger || {});
+  $("system-status").textContent = `投注留痕已對數：${result.updated || 0} 筆`;
 }
 
 function renderDataQuality(data) {
@@ -1038,6 +1083,7 @@ async function boot() {
   $("risk-profile").addEventListener("change", refreshSelectedRace);
   $("run-gpt-iteration").addEventListener("click", runGptIteration);
   $("run-model-registry").addEventListener("click", runModelRegistry);
+  $("reconcile-betting-ledger").addEventListener("click", reconcileBettingLedger);
   $("repair-data").addEventListener("click", repairData);
   $("complete-runners").addEventListener("click", completeRunners);
   $("refresh-error-taxonomy").addEventListener("click", refreshErrorTaxonomy);
