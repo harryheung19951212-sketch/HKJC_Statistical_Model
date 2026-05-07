@@ -135,3 +135,19 @@ Do not add more generic UI first. The next work should move the equation closer 
 
 Every change must include tests and must be promoted only with walk-forward / out-of-sample evidence.
 
+## 2026-05-07 Update
+
+Roadmap item 22 is now partially implemented:
+
+- `src/racing_model/pool_rules.py` defines HKJC pool payout/takeout assumptions, minimum units, and market-efficiency buffers.
+- Betting decisions now expose cost-adjusted EV, required EV, required edge, required dividend, and pool rule metadata.
+- WIN/PLACE and exotic recommendations must clear pool-cost gates before stake allocation.
+
+Current next best step:
+
+1. Add pool-specific replay reports that compare raw EV, cost-adjusted EV, hit rate, ROI, and drawdown.
+2. Validate pool payout/takeout assumptions against official pages and real settlement data on each race day.
+3. Add final exotic dividend settlement coverage for every supported pool.
+4. Validate live late-market-flow features from real race-day ticks.
+5. Turn calibration and promotion gates into hard blockers for staking/model replacement.
+

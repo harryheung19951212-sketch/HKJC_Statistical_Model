@@ -339,10 +339,12 @@ function renderBetting(data) {
   const summary = $("betting-summary");
   const box = $("betting-tickets");
   const settings = data.risk_settings || {};
+  const poolCount = Object.keys(data.pool_rules || {}).length;
   summary.innerHTML = `
     <div><label>本場上限</label><strong>${formatMoney(data.max_race_stake)}</strong></div>
     <div><label>建議總注</label><strong>${formatMoney(data.total_recommended_stake)}</strong></div>
     <div><label>Kelly</label><strong>${formatPct(settings.fractional_kelly)}</strong></div>
+    <div><label>\u5f69\u6c60\u6210\u672c\u6a21\u578b</label><strong>${poolCount || "-"} \u500b</strong></div>
     <div><label>期望值門檻</label><strong>${formatPct(settings.min_expected_value)}</strong></div>
     <div><label>狀態</label><strong>${localStatus(data.race_status)}</strong></div>
   `;
@@ -374,6 +376,9 @@ function renderDecisionCard(row) {
         <div><label>公允</label><strong>${formatNum(row.fair_odds, 2)}</strong></div>
         <div><label>價值差</label><strong class="${evClass(row.edge)}">${formatPct(row.edge)}</strong></div>
         <div><label>期望值</label><strong class="${evClass(row.expected_value)}">${row.expected_value === null ? "-" : Number(row.expected_value).toFixed(3)}</strong></div>
+        <div><label>\u6263\u6210\u672cEV</label><strong class="${evClass(row.cost_adjusted_expected_value)}">${formatSigned(row.cost_adjusted_expected_value, 3)}</strong></div>
+        <div><label>\u6240\u9700\u8ce0\u7387</label><strong>${formatNum(row.required_dividend, 2)}</strong></div>
+        <div><label>\u62bd\u6c34/\u566a\u97f3</label><strong>${formatPoolCost(row.pool_rule)}</strong></div>
         <div><label>注碼</label><strong>${formatMoney(row.recommended_stake)}</strong></div>
       </div>
       <div class="ticket-action">${row.action}</div>
@@ -428,11 +433,18 @@ function renderExoticCard(row) {
       <div class="exotic-metrics">
         <label>中獎率 <b>${formatPct(row.probability)}</b></label>
         <label>打和派彩 <b>${formatNum(row.break_even_dividend, 2)}x</b></label>
+        <label>\u6240\u9700\u6d3e\u5f69 <b>${formatNum(row.required_dividend, 2)}x</b></label>
         <label>官方/估算 <b>${formatNum(row.dividend, 2)}x</b></label>
         <label>期望值 <b class="${evClass(row.expected_value)}">${row.expected_value === null || row.expected_value === undefined ? "-" : Number(row.expected_value).toFixed(3)}</b></label>
+        <label>\u6263\u6210\u672cEV <b class="${evClass(row.cost_adjusted_expected_value)}">${formatSigned(row.cost_adjusted_expected_value, 3)}</b></label>
       </div>
     </div>
   `;
+}
+
+function formatPoolCost(rule) {
+  if (!rule) return "-";
+  return `${formatPct(rule.takeout_rate)} / ${formatPct(rule.efficiency_buffer)}`;
 }
 
 function formatMoney(value) {

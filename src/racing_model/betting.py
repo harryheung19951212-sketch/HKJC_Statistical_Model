@@ -4,6 +4,16 @@ from dataclasses import dataclass
 from itertools import combinations, permutations
 from typing import Any
 
+from .pool_rules import (
+    all_pool_rules_payload,
+    cost_adjusted_expected_value,
+    pool_rule_payload,
+    required_dividend,
+    required_edge,
+    required_expected_value,
+    round_stake_to_unit,
+)
+
 
 LIVE_ODDS_SOURCES = {"hkjc_graphql", "hkjc_mqtt"}
 
@@ -82,7 +92,10 @@ def build_betting_decisions(
     if raw_total > max_race_stake > 0:
         scale = max_race_stake / raw_total
         for decision in active:
-            decision["recommended_stake"] = round(float(decision["recommended_stake"]) * scale, 1)
+            decision["recommended_stake"] = round_stake_to_unit(
+                float(decision["recommended_stake"]) * scale,
+                str(decision["market"]),
+            )
             decision["stake_fraction"] = round(float(decision["recommended_stake"]) / bankroll, 6) if bankroll else 0.0
 
     decisions.sort(
@@ -105,6 +118,7 @@ def build_betting_decisions(
             "min_expected_value": profile.min_expected_value,
             "min_edge": profile.min_edge,
         },
+        "pool_rules": all_pool_rules_payload(),
         "max_race_stake": max_race_stake,
         "total_recommended_stake": round(sum(float(item["recommended_stake"]) for item in tickets), 1),
         "stake_scaled": scale < 1.0,
@@ -134,13 +148,27 @@ def build_market_decision(
     market_probability = (1.0 / odds) if odds and odds > 1 else None
     edge = probability - market_probability if market_probability is not None else None
     expected_value = probability * odds - 1.0 if odds and odds > 1 else None
+    adjusted_ev = cost_adjusted_expected_value(expected_value, market)
+    req_ev = required_expected_value(market, profile.min_expected_value)
+    req_edge = required_edge(market, profile.min_edge)
+    req_dividend = required_dividend(probability, market, profile.min_expected_value)
     raw_kelly = kelly_fraction(probability, odds)
     kelly = raw_kelly * profile.fractional_kelly
     capped_fraction = min(kelly, profile.max_bet_fraction)
-    eligible, reason = decision_eligibility(race_status, market, source, odds, expected_value, edge, profile)
+    eligible, reason = decision_eligibility(
+        race_status,
+        market,
+        source,
+        odds,
+        expected_value,
+        adjusted_ev,
+        edge,
+        req_ev,
+        req_edge,
+    )
     action = action_label(eligible, expected_value, edge, profile, reason)
     stake_fraction = capped_fraction if action == "有值博" else 0.0
-    stake = round(bankroll * stake_fraction, 1) if stake_fraction > 0 else 0.0
+    stake = round_stake_to_unit(bankroll * stake_fraction, market) if stake_fraction > 0 else 0.0
     return {
         "market": market,
         "market_label": "獨贏" if market == "WIN" else "位置",
@@ -157,6 +185,11 @@ def build_market_decision(
         "market_probability": round(market_probability, 6) if market_probability is not None else None,
         "edge": round(edge, 6) if edge is not None else None,
         "expected_value": round(expected_value, 6) if expected_value is not None else None,
+        "cost_adjusted_expected_value": round(adjusted_ev, 6) if adjusted_ev is not None else None,
+        "required_expected_value": round(req_ev, 6),
+        "required_edge": round(req_edge, 6),
+        "required_dividend": round(req_dividend, 3) if req_dividend else None,
+        "pool_rule": pool_rule_payload(market),
         "kelly_fraction": round(max(raw_kelly, 0.0), 6),
         "fractional_kelly": round(max(kelly, 0.0), 6),
         "stake_fraction": round(stake_fraction, 6),
@@ -172,8 +205,10 @@ def decision_eligibility(
     source: object,
     odds: float | None,
     expected_value: float | None,
+    adjusted_ev: float | None,
     edge: float | None,
-    profile: RiskProfile,
+    required_ev: float,
+    required_edge_value: float,
 ) -> tuple[bool, str]:
     if not odds or odds <= 1:
         return False, "未有官方賠率"
@@ -187,9 +222,11 @@ def decision_eligibility(
         return False, "賽後賠率，只作回測"
     if expected_value is None or edge is None:
         return False, "資料不足"
-    if expected_value < profile.min_expected_value:
+    if expected_value < required_ev:
         return False, "期望值未達門檻"
-    if edge < profile.min_edge:
+    if adjusted_ev is None or adjusted_ev < 0:
+        return False, "扣成本後EV未達門檻"
+    if edge < required_edge_value:
         return False, "價值差未達門檻"
     return True, "符合 Kelly 下注條件"
 
@@ -257,6 +294,8 @@ def build_exotic_candidates(
             dividend_row = (exotic_dividends or {}).get((code, combination_key))
             dividend = safe_float(dividend_row.get("dividend")) if dividend_row else None
             expected_value = probability * dividend - 1.0 if dividend else None
+            adjusted_ev = cost_adjusted_expected_value(expected_value, code)
+            req_dividend = required_dividend(probability, code, RISK_PROFILES["standard"].min_expected_value)
             product_candidates.append(
                 {
                     "market": code,
@@ -274,12 +313,15 @@ def build_exotic_candidates(
                     "combination": format_combination(horse_ids, runner_by_id, bool(product["ordered"])),
                     "probability": round(probability, 6),
                     "break_even_dividend": round(1.0 / probability, 2),
+                    "required_dividend": round(req_dividend, 2) if req_dividend else None,
                     "dividend": dividend,
                     "dividend_status": dividend_row.get("dividend_status") if dividend_row else None,
                     "dividend_source": dividend_row.get("source") if dividend_row else None,
                     "expected_value": round(expected_value, 6) if expected_value is not None else None,
+                    "cost_adjusted_expected_value": round(adjusted_ev, 6) if adjusted_ev is not None else None,
                     "action": exotic_action(race_status),
                     "reason": exotic_reason(race_status),
+                    "pool_rule": pool_rule_payload(code),
                 }
             )
         product_candidates.sort(key=lambda item: float(item["probability"]), reverse=True)
@@ -308,6 +350,10 @@ def build_exotic_decisions(
         market_probability = 1.0 / dividend if dividend and dividend > 1 else None
         edge = probability - market_probability if probability is not None and market_probability is not None else None
         expected_value = probability * dividend - 1.0 if probability is not None and dividend else None
+        adjusted_ev = cost_adjusted_expected_value(expected_value, str(candidate["market"]))
+        req_ev = required_expected_value(str(candidate["market"]), profile.min_expected_value)
+        req_edge = required_edge(str(candidate["market"]), profile.min_edge)
+        req_dividend = required_dividend(probability, str(candidate["market"]), profile.min_expected_value)
         raw_kelly = kelly_fraction(probability, dividend)
         kelly = raw_kelly * profile.fractional_kelly
         capped_fraction = min(kelly, profile.max_bet_fraction)
@@ -317,12 +363,14 @@ def build_exotic_decisions(
             candidate.get("dividend_source"),
             dividend,
             expected_value,
+            adjusted_ev,
             edge,
-            profile,
+            req_ev,
+            req_edge,
         )
         action = action_label(eligible, expected_value, edge, profile, reason)
         stake_fraction = capped_fraction if action == "有值博" else 0.0
-        stake = round(bankroll * stake_fraction, 1) if stake_fraction > 0 else 0.0
+        stake = round_stake_to_unit(bankroll * stake_fraction, str(candidate["market"])) if stake_fraction > 0 else 0.0
         decisions.append(
             {
                 "market": candidate["market"],
@@ -341,6 +389,11 @@ def build_exotic_decisions(
                 "market_probability": round(market_probability, 6) if market_probability is not None else None,
                 "edge": round(edge, 6) if edge is not None else None,
                 "expected_value": round(expected_value, 6) if expected_value is not None else None,
+                "cost_adjusted_expected_value": round(adjusted_ev, 6) if adjusted_ev is not None else None,
+                "required_expected_value": round(req_ev, 6),
+                "required_edge": round(req_edge, 6),
+                "required_dividend": round(req_dividend, 3) if req_dividend else None,
+                "pool_rule": pool_rule_payload(str(candidate["market"])),
                 "kelly_fraction": round(max(raw_kelly, 0.0), 6),
                 "fractional_kelly": round(max(kelly, 0.0), 6),
                 "stake_fraction": round(stake_fraction, 6),

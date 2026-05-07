@@ -55,3 +55,24 @@ Deployment expectation:
 - Every feature/fix/removal must then be deployed to the production server.
 - The server is deployment-only; it should not be treated as the source of truth.
 
+## 2026-05-07 - Pool Cost And Market Efficiency Gate
+
+Goal:
+
+- Advance roadmap item 22, "Pool takeout and market efficiency".
+- Prevent nominal positive EV recommendations from passing unless they clear pool-specific cost and noise gates.
+
+Implementation:
+
+- Added `src/racing_model/pool_rules.py`.
+- Added HKJC pool payout/takeout assumptions for WIN, PLACE, QIN, QPL, FCT, TRIO, TCE, FIRST4, and QUARTET.
+- Added pool minimum units and market-efficiency buffers.
+- Extended betting decisions with `pool_rule`, `required_expected_value`, `required_edge`, `required_dividend`, and `cost_adjusted_expected_value`.
+- Updated WIN/PLACE and exotic ticket eligibility to require pool cost gates before any stake is recommended.
+- Updated the betting UI to display pool-cost model count, cost-adjusted EV, required dividend, and takeout/noise buffer.
+- Updated coverage report item 22 from missing to partial.
+
+Verification:
+
+- Added betting tests for pool rules and cost-gate rejection.
+- Full local verification and server deployment required before handoff.

@@ -1,4 +1,5 @@
 from racing_model.betting import build_betting_decisions
+from racing_model.pool_rules import POOL_RULES, required_expected_value
 
 
 def test_betting_decision_uses_fractional_kelly_and_race_cap() -> None:
@@ -15,7 +16,21 @@ def test_betting_decision_uses_fractional_kelly_and_race_cap() -> None:
             "top3_probability": 0.62,
             "place_odds": 2.2,
             "place_odds_source": "hkjc_mqtt",
-        }
+        },
+        *[
+            {
+                "horse_id": f"H00{index}",
+                "horse_no": index,
+                "display_name": f"Runner {index}",
+                "win_probability": probability,
+                "latest_win_odds": None,
+                "latest_win_odds_source": None,
+                "top3_probability": min(probability * 3, 0.4),
+                "place_odds": None,
+                "place_odds_source": None,
+            }
+            for index, probability in enumerate([0.20, 0.16, 0.12, 0.10, 0.07], start=2)
+        ],
     ]
 
     result = build_betting_decisions(predictions, "scheduled", bankroll=10000, risk_profile="standard")
@@ -109,4 +124,40 @@ def test_exotic_dividend_turns_candidate_into_ev_ticket() -> None:
     qpl = next(ticket for ticket in result["tickets"] if ticket["market"] == "QPL")
     assert qpl["horse_id"] == "1+2"
     assert qpl["expected_value"] > 0
+    assert qpl["cost_adjusted_expected_value"] < qpl["expected_value"]
+    assert qpl["required_dividend"] > qpl["break_even_dividend"]
+    assert qpl["pool_rule"]["takeout_rate"] > 0
     assert qpl["recommended_stake"] > 0
+
+
+def test_pool_cost_gate_rejects_small_nominal_edge() -> None:
+    predictions = [
+        {
+            "horse_id": "H001",
+            "horse_no": 1,
+            "display_name": "Cost Gate",
+            "win_probability": 0.30,
+            "latest_win_odds": 3.52,
+            "latest_win_odds_source": "hkjc_mqtt",
+            "top3_probability": 0.50,
+            "place_odds": 1.95,
+            "place_odds_source": "hkjc_mqtt",
+        }
+    ]
+
+    result = build_betting_decisions(predictions, "scheduled", bankroll=10000, risk_profile="standard")
+    win = next(row for row in result["decisions"] if row["market"] == "WIN")
+
+    assert win["expected_value"] > 0
+    assert win["expected_value"] < win["required_expected_value"]
+    assert win["recommended_stake"] == 0
+    assert win["cost_adjusted_expected_value"] == win["expected_value"] - POOL_RULES["WIN"].efficiency_buffer
+
+
+def test_pool_rules_cover_all_betting_markets() -> None:
+    assert set(POOL_RULES) == {"WIN", "PLACE", "QIN", "QPL", "FCT", "TRIO", "TCE", "FIRST4", "QUARTET"}
+    assert POOL_RULES["WIN"].payout_rate == 0.825
+    assert POOL_RULES["FCT"].payout_rate == 0.805
+    assert POOL_RULES["TRIO"].payout_rate == 0.770
+    assert POOL_RULES["TCE"].payout_rate == 0.750
+    assert required_expected_value("QUARTET", 0.05) > required_expected_value("WIN", 0.05)
