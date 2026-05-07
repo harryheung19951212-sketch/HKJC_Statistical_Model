@@ -73,3 +73,40 @@ def test_trio_upgrade_path_compares_position_q_pairs() -> None:
     assert top_path["to_label"] == "單T"
     assert len(top_path["from_markets"]) == 2
     assert top_path["trio_break_even_dividend"] > 1
+
+
+def test_exotic_dividend_turns_candidate_into_ev_ticket() -> None:
+    predictions = [
+        {
+            "horse_id": f"H00{index}",
+            "horse_no": index,
+            "display_name": f"馬{index}",
+            "win_probability": probability,
+            "latest_win_odds": 3.0 + index,
+            "latest_win_odds_source": "hkjc_mqtt",
+            "top3_probability": min(probability * 3, 0.9),
+            "place_odds": 1.5,
+            "place_odds_source": "hkjc_mqtt",
+        }
+        for index, probability in enumerate([0.34, 0.24, 0.18, 0.12, 0.07, 0.05], start=1)
+    ]
+    dividends = {
+        ("QPL", "1+2"): {
+            "dividend": 20.0,
+            "dividend_status": "probable",
+            "source": "manual_test",
+        }
+    }
+
+    result = build_betting_decisions(
+        predictions,
+        "scheduled",
+        bankroll=10000,
+        risk_profile="standard",
+        exotic_dividends=dividends,
+    )
+
+    qpl = next(ticket for ticket in result["tickets"] if ticket["market"] == "QPL")
+    assert qpl["horse_id"] == "1+2"
+    assert qpl["expected_value"] > 0
+    assert qpl["recommended_stake"] > 0

@@ -297,6 +297,8 @@ function renderExoticCard(row) {
       <div class="exotic-metrics">
         <label>中獎率 <b>${formatPct(row.probability)}</b></label>
         <label>打和派彩 <b>${formatNum(row.break_even_dividend, 2)}x</b></label>
+        <label>官方/估算 <b>${formatNum(row.dividend, 2)}x</b></label>
+        <label>期望值 <b class="${evClass(row.expected_value)}">${row.expected_value === null || row.expected_value === undefined ? "-" : Number(row.expected_value).toFixed(3)}</b></label>
       </div>
     </div>
   `;

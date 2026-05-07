@@ -19,6 +19,7 @@ MIGRATION_TABLES = [
     "race_error_reviews",
     "model_registry_runs",
     "betting_recommendations",
+    "exotic_dividends",
 ]
 
 

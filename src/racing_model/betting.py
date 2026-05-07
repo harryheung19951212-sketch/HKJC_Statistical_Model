@@ -40,6 +40,7 @@ def build_betting_decisions(
     race_status: str,
     bankroll: float = 10_000.0,
     risk_profile: str = "standard",
+    exotic_dividends: dict[tuple[str, str], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     profile = RISK_PROFILES.get(risk_profile, RISK_PROFILES["standard"])
     bankroll = max(float(bankroll or 0), 0.0)
@@ -72,7 +73,9 @@ def build_betting_decisions(
             )
         )
 
-    active = [decision for decision in decisions if decision["recommended_stake"] > 0]
+    exotic_candidates = build_exotic_candidates(predictions, race_status, exotic_dividends=exotic_dividends)
+    exotic_decisions = build_exotic_decisions(exotic_candidates, race_status, bankroll, profile)
+    active = [decision for decision in [*decisions, *exotic_decisions] if decision["recommended_stake"] > 0]
     max_race_stake = round(bankroll * profile.max_race_fraction, 2)
     raw_total = sum(float(item["recommended_stake"]) for item in active)
     scale = 1.0
@@ -90,8 +93,7 @@ def build_betting_decisions(
         ),
         reverse=True,
     )
-    tickets = [decision for decision in decisions if decision["recommended_stake"] > 0]
-    exotic_candidates = build_exotic_candidates(predictions, race_status)
+    tickets = [decision for decision in [*decisions, *exotic_decisions] if decision["recommended_stake"] > 0]
     return {
         "race_status": race_status,
         "bankroll": bankroll,
@@ -108,6 +110,7 @@ def build_betting_decisions(
         "stake_scaled": scale < 1.0,
         "tickets": tickets,
         "decisions": decisions,
+        "exotic_decisions": exotic_decisions,
         "exotic_candidates": exotic_candidates,
         "upgrade_paths": build_upgrade_paths(exotic_candidates),
     }
@@ -222,6 +225,7 @@ def build_exotic_candidates(
     predictions: list[dict[str, Any]],
     race_status: str,
     max_runners: int = 6,
+    exotic_dividends: dict[tuple[str, str], dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     ranked = list(predictions[:max_runners])
     probabilities = {
@@ -248,22 +252,32 @@ def build_exotic_candidates(
                 probability = unordered_top_k_probability(horse_ids, int(product["top_k"]), probabilities)
             if probability <= 0:
                 continue
+            horse_numbers = [runner_by_id[horse_id].get("horse_no") for horse_id in horse_ids]
+            combination_key = exotic_combination_key(code, horse_numbers)
+            dividend_row = (exotic_dividends or {}).get((code, combination_key))
+            dividend = safe_float(dividend_row.get("dividend")) if dividend_row else None
+            expected_value = probability * dividend - 1.0 if dividend else None
             product_candidates.append(
                 {
                     "market": code,
                     "market_label": product["label"],
                     "ordered": bool(product["ordered"]),
                     "horse_ids": horse_ids,
-                    "horse_numbers": [runner_by_id[horse_id].get("horse_no") for horse_id in horse_ids],
+                    "horse_numbers": horse_numbers,
                     "horse_names": [
                         runner_by_id[horse_id].get("display_name")
                         or runner_by_id[horse_id].get("horse_name_zh")
                         or runner_by_id[horse_id].get("horse_name")
                         for horse_id in horse_ids
                     ],
+                    "combination_key": combination_key,
                     "combination": format_combination(horse_ids, runner_by_id, bool(product["ordered"])),
                     "probability": round(probability, 6),
                     "break_even_dividend": round(1.0 / probability, 2),
+                    "dividend": dividend,
+                    "dividend_status": dividend_row.get("dividend_status") if dividend_row else None,
+                    "dividend_source": dividend_row.get("source") if dividend_row else None,
+                    "expected_value": round(expected_value, 6) if expected_value is not None else None,
                     "action": exotic_action(race_status),
                     "reason": exotic_reason(race_status),
                 }
@@ -278,6 +292,66 @@ def build_exotic_candidates(
         reverse=True,
     )
     return candidates
+
+
+def build_exotic_decisions(
+    candidates: list[dict[str, Any]],
+    race_status: str,
+    bankroll: float,
+    profile: RiskProfile,
+) -> list[dict[str, Any]]:
+    decisions = []
+    for rank, candidate in enumerate(candidates, start=1):
+        probability = safe_float(candidate.get("probability"))
+        dividend = safe_float(candidate.get("dividend"))
+        fair_odds = 1.0 / probability if probability and probability > 0 else None
+        market_probability = 1.0 / dividend if dividend and dividend > 1 else None
+        edge = probability - market_probability if probability is not None and market_probability is not None else None
+        expected_value = probability * dividend - 1.0 if probability is not None and dividend else None
+        raw_kelly = kelly_fraction(probability, dividend)
+        kelly = raw_kelly * profile.fractional_kelly
+        capped_fraction = min(kelly, profile.max_bet_fraction)
+        eligible, reason = decision_eligibility(
+            race_status,
+            str(candidate["market"]),
+            candidate.get("dividend_source"),
+            dividend,
+            expected_value,
+            edge,
+            profile,
+        )
+        action = action_label(eligible, expected_value, edge, profile, reason)
+        stake_fraction = capped_fraction if action == "有值博" else 0.0
+        stake = round(bankroll * stake_fraction, 1) if stake_fraction > 0 else 0.0
+        decisions.append(
+            {
+                "market": candidate["market"],
+                "market_label": candidate["market_label"],
+                "horse_id": candidate["combination_key"],
+                "horse_ids": candidate["horse_ids"],
+                "horse_no": None,
+                "horse_numbers": candidate["horse_numbers"],
+                "horse_name": candidate["combination"],
+                "horse_names": candidate["horse_names"],
+                "model_rank": rank,
+                "probability": round(probability, 6) if probability is not None else None,
+                "odds": dividend,
+                "odds_source": candidate.get("dividend_source"),
+                "fair_odds": round(fair_odds, 3) if fair_odds else None,
+                "market_probability": round(market_probability, 6) if market_probability is not None else None,
+                "edge": round(edge, 6) if edge is not None else None,
+                "expected_value": round(expected_value, 6) if expected_value is not None else None,
+                "kelly_fraction": round(max(raw_kelly, 0.0), 6),
+                "fractional_kelly": round(max(kelly, 0.0), 6),
+                "stake_fraction": round(stake_fraction, 6),
+                "recommended_stake": stake,
+                "action": action,
+                "reason": reason,
+                "break_even_dividend": candidate.get("break_even_dividend"),
+                "combination_key": candidate.get("combination_key"),
+            }
+        )
+    return decisions
 
 
 def build_upgrade_paths(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -362,6 +436,20 @@ def exotic_reason(race_status: str) -> str:
     if race_status == "live":
         return "已開跑，停止下注"
     return "未接入官方組合彩池賠率，先看打和派彩"
+
+
+def exotic_combination_key(market: str, horse_numbers: list[object]) -> str:
+    ordered = bool(EXOTIC_PRODUCTS.get(market, {}).get("ordered"))
+    numbers = []
+    for value in horse_numbers:
+        try:
+            numbers.append(int(value))
+        except (TypeError, ValueError):
+            continue
+    if not ordered:
+        numbers = sorted(numbers)
+    separator = ">" if ordered else "+"
+    return separator.join(str(number) for number in numbers)
 
 
 def exotic_priority(market: str) -> int:

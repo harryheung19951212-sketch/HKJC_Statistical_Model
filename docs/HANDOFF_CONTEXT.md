@@ -86,8 +86,10 @@ Do not commit `.env`, local SQLite databases, raw snapshots, generated reports, 
 - Exotic pool candidate layer:
   - Quinella, quinella place, exacta, trio, tierce, first four, quartet.
   - Displays model hit probability and break-even dividend.
+  - Imports probable/final/estimated exotic dividends through CLI/API.
+  - Matching exotic candidates become EV-ranked tickets and can be saved to the betting ledger.
   - Compares "position Q base" against "trio upgrade" opportunities.
-  - Does not invent official exotic dividends yet.
+  - Automatic live HKJC probable-dividend provider is still pending.
 
 ## Current Loaded Example
 
@@ -131,7 +133,7 @@ The next Codex should avoid generic UI expansion. Prioritize the equation engine
 6. Add error taxonomy database so every losing decision has a reason category.
 7. Add exposure control across correlated bets, especially shared banker/legs across QPL/TRIO/TCE/FIRST4/QUARTET.
 
-Current high-priority gap after the betting ledger: extend the ledger from WIN/PLACE to exotic pools once official/probable dividends are available, then make CLV/slippage part of the hard promotion gate after enough live recommendations are reconciled.
+Current high-priority gap after exotic dividend storage: add a live HKJC probable-dividend provider/parser and make CLV/slippage part of the hard promotion gate after enough live recommendations are reconciled.
 
 ## Important Design Principle
 

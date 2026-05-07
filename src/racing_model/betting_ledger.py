@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .betting import EXOTIC_PRODUCTS
 from .storage import fetch_all, insert_rows
 
 
@@ -176,6 +177,8 @@ def existing_created_at(conn: sqlite3.Connection, ids: list[str]) -> dict[str, s
 
 
 def result_for_recommendation(conn: sqlite3.Connection, row: dict[str, Any]) -> dict[str, Any] | None:
+    if str(row.get("market")) in EXOTIC_PRODUCTS:
+        return result_for_exotic_recommendation(conn, row)
     result_rows = fetch_all(
         conn,
         "SELECT finish_position FROM results WHERE race_id = ? AND horse_id = ?",
@@ -205,6 +208,43 @@ def result_for_recommendation(conn: sqlite3.Connection, row: dict[str, Any]) -> 
     }
 
 
+def result_for_exotic_recommendation(conn: sqlite3.Connection, row: dict[str, Any]) -> dict[str, Any] | None:
+    result_rows = fetch_all(
+        conn,
+        """
+        SELECT ru.horse_no, x.finish_position
+        FROM results x
+        JOIN runners ru ON ru.race_id = x.race_id AND ru.horse_id = x.horse_id
+        WHERE x.race_id = ?
+        """,
+        (row["race_id"],),
+    )
+    if not result_rows:
+        return None
+    market = str(row["market"])
+    selected = parse_combination_key(str(row["horse_id"]))
+    if not selected:
+        return None
+    finish_by_no = {int(result["horse_no"]): int(result["finish_position"]) for result in result_rows if result["horse_no"]}
+    outcome = exotic_outcome(market, selected, finish_by_no)
+    final_odds = final_exotic_dividend(conn, str(row["race_id"]), market, str(row["horse_id"]))
+    stake = float(row["recommended_stake"] or 0)
+    returned = stake * final_odds if outcome and final_odds else 0.0
+    profit = returned - stake
+    recommended_odds = optional_float(row.get("recommended_odds"))
+    clv = recommended_odds / final_odds - 1.0 if recommended_odds and final_odds and final_odds > 0 else None
+    best_finish = min((finish_by_no.get(number, 99) for number in selected), default=None)
+    return {
+        "final_odds": final_odds,
+        "finish_position": best_finish,
+        "outcome_win": 1 if outcome else 0,
+        "returned": returned,
+        "profit": profit,
+        "clv": clv,
+        "slippage": (final_odds - recommended_odds) if recommended_odds and final_odds else None,
+    }
+
+
 def final_odds_for_market(conn: sqlite3.Connection, race_id: str, horse_id: str, market: str) -> float | None:
     column = "win_odds" if market == "WIN" else "place_odds"
     rows = fetch_all(
@@ -221,6 +261,53 @@ def final_odds_for_market(conn: sqlite3.Connection, race_id: str, horse_id: str,
     if not rows or rows[0]["odds"] is None:
         return None
     return float(rows[0]["odds"])
+
+
+def final_exotic_dividend(conn: sqlite3.Connection, race_id: str, market: str, combination_key: str) -> float | None:
+    rows = fetch_all(
+        conn,
+        """
+        SELECT dividend
+        FROM exotic_dividends
+        WHERE race_id = ? AND market = ? AND combination_key = ?
+        ORDER BY CASE dividend_status WHEN 'final' THEN 0 WHEN 'probable' THEN 1 ELSE 2 END, updated_at DESC
+        LIMIT 1
+        """,
+        (race_id, market, combination_key),
+    )
+    if not rows:
+        return None
+    return float(rows[0]["dividend"])
+
+
+def exotic_outcome(market: str, selected: list[int], finish_by_no: dict[int, int]) -> bool:
+    if any(number not in finish_by_no for number in selected):
+        return False
+    finishes = [finish_by_no[number] for number in selected]
+    if market == "QIN":
+        return set(finishes) == {1, 2}
+    if market == "QPL":
+        return all(position <= 3 for position in finishes)
+    if market == "FCT":
+        return finishes == [1, 2]
+    if market == "TRIO":
+        return set(finishes) == {1, 2, 3}
+    if market == "TCE":
+        return finishes == [1, 2, 3]
+    if market == "FIRST4":
+        return set(finishes) == {1, 2, 3, 4}
+    if market == "QUARTET":
+        return finishes == [1, 2, 3, 4]
+    return False
+
+
+def parse_combination_key(value: str) -> list[int]:
+    normalized = value.replace(">", "+")
+    numbers = []
+    for part in normalized.split("+"):
+        if part.strip().isdigit():
+            numbers.append(int(part.strip()))
+    return numbers
 
 
 def ledger_summary(items: list[dict[str, Any]]) -> dict[str, Any]:

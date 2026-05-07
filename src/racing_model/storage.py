@@ -179,6 +179,20 @@ CREATE TABLE IF NOT EXISTS betting_recommendations (
   reconciled_at TEXT,
   reconciliation_status TEXT NOT NULL DEFAULT 'pending'
 );
+
+CREATE TABLE IF NOT EXISTS exotic_dividends (
+  race_id TEXT NOT NULL,
+  market TEXT NOT NULL,
+  combination_key TEXT NOT NULL,
+  combination TEXT NOT NULL DEFAULT '',
+  dividend REAL NOT NULL,
+  dividend_status TEXT NOT NULL DEFAULT 'probable',
+  source TEXT NOT NULL DEFAULT 'manual',
+  fetched_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  notes TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (race_id, market, combination_key, dividend_status, source)
+);
 """
 
 
@@ -193,6 +207,7 @@ TABLE_PRIMARY_KEYS = {
     "race_error_reviews": ["race_id", "review_key"],
     "model_registry_runs": ["run_id"],
     "betting_recommendations": ["recommendation_id"],
+    "exotic_dividends": ["race_id", "market", "combination_key", "dividend_status", "source"],
 }
 
 
@@ -366,6 +381,23 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
           slippage REAL,
           reconciled_at TEXT,
           reconciliation_status TEXT NOT NULL DEFAULT 'pending'
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS exotic_dividends (
+          race_id TEXT NOT NULL,
+          market TEXT NOT NULL,
+          combination_key TEXT NOT NULL,
+          combination TEXT NOT NULL DEFAULT '',
+          dividend REAL NOT NULL,
+          dividend_status TEXT NOT NULL DEFAULT 'probable',
+          source TEXT NOT NULL DEFAULT 'manual',
+          fetched_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          notes TEXT NOT NULL DEFAULT '',
+          PRIMARY KEY (race_id, market, combination_key, dividend_status, source)
         )
         """
     )

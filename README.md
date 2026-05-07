@@ -25,6 +25,7 @@ For handoff to another Codex session, read:
 - Preserves final live odds for resulted or in-running races.
 - Calculates win/place fair odds, edge, expected value, fractional Kelly, and risk-capped stake suggestions.
 - Builds exotic-pool candidates for quinella, quinella place, exacta, trio, tierce, first four, and quartet.
+- Imports probable/final/estimated exotic dividends and upgrades matching exotic candidates into EV-ranked tickets.
 - Saves active betting recommendations to a ledger and reconciles them against final odds/results for P/L, slippage, and CLV reference.
 - Stores out-of-sample model-registry runs with promotion-gate labels.
 - Includes a polite scraper framework for public pages, with rate limiting and raw snapshot storage.
@@ -66,6 +67,7 @@ Walk-forward model version comparison:
 racing-model walk-forward --epochs 80
 racing-model model-registry --run --epochs 80
 racing-model betting-ledger --reconcile
+racing-model import-exotic-dividends --race-id HK20260506-ST-01 --file data/import/exotic_dividends.csv --source manual --status probable
 ```
 
 Historical HKJC backfill and data quality checks:
@@ -190,4 +192,4 @@ Expected columns:
 2. Add official/probable exotic-pool dividend ingestion so exotic candidates can become real EV decisions.
 3. Add late market-flow features from final 5 minutes, 2 minutes, and 30 seconds.
 4. Add same-day track-bias learning after each completed race.
-5. Extend betting-ledger reconciliation to exotic pools after official/probable dividend ingestion.
+5. Add live HKJC probable-dividend provider/parser so exotic EV can update automatically before race time.

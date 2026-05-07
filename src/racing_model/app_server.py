@@ -26,6 +26,7 @@ from .config import display_database_target, get_settings
 from .coverage import build_coverage_report
 from .error_taxonomy import error_taxonomy_report
 from .evolution import evaluate_model_evolution, generate_codex_iteration, generate_openai_iteration
+from .exotic_dividends import exotic_dividend_report, load_exotic_dividend_lookup, upsert_exotic_dividends
 from .features import build_race_features
 from .live import load_hkjc_race_day, refresh_hkjc_results_if_available
 from .model import RankingModel
@@ -268,6 +269,9 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
                 bankroll = query_float(query, "bankroll", 10000.0)
                 risk = query.get("risk", ["standard"])[0] or "standard"
                 self.send_json(api_betting(conn, self.app_state.model(), race_id, bankroll, risk, self.app_state.model_path))
+            elif path == "/api/exotic-dividends":
+                race_id = required_query(query, "race_id")
+                self.send_json(exotic_dividend_report(conn, race_id))
             elif path == "/api/betting-ledger":
                 race_id = query.get("race_id", [None])[0]
                 self.send_json(betting_ledger_report(conn, race_id=race_id))
@@ -480,6 +484,13 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
                 result = reconcile_betting_ledger(conn, race_id=race_id)
                 result["ledger"] = betting_ledger_report(conn, race_id=race_id)
                 self.send_json(result)
+            elif path == "/api/exotic-dividends":
+                race_id = required_query(query, "race_id")
+                body = self.read_json_body()
+                rows = body.get("items", []) if isinstance(body, dict) else []
+                source = str(body.get("source", "manual")) if isinstance(body, dict) else "manual"
+                status = str(body.get("dividend_status", "probable")) if isinstance(body, dict) else "probable"
+                self.send_json(upsert_exotic_dividends(conn, race_id, rows, source=source, dividend_status=status))
             else:
                 self.send_error(404)
 
@@ -513,6 +524,13 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def read_json_body(self) -> object:
+        length = int(self.headers.get("Content-Length", "0") or "0")
+        if length <= 0:
+            return {}
+        body = self.rfile.read(length)
+        return json.loads(body.decode("utf-8"))
 
     def log_message(self, format: str, *args: object) -> None:
         return
@@ -621,7 +639,14 @@ def api_betting(
         return {"race": None, "tickets": [], "decisions": []}
     predictions = model.predict_race(build_race_features(conn, race_id))
     status = race_lifecycle_status(conn, race_id)
-    payload = build_betting_decisions(predictions, status, bankroll=bankroll, risk_profile=risk)
+    exotic_lookup = load_exotic_dividend_lookup(conn, race_id)
+    payload = build_betting_decisions(
+        predictions,
+        status,
+        bankroll=bankroll,
+        risk_profile=risk,
+        exotic_dividends=exotic_lookup,
+    )
     race = dict(race_rows[0])
     payload["race"] = race
     if model_path is not None:

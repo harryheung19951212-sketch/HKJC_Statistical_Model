@@ -76,6 +76,7 @@ def database_snapshot(conn: sqlite3.Connection) -> dict[str, int]:
         "race_status",
         "model_registry_runs",
         "betting_recommendations",
+        "exotic_dividends",
     ]
     snapshot: dict[str, int] = {}
     for table in tables:
@@ -424,12 +425,12 @@ def coverage_items() -> list[dict[str, Any]]:
             24,
             "blind_spot",
             "Exotic dividend prediction",
-            STATUS_EXTERNAL,
+            STATUS_PARTIAL,
             ["HKJC probable dividends", "final dividends", "pool size/tote data"],
-            ["src/racing_model/betting.py"],
-            "Break-even dividends are calculated for QIN/QPL/FCT/TRIO/TCE/FIRST4/QUARTET.",
-            "No official or estimated exotic dividend feed, so real EV cannot be calculated.",
-            "Ingest probable/final exotic dividends or train conservative dividend estimator.",
+            ["src/racing_model/betting.py", "src/racing_model/exotic_dividends.py", "src/racing_model/storage.py"],
+            "exotic_dividends can store probable/final/estimated dividends and turn matching exotic candidates into EV tickets.",
+            "Automatic HKJC probable-dividend ingestion and pool-size/tote depth are not yet implemented.",
+            "Add a live provider/parser for HKJC probable dividends and validate per-pool EV calibration.",
             "Very high: exotics are unusable for stake sizing without dividends.",
             "Validate EV calibration by pool before any real recommendations.",
             1,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import sys
 from pathlib import Path
@@ -18,6 +19,7 @@ from .betting_ledger import betting_ledger_report, reconcile_betting_ledger
 from .config import display_database_target, get_settings
 from .db_migrate import database_counts, migrate_sqlite_to_database
 from .evolution import evaluate_model_evolution, generate_codex_iteration, generate_openai_iteration
+from .exotic_dividends import exotic_dividend_report, upsert_exotic_dividends
 from .features import build_race_features, build_training_races
 from .gpt_report import generate_report
 from .html_report import export_race_report
@@ -92,6 +94,12 @@ def main() -> None:
     ledger_parser = sub.add_parser("betting-ledger")
     ledger_parser.add_argument("--race-id", default=None)
     ledger_parser.add_argument("--reconcile", action="store_true")
+
+    exotic_parser = sub.add_parser("import-exotic-dividends")
+    exotic_parser.add_argument("--race-id", required=True)
+    exotic_parser.add_argument("--file", required=True, help="CSV or JSON rows with market, combination, dividend.")
+    exotic_parser.add_argument("--source", default="manual")
+    exotic_parser.add_argument("--status", default="probable", choices=["probable", "final", "estimated"])
 
     quality_parser = sub.add_parser("data-quality")
 
@@ -180,7 +188,7 @@ def main() -> None:
         )
         return
 
-    if args.command in {"import-sample", "import-csv", "model-registry", "betting-ledger"}:
+    if args.command in {"import-sample", "import-csv", "model-registry", "betting-ledger", "import-exotic-dividends"}:
         init_db(settings.db_path)
 
     with connect(settings.db_path) as conn:
@@ -255,6 +263,17 @@ def main() -> None:
             else:
                 result = betting_ledger_report(conn, race_id=args.race_id)
             print(json.dumps(result, indent=2, ensure_ascii=False))
+        elif args.command == "import-exotic-dividends":
+            rows = load_structured_rows(Path(args.file))
+            result = upsert_exotic_dividends(
+                conn,
+                args.race_id,
+                rows,
+                source=args.source,
+                dividend_status=args.status,
+            )
+            result["report"] = exotic_dividend_report(conn, args.race_id)
+            print(json.dumps(result, indent=2, ensure_ascii=False))
         elif args.command == "data-quality":
             print(json.dumps(data_quality_report(conn), indent=2, ensure_ascii=False))
         elif args.command == "repair-data":
@@ -318,6 +337,18 @@ def import_directory(conn, directory: Path) -> dict[str, int]:
             imported[table] = import_csv(conn, table, path)
     conn.commit()
     return imported
+
+
+def load_structured_rows(path: Path) -> list[dict[str, object]]:
+    if not path.exists():
+        raise SystemExit(f"Import file not found: {path}")
+    if path.suffix.lower() == ".json":
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            data = data.get("items", [])
+        return list(data)
+    with path.open(newline="", encoding="utf-8-sig") as handle:
+        return list(csv.DictReader(handle))
 
 
 if __name__ == "__main__":
