@@ -30,3 +30,12 @@ def test_exotic_dividend_import_normalizes_ordering(tmp_path: Path) -> None:
     assert ("QPL", "1+2") in lookup
     assert ("FCT", "2>1") in lookup
     assert normalize_combination_key("QPL", "9/3") == "3+9"
+
+
+def test_exotic_dividend_lookup_handles_empty_race(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    with connect(db_path) as conn:
+        lookup = load_exotic_dividend_lookup(conn, "HK20260506-ST-02")
+
+    assert lookup == {}

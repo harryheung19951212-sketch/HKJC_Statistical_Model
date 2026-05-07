@@ -81,7 +81,7 @@ def exotic_dividend_lookup(rows: list[dict[str, Any]]) -> dict[tuple[str, str], 
 
 
 def load_exotic_dividend_lookup(conn: sqlite3.Connection, race_id: str) -> dict[tuple[str, str], dict[str, Any]]:
-    return exotic_dividend_report(conn, race_id)["by_key"]
+    return exotic_dividend_lookup(exotic_dividend_report(conn, race_id)["items"])
 
 
 def normalize_combination_key(market: str, value: object) -> str:
