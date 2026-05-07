@@ -133,6 +133,8 @@ async function refreshSelectedRace() {
   renderModelVersions(modelVersions);
   const quality = await api("/api/data-quality");
   renderDataQuality(quality);
+  const coverage = await api("/api/coverage");
+  renderCoverage(coverage);
   const history = await api(`/api/odds-history?race_id=${encodeURIComponent(selectedRaceId)}`);
   renderOddsHistory(history);
   const results = await api(`/api/results?race_id=${encodeURIComponent(selectedRaceId)}`);
@@ -534,6 +536,68 @@ function renderDataQuality(data) {
   `).join("");
 }
 
+async function refreshCoverage() {
+  const coverage = await api("/api/coverage");
+  renderCoverage(coverage);
+}
+
+function renderCoverage(data) {
+  const summary = data.summary || {};
+  const counts = summary.status_counts || {};
+  const database = summary.database || {};
+  $("coverage-objective").textContent = data.objective || "";
+  $("coverage-summary").innerHTML = `
+    <div><label>覆蓋分</label><strong>${formatPct(summary.coverage_score)}</strong></div>
+    <div><label>總項目</label><strong>${summary.total_groups || 0}</strong></div>
+    <div><label>主分析項</label><strong>${summary.core_groups || 0}</strong></div>
+    <div><label>額外盲點</label><strong>${summary.blind_spot_groups || 0}</strong></div>
+    <div><label>已完成</label><strong>${counts["已完成"] || 0}</strong></div>
+    <div><label>部分完成</label><strong>${counts["部分完成"] || 0}</strong></div>
+    <div><label>未完成</label><strong>${counts["未完成"] || 0}</strong></div>
+    <div><label>外部數據</label><strong>${counts["需要外部數據"] || 0}</strong></div>
+    <div><label>賽事資料</label><strong>${database.races || 0}</strong></div>
+    <div><label>馬匹資料</label><strong>${database.runners || 0}</strong></div>
+    <div><label>賽果資料</label><strong>${database.results || 0}</strong></div>
+    <div><label>賠率 ticks</label><strong>${database.odds_ticks || 0}</strong></div>
+  `;
+  $("coverage-priority").innerHTML = (data.priority_next_steps || []).map((item) => `
+    <div class="coverage-priority-card">
+      <div class="coverage-card-head">
+        <strong>${item.id}. ${item.name}</strong>
+        <span class="coverage-tag">${item.status}</span>
+      </div>
+      <p>${item.model_risk}</p>
+      <p><b>下一步</b>：${item.next_steps}</p>
+      <p><b>驗證</b>：${item.validation_gate}</p>
+    </div>
+  `).join("");
+  $("coverage-list").innerHTML = (data.items || []).map(renderCoverageCard).join("");
+}
+
+function renderCoverageCard(item) {
+  return `
+    <div class="coverage-card status-${item.status_key}">
+      <div class="coverage-card-head">
+        <strong>${item.id}. ${item.name}</strong>
+        <span class="coverage-tag">${item.status}</span>
+      </div>
+      <p>${item.current_support}</p>
+      <div class="coverage-meta">
+        <span><b>類別</b>：${item.category_label}</span>
+        <span><b>資料來源</b>：${listText(item.data_sources)}</span>
+        <span><b>支援檔案</b>：${listText(item.supported_files)}</span>
+        <span><b>缺口</b>：${item.gaps}</span>
+        <span><b>下一步</b>：${item.next_steps}</span>
+      </div>
+    </div>
+  `;
+}
+
+function listText(values) {
+  const items = values || [];
+  return items.length ? items.join(" / ") : "未接入";
+}
+
 async function repairData() {
   $("repair-message").textContent = "修復中...";
   const result = await api("/api/repair-data", { method: "POST" });
@@ -828,6 +892,7 @@ async function boot() {
   $("backfill-form").addEventListener("submit", loadBackfill);
   await loadState();
   await loadRaces();
+  await refreshCoverage();
   await refreshSelectedRace();
   countdown = intervalSeconds;
   setInterval(async () => {

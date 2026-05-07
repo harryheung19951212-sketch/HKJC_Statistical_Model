@@ -21,6 +21,7 @@ from .backfill import (
 )
 from .betting import build_betting_decisions
 from .config import get_settings
+from .coverage import build_coverage_report
 from .evolution import evaluate_model_evolution, generate_codex_iteration, generate_openai_iteration
 from .features import build_race_features
 from .live import load_hkjc_race_day, refresh_hkjc_results_if_available
@@ -239,6 +240,8 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(api_lifecycle(conn, self.app_state))
             elif path == "/api/data-quality":
                 self.send_json(data_quality_report(conn))
+            elif path == "/api/coverage":
+                self.send_json(build_coverage_report(conn))
             elif path == "/api/odds-history":
                 race_id = required_query(query, "race_id")
                 self.send_json(odds_history(conn, race_id))

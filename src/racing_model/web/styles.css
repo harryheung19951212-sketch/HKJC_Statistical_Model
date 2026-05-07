@@ -299,6 +299,7 @@ h2 {
 .betting-panel,
 .history-panel,
 .results-panel,
+.coverage-panel,
 .analytics-panel {
   grid-column: 1 / -1;
 }
@@ -575,16 +576,19 @@ h2 {
   font-size: 12px;
 }
 
-.analytics-summary {
+.analytics-summary,
+.coverage-summary-head {
   cursor: pointer;
   list-style: none;
 }
 
-.analytics-summary::-webkit-details-marker {
+.analytics-summary::-webkit-details-marker,
+.coverage-summary-head::-webkit-details-marker {
   display: none;
 }
 
-.analytics-summary::after {
+.analytics-summary::after,
+.coverage-summary-head::after {
   content: "+";
   width: 28px;
   height: 28px;
@@ -600,8 +604,132 @@ h2 {
   content: "-";
 }
 
-.analytics-panel:not([open]) .analytics-summary {
+.coverage-panel[open] .coverage-summary-head::after {
+  content: "-";
+}
+
+.analytics-panel:not([open]) .analytics-summary,
+.coverage-panel:not([open]) .coverage-summary-head {
   border-bottom: 0;
+}
+
+.coverage-content {
+  padding: 14px 16px;
+}
+
+.coverage-summary {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0 14px;
+}
+
+.coverage-summary div {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  background: #fbfcfd;
+}
+
+.coverage-summary label,
+.coverage-card label,
+.coverage-priority-card label {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.coverage-summary strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 18px;
+}
+
+.coverage-layout {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.coverage-layout h4 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.coverage-priority,
+.coverage-list {
+  display: grid;
+  gap: 10px;
+}
+
+.coverage-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.coverage-card,
+.coverage-priority-card {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  background: #fbfcfd;
+}
+
+.coverage-card.status-done {
+  border-color: #9ed8c7;
+  background: #f5fbf8;
+}
+
+.coverage-card.status-partial {
+  border-color: #c8d8ee;
+  background: #f7faff;
+}
+
+.coverage-card.status-missing,
+.coverage-card.status-external,
+.coverage-priority-card {
+  border-color: #efc8be;
+  background: #fff8f6;
+}
+
+.coverage-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.coverage-card strong,
+.coverage-priority-card strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.coverage-tag {
+  flex: 0 0 auto;
+  border-radius: 6px;
+  padding: 4px 7px;
+  background: #edf2f7;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.coverage-card p,
+.coverage-priority-card p {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.coverage-meta {
+  display: grid;
+  gap: 5px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .analytics-content {
@@ -1062,11 +1190,15 @@ td:nth-child(4), th:nth-child(4) {
   .odds-panel,
   .results-panel,
   .history-panel,
+  .coverage-panel,
   .analytics-panel {
     grid-column: 1;
     grid-row: auto;
   }
   .analytics-content { grid-template-columns: 1fr; }
+  .coverage-layout { grid-template-columns: 1fr; }
+  .coverage-list { grid-template-columns: 1fr; }
+  .coverage-summary { grid-template-columns: repeat(2, 1fr); }
   .analytics-content .subpanel:nth-child(2n) { border-left: 0; }
   .analytics-panel .stat-list { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
   .version-grid { grid-template-columns: 1fr; }
@@ -1088,6 +1220,7 @@ td:nth-child(4), th:nth-child(4) {
 @media (max-width: 560px) {
   .analytics-panel .stat-list,
   .quality-grid,
+  .coverage-summary,
   .betting-summary,
   .ticket-metrics {
     grid-template-columns: 1fr;
