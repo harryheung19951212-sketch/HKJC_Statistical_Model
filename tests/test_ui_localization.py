@@ -31,6 +31,13 @@ def test_sidebar_ingestion_forms_are_collapsible() -> None:
     assert "<summary><span>歷史回填</span><b>日期範圍 / 重訓</b></summary>" in html
 
 
+def test_manual_lifecycle_button_is_named_global_update() -> None:
+    html = (ROOT / "src/racing_model/web/index.html").read_text(encoding="utf-8")
+
+    assert '<button id="lifecycle-step" type="button">全域更新</button>' in html
+    assert "流程一步" not in html
+
+
 def test_predictions_and_betting_payloads_prefer_chinese_names(tmp_path: Path) -> None:
     db_path = tmp_path / "racing.db"
     init_db(db_path)
