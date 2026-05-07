@@ -16,6 +16,7 @@ Changes:
   - `ability` when pure-ability track leads.
   - `market_blend` when market-fusion track leads.
 - In `market_blend`, model probabilities are blended with normalized HKJC implied probabilities, then EV and value gaps are recalculated.
+- Cold dashboard requests now use a fast policy default and refresh the formal dual-track policy in a background thread, so policy calibration does not block the race page.
 - Added `/api/race-dashboard` to return race state, race list, predictions, betting, ledger, feed health, model comparison, odds history, results, and weather in one response.
 - Added `/api/analytics-dashboard` for the analytics view so the frontend no longer chains many sequential API calls.
 - Dashboard betting now returns fast WIN/PLACE decisions first and defers heavier exotic/all-pool calculation to a background frontend refresh.
@@ -29,7 +30,7 @@ Verification:
 - `python -m compileall -q src dashboard tests`
 - `node --check src\racing_model\web\app.js`
 - Direct execution of adaptive and pool-replay test functions because local Python does not have `pytest` installed.
-- Local smoke: warm-cache `/api/race-dashboard` returned the selected race in about `179ms`, with `mode=market_blend`, `exotics_deferred=true`, and `odds_feed.deferred=true`.
+- Local smoke: cold `/api/race-dashboard` returned in about `1947ms` with `verdict=fast_market_default`; warm-cache returned in about `174ms` with `verdict=market_leads`.
 - Local smoke: `/api/analytics-dashboard` returned successfully; analytics remains intentionally lazy-loaded.
 
 ## 2026-05-07 - Pool-Specific Replay Settlement Report

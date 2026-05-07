@@ -73,7 +73,7 @@ class AppState:
         self.active_race_seen_at = 0.0
         self.active_race_ttl_seconds = max(90, odds_interval_seconds * 3)
         self.active_race_lock = threading.Lock()
-        self.policy_cache: dict[str, object] = {"expires_at": 0.0, "policy": None}
+        self.policy_cache: dict[str, object] = {"expires_at": 0.0, "policy": None, "refreshing": False}
         self.policy_lock = threading.Lock()
 
     def model(self) -> RankingModel:
@@ -87,10 +87,21 @@ class AppState:
             cached = self.policy_cache.get("policy")
             if cached and now < float(self.policy_cache.get("expires_at") or 0):
                 return dict(cached)
-        policy = adaptive_prediction_policy(conn, model)
+            if not self.policy_cache.get("refreshing"):
+                self.policy_cache["refreshing"] = True
+                threading.Thread(target=self.refresh_prediction_policy_cache, daemon=True).start()
+        return fast_prediction_policy(conn)
+
+    def refresh_prediction_policy_cache(self) -> None:
+        try:
+            with connect(self.settings.db_path) as conn:
+                policy = adaptive_prediction_policy(conn, self.model())
+        except Exception:
+            policy = None
         with self.policy_lock:
-            self.policy_cache = {"expires_at": now + 300.0, "policy": dict(policy)}
-        return policy
+            self.policy_cache["refreshing"] = False
+            if policy:
+                self.policy_cache = {"expires_at": time.monotonic() + 300.0, "policy": dict(policy), "refreshing": False}
 
     def focus_race(self, race_id: str, now: float | None = None) -> dict[str, object]:
         timestamp = time.monotonic() if now is None else now
@@ -711,6 +722,37 @@ def api_state(conn, state: AppState) -> dict[str, object]:
         "current_race_id": state.active_race() or current_race_id(conn),
         "active_race_id": state.active_race(),
         "active_race_expires_in_seconds": state.active_race_expires_in(),
+    }
+
+
+def fast_prediction_policy(conn) -> dict[str, object]:
+    rows = fetch_all(
+        conn,
+        """
+        SELECT count(DISTINCT race_id) AS n
+        FROM results
+        WHERE finish_position = 1
+        """,
+    )
+    races = int(rows[0]["n"] or 0) if rows else 0
+    if races >= 5:
+        return {
+            "mode": "market_blend",
+            "market_blend_weight": 0.35,
+            "reason": "快速載入策略：先用市場融合加權，正式雙軌回測在背景更新。",
+            "races": races,
+            "ability_win_rate": None,
+            "market_win_rate": None,
+            "verdict": "fast_market_default",
+        }
+    return {
+        "mode": "baseline",
+        "market_blend_weight": 0.0,
+        "reason": "快速載入策略：樣本不足，先用基礎模型，正式雙軌回測在背景更新。",
+        "races": races,
+        "ability_win_rate": None,
+        "market_win_rate": None,
+        "verdict": "fast_baseline_default",
     }
 
 
