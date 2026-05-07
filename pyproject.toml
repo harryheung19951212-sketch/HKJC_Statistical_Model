@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "racing-model"
+version = "0.1.0"
+description = "Horse racing data, modelling, backtesting, and GPT-assisted analysis toolkit."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dashboard = ["streamlit>=1.35", "plotly>=5.22"]
+gpt = ["openai>=1.0", "python-dotenv>=1.0"]
+scraper = []
+live = ["paho-mqtt>=2.1"]
+all = [
+  "paho-mqtt>=2.1",
+  "python-dotenv>=1.0",
+  "openai>=1.0",
+  "streamlit>=1.35",
+  "plotly>=5.22"
+]
+
+[project.scripts]
+racing-model = "racing_model.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

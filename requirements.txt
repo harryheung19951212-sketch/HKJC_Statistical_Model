@@ -1,0 +1,7 @@
+# Core CLI/model/backtest has no third-party runtime dependency.
+# Install optional extras as needed:
+#   pip install -e ".[scraper]"
+#   pip install -e ".[live]"
+#   pip install -e ".[gpt]"
+#   pip install -e ".[dashboard]"
+#   pip install -e ".[all]"

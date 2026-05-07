@@ -1,0 +1,1115 @@
+:root {
+  --bg: #f3f5f7;
+  --side: #17202c;
+  --side-soft: #222d3b;
+  --panel: #ffffff;
+  --ink: #17202c;
+  --muted: #607086;
+  --line: #d9dee7;
+  --green: #0f7a5b;
+  --red: #a23b2a;
+  --blue: #1f5d9b;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  font-family: Arial, "Microsoft JhengHei", sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+}
+
+aside {
+  background: var(--side);
+  color: #fff;
+  min-height: 100vh;
+  padding: 20px;
+}
+
+.brand h1 {
+  margin: 0 0 6px;
+  font-size: 24px;
+  letter-spacing: 0;
+}
+
+.brand p {
+  margin: 0 0 18px;
+  color: #b9c4d2;
+  font-size: 13px;
+}
+
+.toolbar {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.lifecycle-actions {
+  margin-top: -6px;
+}
+
+.lifecycle-box {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.lifecycle-box div {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: var(--side-soft);
+}
+
+.lifecycle-box label {
+  display: block;
+  margin-bottom: 3px;
+  color: #b9c4d2;
+  font-size: 11px;
+}
+
+.lifecycle-box strong {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.race-day-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 12px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 6px;
+  background: var(--side-soft);
+}
+
+.race-day-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: #b9c4d2;
+  font-size: 12px;
+}
+
+.race-day-form label:first-child {
+  grid-column: span 2;
+}
+
+.race-day-form input,
+.race-day-form select {
+  width: 100%;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 5px;
+  background: #101722;
+  color: #fff;
+  padding: 9px 10px;
+  font: inherit;
+}
+
+.race-day-form button,
+.race-day-form p {
+  grid-column: span 2;
+}
+
+.race-day-form p {
+  margin: 0;
+  min-height: 16px;
+  color: #b9c4d2;
+  font-size: 12px;
+}
+
+button {
+  border: 0;
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: #edf2f7;
+  color: var(--ink);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+button:hover { background: #dfe8f2; }
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+button:disabled:hover { background: #edf2f7; }
+
+.small-button {
+  padding: 7px 10px;
+  font-size: 12px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+  min-width: 0;
+}
+
+tr.clickable {
+  cursor: pointer;
+}
+
+tr.clickable:hover {
+  background: #f4f8fb;
+}
+
+tr.selected {
+  background: #edf6f2;
+}
+
+nav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.race-item {
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 6px;
+  background: var(--side-soft);
+  color: #fff;
+  padding: 12px;
+  text-align: left;
+}
+
+.race-item.active {
+  outline: 2px solid #8fc7ff;
+}
+
+.race-item strong {
+  display: block;
+  font-size: 14px;
+}
+
+.race-item span {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #b9c4d2;
+}
+
+main { padding: 24px; min-width: 0; }
+
+.race-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: flex-start;
+  margin-bottom: 18px;
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  color: var(--blue);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 12px;
+}
+
+h2 {
+  margin: 0 0 6px;
+  font-size: 28px;
+  letter-spacing: 0;
+}
+
+#race-meta {
+  margin: 0;
+  color: var(--muted);
+}
+
+#weather-status {
+  margin: 7px 0 0;
+  color: var(--green);
+  font-size: 13px;
+  font-weight: 700;
+  max-width: 860px;
+}
+
+#feed-status {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  max-width: 760px;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 96px);
+  gap: 10px;
+}
+
+.metrics div {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px;
+  text-align: center;
+}
+
+.metrics span {
+  display: block;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.metrics label {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 3px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 16px;
+  align-items: start;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.predictions-panel { grid-row: span 2; }
+
+.detail-panel,
+.odds-panel {
+  grid-column: 2;
+}
+
+.betting-panel,
+.history-panel,
+.results-panel,
+.analytics-panel {
+  grid-column: 1 / -1;
+}
+
+.betting-head {
+  align-items: flex-start;
+}
+
+.betting-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.betting-controls label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.betting-controls input,
+.betting-controls select {
+  width: 118px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 7px 8px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+}
+
+.betting-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.betting-summary div {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  background: #fbfcfd;
+}
+
+.betting-summary label,
+.ticket-metrics label {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.betting-summary strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 18px;
+}
+
+.betting-tickets {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px 16px;
+}
+
+.betting-empty {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.ticket {
+  display: grid;
+  grid-template-columns: minmax(170px, 1fr) minmax(300px, 1.8fr) 88px;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px;
+  background: #fbfcfd;
+  min-width: 0;
+}
+
+.ticket.bet {
+  border-color: #9ed8c7;
+  background: #f5fbf8;
+}
+
+.ticket.watch {
+  border-color: #c8d8ee;
+  background: #f7faff;
+}
+
+.ticket.review {
+  opacity: 0.82;
+}
+
+.ticket.avoid {
+  background: #fffafa;
+}
+
+.ticket-main,
+.ticket-metrics {
+  min-width: 0;
+}
+
+.ticket-main span {
+  display: inline-block;
+  margin-bottom: 5px;
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ticket-main strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.ticket-main small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.ticket-metrics {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.ticket-metrics strong {
+  display: block;
+  margin-top: 3px;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.ticket-action {
+  justify-self: end;
+  min-width: 74px;
+  border-radius: 6px;
+  padding: 8px 10px;
+  text-align: center;
+  background: #edf2f7;
+  font-weight: 800;
+}
+
+.exotic-section {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  min-width: 0;
+}
+
+.exotic-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.exotic-head span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.upgrade-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.upgrade-card,
+.exotic-card {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  background: #fbfcfd;
+  min-width: 0;
+}
+
+.upgrade-card {
+  border-color: #c8d8ee;
+  background: #f7faff;
+}
+
+.upgrade-card span,
+.upgrade-card small,
+.exotic-card small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.upgrade-card strong,
+.exotic-card strong {
+  display: block;
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+
+.exotic-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.exotic-card {
+  display: grid;
+  gap: 8px;
+}
+
+.exotic-card span {
+  display: inline-block;
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.exotic-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.exotic-metrics label {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.exotic-metrics b {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.panel-head {
+  min-height: 48px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.panel-subhead {
+  min-height: 42px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #fafbfc;
+}
+
+.panel-subhead h4 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.panel-subhead span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.analytics-summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.analytics-summary::-webkit-details-marker {
+  display: none;
+}
+
+.analytics-summary::after {
+  content: "+";
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--blue);
+  font-weight: 800;
+}
+
+.analytics-panel[open] .analytics-summary::after {
+  content: "-";
+}
+
+.analytics-panel:not([open]) .analytics-summary {
+  border-bottom: 0;
+}
+
+.analytics-content {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.analytics-content .subpanel {
+  min-width: 0;
+}
+
+.analytics-content .subpanel:nth-child(2n) {
+  border-left: 1px solid var(--line);
+}
+
+.subpanel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.subpanel-head h4 {
+  margin: 0;
+}
+
+h3 {
+  margin: 0;
+  font-size: 16px;
+  letter-spacing: 0;
+}
+
+.panel-head span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.table-wrap { overflow-x: auto; }
+
+table {
+  width: 100%;
+  min-width: 1250px;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 13px;
+}
+
+.results-table {
+  min-width: 1120px;
+}
+
+.results-table .winner {
+  background: #f7fbf7;
+}
+
+.results-table .placed {
+  background: #fbfcfd;
+}
+
+th, td {
+  padding: 11px 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+th {
+  color: var(--muted);
+  font-size: 12px;
+  background: #fafbfc;
+}
+
+th:nth-child(2), td:nth-child(2) { text-align: left; }
+td:first-child, th:first-child,
+td:nth-child(2), th:nth-child(2),
+td:nth-child(4), th:nth-child(4) {
+  width: 58px;
+  text-align: center;
+}
+
+.empty-cell {
+  text-align: center;
+  color: var(--muted);
+}
+
+.positive { color: var(--green); font-weight: 800; }
+.negative { color: var(--red); }
+
+.stat-list, .history {
+  padding: 14px 16px;
+}
+
+.odds-history-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.analytics-panel .stat-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 10px 14px;
+}
+
+.analytics-panel .stat {
+  display: block;
+  padding: 0;
+  border-bottom: 0;
+}
+
+.analytics-panel .stat label {
+  display: block;
+  font-size: 12px;
+}
+
+.analytics-panel .stat strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+
+.analytics-backtest .stat-list,
+.analytics-summary-panel .stat-list {
+  padding: 0;
+}
+
+.subpanel {
+  min-width: 0;
+  padding: 14px 16px;
+  border-top: 1px solid var(--line);
+}
+
+.subpanel h4 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.runner-detail {
+  padding: 14px 16px;
+}
+
+.runner-title {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.runner-subtitle {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.factor-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.factor {
+  display: grid;
+  grid-template-columns: 92px 1fr 70px;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.factor-bar {
+  height: 8px;
+  border-radius: 99px;
+  background: #e3e8ef;
+  overflow: hidden;
+}
+
+.factor-fill {
+  height: 100%;
+  border-radius: inherit;
+}
+
+.factor-fill.positive { background: var(--green); }
+.factor-fill.negative { background: var(--red); }
+
+.factor-value {
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.stat:last-child { border-bottom: 0; }
+.stat label { color: var(--muted); }
+.stat strong { font-size: 15px; }
+
+.calibration-list,
+.idea-list,
+.diagnostic-list,
+.version-grid,
+.issue-list {
+  display: grid;
+  gap: 10px;
+}
+
+.version-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.quality-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.quality-grid div {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  background: #fbfcfd;
+}
+
+.quality-grid label {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.quality-grid strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 18px;
+}
+
+.calibration-row {
+  display: grid;
+  gap: 5px;
+}
+
+.calibration-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.calibration-head span {
+  color: var(--muted);
+}
+
+.calibration-track {
+  height: 7px;
+  border-radius: 99px;
+  background: #e5eaf1;
+  overflow: hidden;
+}
+
+.calibration-track span {
+  display: block;
+  height: 100%;
+  background: var(--blue);
+}
+
+.calibration-track.observed span {
+  background: var(--green);
+}
+
+.idea,
+.diagnostic,
+.version-card {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  background: #fbfcfd;
+}
+
+.version-card.best {
+  border-color: #8fc7ff;
+  background: #f4f9ff;
+}
+
+.idea strong,
+.diagnostic strong,
+.version-card strong {
+  display: block;
+  margin-bottom: 5px;
+}
+
+.idea p,
+.diagnostic p,
+.version-card p {
+  margin: 3px 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.idea span,
+.diagnostic span,
+.quality-note,
+.version-card span {
+  margin: 0;
+  color: var(--blue);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.version-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.version-head span {
+  color: var(--muted);
+}
+
+.version-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 7px 10px;
+  margin: 10px 0;
+}
+
+.version-metrics label {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.version-metrics b {
+  display: block;
+  margin-top: 2px;
+  font-size: 14px;
+}
+
+.version-verdict {
+  display: block;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.issue {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 9px 10px;
+  background: #fbfcfd;
+  font-size: 13px;
+}
+
+.issue.warning,
+.issue.high {
+  border-color: #efc8be;
+  background: #fff8f6;
+}
+
+.issue span {
+  color: var(--muted);
+}
+
+.issue strong {
+  color: var(--ink);
+}
+
+.gpt-notes {
+  margin: 0;
+  min-height: 74px;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font: 13px/1.55 Arial, "Microsoft JhengHei", sans-serif;
+  color: var(--ink);
+}
+
+.history-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fbfcfd;
+  font-size: 13px;
+}
+
+.history-row span {
+  min-width: 0;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.history-row b {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.history-row strong { text-align: right; }
+
+.odds-chart {
+  display: block;
+  width: 100%;
+  height: 190px;
+  border-bottom: 1px solid var(--line);
+  background: #fbfcfd;
+}
+
+.odds-chart text {
+  font-size: 10px;
+  fill: var(--muted);
+}
+
+@media (max-width: 1280px) {
+  .betting-tickets {
+    grid-template-columns: 1fr;
+  }
+
+  .exotic-grid,
+  .upgrade-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .analytics-content {
+    grid-template-columns: 1fr;
+  }
+
+  .analytics-content .subpanel:nth-child(2n) {
+    border-left: 0;
+  }
+
+  .analytics-panel .stat-list {
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  }
+}
+
+@media (max-width: 980px) {
+  body { grid-template-columns: 1fr; }
+  aside { min-height: auto; }
+  .race-header { flex-direction: column; }
+  .metrics { grid-template-columns: repeat(3, 1fr); width: 100%; }
+  .grid { grid-template-columns: 1fr; }
+  .predictions-panel,
+  .betting-panel,
+  .detail-panel,
+  .odds-panel,
+  .results-panel,
+  .history-panel,
+  .analytics-panel {
+    grid-column: 1;
+    grid-row: auto;
+  }
+  .analytics-content { grid-template-columns: 1fr; }
+  .analytics-content .subpanel:nth-child(2n) { border-left: 0; }
+  .analytics-panel .stat-list { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
+  .version-grid { grid-template-columns: 1fr; }
+  .quality-grid { grid-template-columns: repeat(2, 1fr); }
+  .odds-history-grid { grid-template-columns: 1fr; }
+  .betting-summary { grid-template-columns: repeat(2, 1fr); }
+  .ticket {
+    grid-template-columns: 1fr;
+  }
+  .ticket-action {
+    justify-self: stretch;
+  }
+  .exotic-grid,
+  .upgrade-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .analytics-panel .stat-list,
+  .quality-grid,
+  .betting-summary,
+  .ticket-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .betting-controls {
+    justify-content: stretch;
+  }
+
+  .exotic-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .betting-controls label,
+  .betting-controls input,
+  .betting-controls select {
+    width: 100%;
+  }
+
+  .subpanel-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

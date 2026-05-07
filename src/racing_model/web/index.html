@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>賽馬模型操作台</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <aside>
+    <div class="brand">
+      <h1>賽馬操作台</h1>
+      <p id="system-status">載入中...</p>
+    </div>
+    <div class="toolbar">
+      <button id="refresh-now" type="button">刷新賠率</button>
+      <button id="refresh-results" type="button">更新賽果</button>
+      <button id="lifecycle-step" type="button">流程一步</button>
+    </div>
+    <div class="lifecycle-box">
+      <div>
+        <label>自動流程</label>
+        <strong id="lifecycle-mode">-</strong>
+      </div>
+      <div>
+        <label>更新場次</label>
+        <strong id="lifecycle-current">-</strong>
+      </div>
+      <div>
+        <label>凍結場次</label>
+        <strong id="lifecycle-frozen">-</strong>
+      </div>
+      <div>
+        <label>已完場</label>
+        <strong id="lifecycle-resulted">0</strong>
+      </div>
+    </div>
+    <div class="toolbar lifecycle-actions">
+      <button id="mark-live" type="button">凍結/開跑</button>
+      <button id="mark-scheduled" type="button">恢復刷新</button>
+    </div>
+    <form id="race-day-form" class="race-day-form">
+      <label>
+        賽日
+        <input id="race-date" type="text" value="2026/05/06" inputmode="numeric">
+      </label>
+      <label>
+        馬場
+        <select id="race-venue">
+          <option value="ST">沙田</option>
+          <option value="HV">跑馬地</option>
+        </select>
+      </label>
+      <label>
+        場數
+        <input id="race-count" type="number" value="10" min="1" max="12">
+      </label>
+      <button type="submit">載入賽日</button>
+      <p id="race-day-message"></p>
+    </form>
+    <form id="backfill-form" class="race-day-form">
+      <label>
+        回填開始
+        <input id="backfill-start" type="text" value="2026/05/06" inputmode="numeric">
+      </label>
+      <label>
+        回填結束
+        <input id="backfill-end" type="text" value="2026/05/06" inputmode="numeric">
+      </label>
+      <label>
+        馬場
+        <select id="backfill-venue">
+          <option value="ST">沙田</option>
+          <option value="HV">跑馬地</option>
+        </select>
+      </label>
+      <label>
+        每日場數
+        <input id="backfill-races" type="number" value="10" min="1" max="12">
+      </label>
+      <label>
+        訓練輪數
+        <input id="backfill-epochs" type="number" value="120" min="10" max="800">
+      </label>
+      <button type="submit">回填歷史</button>
+      <p id="backfill-message"></p>
+    </form>
+    <nav id="race-list" aria-label="場次列表"></nav>
+  </aside>
+
+  <main>
+    <section class="race-header">
+      <div>
+        <p class="eyebrow" id="race-status">-</p>
+        <h2 id="race-title">請選擇場次</h2>
+        <p id="race-meta"></p>
+        <p id="weather-status"></p>
+        <p id="feed-status"></p>
+      </div>
+      <div class="metrics">
+        <div><span id="runner-count">0</span><label>馬匹</label></div>
+        <div><span id="odds-count">0</span><label>賠率記錄</label></div>
+        <div><span id="countdown">30</span><label>下次刷新</label></div>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="panel betting-panel">
+        <div class="panel-head betting-head">
+          <h3>即場投注建議</h3>
+          <div class="betting-controls">
+            <label>
+              本金
+              <input id="bankroll-input" type="number" value="10000" min="0" step="100">
+            </label>
+            <label>
+              風險
+              <select id="risk-profile">
+                <option value="standard">標準</option>
+                <option value="conservative">保守</option>
+                <option value="aggressive">進取</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div id="betting-summary" class="betting-summary"></div>
+        <div id="betting-tickets" class="betting-tickets"></div>
+      </div>
+
+      <div class="panel predictions-panel">
+        <div class="panel-head">
+          <h3>本場預測</h3>
+          <span id="last-refresh">-</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>排名</th>
+                <th>馬號</th>
+                <th>馬匹</th>
+                <th>檔位</th>
+                <th>騎師</th>
+                <th>練馬師</th>
+                <th>獨贏勝率</th>
+                <th>入三甲</th>
+                <th>獨贏賠率</th>
+                <th>獨贏市場</th>
+                <th>獨贏EV</th>
+                <th>獨贏差</th>
+                <th>位置賠率</th>
+                <th>位置EV</th>
+                <th>位置差</th>
+              </tr>
+            </thead>
+            <tbody id="prediction-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel detail-panel">
+        <div class="panel-head">
+          <h3>馬匹詳情</h3>
+        </div>
+        <div id="runner-detail" class="runner-detail"></div>
+      </div>
+
+      <div class="panel odds-panel">
+        <div class="panel-head">
+          <h3>賠率走勢</h3>
+          <span id="feed-source">-</span>
+        </div>
+        <svg id="odds-chart" class="odds-chart" viewBox="0 0 360 190" role="img" aria-label="賠率走勢圖"></svg>
+      </div>
+
+      <div class="panel results-panel">
+        <div class="panel-head">
+          <h3>賽果對照</h3>
+          <span id="results-summary">-</span>
+        </div>
+        <div class="table-wrap">
+          <table class="results-table">
+            <thead>
+              <tr>
+                <th>名次</th>
+                <th>馬號</th>
+                <th>馬匹</th>
+                <th>檔位</th>
+                <th>騎師</th>
+                <th>練馬師</th>
+                <th>完成時間</th>
+                <th>負距</th>
+                <th>獨贏賠率</th>
+                <th>位置派彩</th>
+                <th>模型排名</th>
+                <th>獨贏勝率</th>
+                <th>三甲機率</th>
+              </tr>
+            </thead>
+            <tbody id="results-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel history-panel">
+        <div class="panel-head">
+          <h3>歷史賠率數據</h3>
+          <span>最新記錄</span>
+        </div>
+        <div id="odds-history" class="history odds-history-grid"></div>
+      </div>
+
+      <details class="panel analytics-panel">
+        <summary class="panel-head analytics-summary">
+          <h3>回測 / AI 迭代中心</h3>
+          <span>開合</span>
+        </summary>
+        <div class="analytics-content">
+          <div class="subpanel analytics-backtest">
+            <h4>回測</h4>
+            <div id="backtest" class="stat-list"></div>
+          </div>
+          <div class="subpanel analytics-summary-panel">
+            <div class="subpanel-head">
+              <h4>AI 迭代中心</h4>
+              <button id="run-gpt-iteration" type="button" class="small-button">Codex 分析</button>
+            </div>
+            <div id="evolution-summary" class="stat-list"></div>
+          </div>
+          <div class="subpanel">
+            <h4>歷史資料回填中心</h4>
+            <div class="action-row">
+              <button id="repair-data" type="button" class="small-button">修復資料對齊</button>
+              <button id="complete-runners" type="button" class="small-button">補完中文/欄位</button>
+            </div>
+            <p id="repair-message" class="quality-note"></p>
+            <p id="completion-message" class="quality-note"></p>
+            <div id="data-quality" class="quality-grid"></div>
+            <div id="quality-issues" class="issue-list"></div>
+          </div>
+          <div class="subpanel">
+            <h4>模型版本中心</h4>
+            <p id="version-recommendation" class="quality-note">載入中...</p>
+            <div id="model-versions" class="version-grid"></div>
+          </div>
+          <div class="subpanel">
+            <h4>勝率校準</h4>
+            <div id="calibration-bins" class="calibration-list"></div>
+          </div>
+          <div class="subpanel">
+            <h4>下一輪實驗建議</h4>
+            <div id="evolution-ideas" class="idea-list"></div>
+          </div>
+          <div class="subpanel">
+            <h4>錯誤診斷</h4>
+            <div id="race-diagnostics" class="diagnostic-list"></div>
+          </div>
+          <div class="subpanel">
+            <h4>Codex 研究備忘</h4>
+            <pre id="gpt-iteration-notes" class="gpt-notes">未執行</pre>
+          </div>
+        </div>
+      </details>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+venv/
+.env
+data/*.db
+data/raw/
+data/hkjc/
+reports/
+models/*.json
+.streamlit/secrets.toml
