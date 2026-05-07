@@ -2,6 +2,23 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-08 - GitHub Sync And Production Redeploy
+
+Goal:
+
+- Confirm the latest performance-optimized racing model build is recorded, uploaded to GitHub, and redeployed to production for cross-device continuation.
+
+Status:
+
+- Local branch: `codex/horse-racing-model`.
+- Base optimized commit before this handoff: `2b4086c`.
+- Worktree was clean before adding this handoff note.
+- The latest optimized build includes adaptive prediction policy, fast race dashboard loading, deferred betting/exotic/feed/secondary panels, improved table readability, and analytics dashboard consolidation.
+
+Deployment note:
+
+- This entry exists so another Codex instance can see that the optimized build was explicitly checked, synced, and redeployed after the May 7 optimization pass.
+
 ## 2026-05-07 - System Performance And Prediction Optimization Pass
 
 Goal:
