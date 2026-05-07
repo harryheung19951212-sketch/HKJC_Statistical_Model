@@ -2,6 +2,27 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-07 - Pool-Specific Replay Settlement Report
+
+Goal:
+
+- Compare HKJC betting pools by actual settled performance instead of looking only at individual tickets.
+
+Changes:
+
+- Added `src/racing_model/pool_replay.py`.
+- Added `/api/pool-replay` and `/api/pool-replay/reconcile`.
+- The report groups saved betting recommendations by WIN, PLACE, QIN, QPL, FCT, TRIO, TCE, FIRST4, and QUARTET.
+- Each pool now reports tickets, settlement rate, hit rate, ROI, profit, average expected value, cost-adjusted EV, average final dividend, average CLV, low-return hits, and max drawdown.
+- Added an analytics UI panel, `投注方法回測`, with a global settlement button and pool-level cards.
+- Added `tests/test_pool_replay.py`.
+
+Verification:
+
+- `python -m compileall -q src dashboard tests`
+- `node --check src\racing_model\web\app.js`
+- Direct execution of pool-replay test functions because local Python does not have `pytest` installed.
+
 ## 2026-05-07 - Dual Track Backtest Report
 
 Goal:

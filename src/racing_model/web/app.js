@@ -313,6 +313,8 @@ async function refreshModelReports(options = {}) {
   renderModelVersions(modelVersions);
   const registry = await api("/api/model-registry");
   renderModelRegistry(registry);
+  const poolReplay = await api("/api/pool-replay");
+  renderPoolReplay(poolReplay);
   const quality = await api("/api/data-quality");
   renderDataQuality(quality);
   if (includeCoverage) {
@@ -1050,6 +1052,65 @@ async function reconcileBettingLedger() {
   $("system-status").textContent = `投注留痕已對數：${result.updated || 0} 筆`;
 }
 
+function renderPoolReplay(data) {
+  const summary = data.summary || {};
+  $("pool-replay-summary").innerHTML = `
+    <div class="stat"><label>建議票數</label><strong>${summary.tickets || 0}</strong></div>
+    <div class="stat"><label>已結算</label><strong>${summary.reconciled || 0}</strong></div>
+    <div class="stat"><label>活躍玩法</label><strong>${summary.active_markets || 0}</strong></div>
+    <div class="stat"><label>整體 ROI</label><strong class="${evClass(summary.roi)}">${summary.roi === null || summary.roi === undefined ? "-" : formatPct(summary.roi)}</strong></div>
+    <div class="stat"><label>整體命中率</label><strong>${summary.hit_rate === null || summary.hit_rate === undefined ? "-" : formatPct(summary.hit_rate)}</strong></div>
+    <div class="stat"><label>最佳玩法</label><strong>${summary.best_market_label || "-"}</strong></div>
+  `;
+  $("pool-replay-note").textContent = summary.best_market_label
+    ? `${summary.best_market_label} 暫時 ROI ${formatPct(summary.best_market_roi)}，但仍要用更多賽日樣本確認。`
+    : "未有足夠已結算投注建議，暫時未能比較投注方法。";
+  const markets = data.markets || [];
+  $("pool-replay-markets").innerHTML = markets.map((row) => `
+    <div class="pool-card ${row.verdict || ""}">
+      <div class="version-head">
+        <strong>${row.market_label || row.market}</strong>
+        <span>${poolVerdictLabel(row.verdict)}</span>
+      </div>
+      <div class="version-metrics">
+        <div><label>票數</label><b>${row.tickets || 0}</b></div>
+        <div><label>已結算</label><b>${row.reconciled || 0}</b></div>
+        <div><label>命中率</label><b>${row.hit_rate === null || row.hit_rate === undefined ? "-" : formatPct(row.hit_rate)}</b></div>
+        <div><label>ROI</label><b class="${evClass(row.roi)}">${row.roi === null || row.roi === undefined ? "-" : formatPct(row.roi)}</b></div>
+        <div><label>盈虧</label><b class="${evClass(row.profit)}">${formatMoney(row.profit)}</b></div>
+        <div><label>最大回撤</label><b class="${evClass(row.max_drawdown)}">${formatMoney(row.max_drawdown)}</b></div>
+        <div><label>平均派彩</label><b>${formatNum(row.avg_final_dividend, 2)}</b></div>
+        <div><label>薄利命中</label><b>${row.low_return_hits || 0}</b></div>
+      </div>
+    </div>
+  `).join("");
+  const insights = data.insights || [];
+  $("pool-replay-insights").innerHTML = insights.map((row) => `
+    <div class="pool-insight ${row.level || ""}">
+      <strong>${row.title}</strong>
+      <p>${row.body}</p>
+    </div>
+  `).join("");
+}
+
+function poolVerdictLabel(value) {
+  return {
+    no_sample: "未有樣本",
+    pending: "待結算",
+    profitable: "暫時有利",
+    near_break_even: "接近打和",
+    losing: "暫時虧損",
+  }[value] || value || "-";
+}
+
+async function reconcilePoolReplay() {
+  $("system-status").textContent = "投注方法全局結算中...";
+  const result = await api("/api/pool-replay/reconcile", { method: "POST" });
+  renderPoolReplay(result.pool_replay || {});
+  const updated = result.updated || 0;
+  $("system-status").textContent = `投注方法回測已更新：${updated} 筆`;
+}
+
 function renderDataQuality(data) {
   const totals = data.totals || {};
   $("data-quality").innerHTML = `
@@ -1509,6 +1570,7 @@ async function boot() {
   $("run-gpt-iteration").addEventListener("click", runGptIteration);
   $("run-model-registry").addEventListener("click", runModelRegistry);
   $("reconcile-betting-ledger").addEventListener("click", reconcileBettingLedger);
+  $("reconcile-pool-replay").addEventListener("click", reconcilePoolReplay);
   $("repair-data").addEventListener("click", repairData);
   $("complete-runners").addEventListener("click", completeRunners);
   $("refresh-error-taxonomy").addEventListener("click", refreshErrorTaxonomy);

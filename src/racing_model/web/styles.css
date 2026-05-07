@@ -1315,6 +1315,59 @@ td:nth-child(4), th:nth-child(4) {
   font-size: 12px;
 }
 
+.pool-replay-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.pool-card {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  background: #fff;
+}
+
+.pool-card.profitable {
+  border-color: #9ed8c7;
+  background: #f5fbf8;
+}
+
+.pool-card.losing {
+  border-color: #efc8be;
+  background: #fff8f6;
+}
+
+.pool-card.pending,
+.pool-card.near_break_even {
+  border-color: #c8d8ee;
+  background: #f7faff;
+}
+
+.pool-insight-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.pool-insight {
+  border-left: 3px solid var(--blue);
+  background: #f8fafc;
+  padding: 9px 10px;
+}
+
+.pool-insight strong {
+  display: block;
+  font-size: 13px;
+}
+
+.pool-insight p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .registry-card.candidate {
   border-color: #9ed8c7;
   background: #f5fbf8;

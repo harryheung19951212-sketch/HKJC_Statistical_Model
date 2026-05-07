@@ -41,6 +41,7 @@ from .odds import (
     odds_history,
     refresh_odds,
 )
+from .pool_replay import pool_replay_report
 from .storage import (
     connect,
     fetch_all,
@@ -341,6 +342,9 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
             elif path == "/api/betting-ledger":
                 race_id = query.get("race_id", [None])[0]
                 self.send_json(betting_ledger_report(conn, race_id=race_id))
+            elif path == "/api/pool-replay":
+                race_id = query.get("race_id", [None])[0]
+                self.send_json(pool_replay_report(conn, race_id=race_id))
             else:
                 self.send_error(404)
 
@@ -599,6 +603,11 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
                 race_id = query.get("race_id", [None])[0]
                 result = reconcile_betting_ledger(conn, race_id=race_id)
                 result["ledger"] = betting_ledger_report(conn, race_id=race_id)
+                self.send_json(result)
+            elif path == "/api/pool-replay/reconcile":
+                race_id = query.get("race_id", [None])[0]
+                result = reconcile_betting_ledger(conn, race_id=race_id)
+                result["pool_replay"] = pool_replay_report(conn, race_id=race_id)
                 self.send_json(result)
             elif path == "/api/exotic-dividends":
                 race_id = required_query(query, "race_id")
