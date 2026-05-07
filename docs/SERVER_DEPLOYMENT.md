@@ -16,6 +16,7 @@ cd /opt/hkjc-model
 cp .env.production.example .env.production
 openssl rand -hex 24
 # Put the generated value into POSTGRES_PASSWORD in .env.production
+cp .env.production .env
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
