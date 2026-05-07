@@ -5,7 +5,7 @@ import sqlite3
 from dataclasses import dataclass
 from typing import Any
 
-from .features import FEATURE_NAMES, RunnerFeatures, build_race_features
+from .features import FEATURE_NAMES, LATE_MARKET_FLOW_FEATURES, RunnerFeatures, build_race_features
 from .model import RankingModel, softmax
 from .storage import fetch_all
 
@@ -20,25 +20,33 @@ class ModelVariant:
 
 
 def default_variants() -> list[ModelVariant]:
-    no_market = [name for name in FEATURE_NAMES if name != "market_implied"]
+    market_features = {"market_implied", *LATE_MARKET_FLOW_FEATURES}
+    no_market = [name for name in FEATURE_NAMES if name not in market_features]
+    no_late_flow = [name for name in FEATURE_NAMES if name not in set(LATE_MARKET_FLOW_FEATURES)]
     return [
         ModelVariant(
             "baseline",
             "Baseline",
-            "現有全特徵模型，包含市場賠率機率。",
+            "現有全特徵模型，包含市場賠率機率及臨場賠率流。",
             list(FEATURE_NAMES),
+        ),
+        ModelVariant(
+            "no_late_flow",
+            "No Late Flow",
+            "保留市場機率，但移除最後 5/2/0.5 分鐘賠率流，用來驗證 late-flow 是否真有提升。",
+            no_late_flow,
         ),
         ModelVariant(
             "no_market",
             "No Market",
-            "移除賠率特徵，只測試賽事本身因素有冇預測力。",
+            "移除市場賠率及 late-flow 特徵，只測試賽事本身因素有冇預測力。",
             no_market,
         ),
         ModelVariant(
             "market_only",
             "Market Only",
-            "只用市場機率，作為必須打贏嘅基線。",
-            ["market_implied"],
+            "只用市場機率及臨場賠率流，作為必須打贏嘅市場基線。",
+            ["market_implied", *LATE_MARKET_FLOW_FEATURES],
         ),
         ModelVariant(
             "conservative_calibrated",

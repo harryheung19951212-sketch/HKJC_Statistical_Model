@@ -34,6 +34,12 @@ function formatNum(value, digits = 2) {
   return Number(value).toFixed(digits);
 }
 
+function formatSigned(value, digits = 3) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  return `${number > 0 ? "+" : ""}${number.toFixed(digits)}`;
+}
+
 function evClass(value) {
   return Number(value) > 0 ? "positive" : "negative";
 }
@@ -400,6 +406,10 @@ function renderRunnerDetail(row) {
     <div class="stat"><label>\u4f4d\u7f6e\u5e02\u5834</label><strong>${formatPct(row.place_market_probability)}</strong></div>
     <div class="stat"><label>\u4f4d\u7f6eEV</label><strong class="${evClass(row.top3_expected_value)}">${row.top3_expected_value === null ? "-" : Number(row.top3_expected_value).toFixed(3)}</strong></div>
     <div class="stat"><label>\u4f4d\u7f6e\u50f9\u503c\u5dee</label><strong class="${evClass(row.top3_value_gap)}">${formatPct(row.top3_value_gap)}</strong></div>
+    <div class="stat"><label>5分鐘賠率流</label><strong class="${evClass(row.odds_delta_5m)}">${formatSigned(row.odds_delta_5m)}</strong></div>
+    <div class="stat"><label>2分鐘賠率流</label><strong class="${evClass(row.odds_delta_2m)}">${formatSigned(row.odds_delta_2m)}</strong></div>
+    <div class="stat"><label>30秒賠率流</label><strong class="${evClass(row.odds_delta_30s)}">${formatSigned(row.odds_delta_30s)}</strong></div>
+    <div class="stat"><label>熱捧/轉冷</label><strong>${formatSigned(row.late_steam)} / ${formatSigned(row.late_drift)}</strong></div>
     <div class="factor-list">
       ${renderFactorSection("\u6b63\u9762\u56e0\u7d20", explanation.positive || [], "positive")}
       ${renderFactorSection("\u8ca0\u9762\u56e0\u7d20", explanation.negative || [], "negative")}

@@ -4,7 +4,7 @@ import math
 import sqlite3
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date
+from datetime import datetime
 from typing import Any
 
 from .storage import fetch_all, latest_odds_by_race
@@ -25,6 +25,19 @@ FEATURE_NAMES = [
     "workout_score",
     "pace_pressure",
     "market_implied",
+    "odds_delta_5m",
+    "odds_delta_2m",
+    "odds_delta_30s",
+    "late_steam",
+    "late_drift",
+]
+
+LATE_MARKET_FLOW_FEATURES = [
+    "odds_delta_5m",
+    "odds_delta_2m",
+    "odds_delta_30s",
+    "late_steam",
+    "late_drift",
 ]
 
 
@@ -61,6 +74,7 @@ def build_race_features(conn: sqlite3.Connection, race_id: str) -> list[RunnerFe
         for row in fetch_all(conn, "SELECT * FROM results WHERE race_id = ?", (race_id,))
     }
     all_runner_count = max(len(runners), 1)
+    late_flow = late_market_flow(conn, race_id)
 
     output: list[RunnerFeatures] = []
     for runner in runners:
@@ -85,6 +99,11 @@ def build_race_features(conn: sqlite3.Connection, race_id: str) -> list[RunnerFe
             "workout_score": workout_score(conn, horse_id, race_row["date"]),
             "pace_pressure": pace_pressure(runner["running_style"], runners),
             "market_implied": implied_probability(latest_win_odds),
+            "odds_delta_5m": late_flow.get(horse_id, {}).get("odds_delta_5m", 0.0),
+            "odds_delta_2m": late_flow.get(horse_id, {}).get("odds_delta_2m", 0.0),
+            "odds_delta_30s": late_flow.get(horse_id, {}).get("odds_delta_30s", 0.0),
+            "late_steam": late_flow.get(horse_id, {}).get("late_steam", 0.0),
+            "late_drift": late_flow.get(horse_id, {}).get("late_drift", 0.0),
         }
         result = results.get(horse_id)
         output.append(
@@ -265,6 +284,105 @@ def implied_probability(odds: float | None) -> float:
     if not odds or odds <= 1:
         return 0.0
     return 1.0 / odds
+
+
+def late_market_flow(conn: sqlite3.Connection, race_id: str) -> dict[str, dict[str, float]]:
+    rows = fetch_all(
+        conn,
+        """
+        SELECT horse_id, timestamp, win_odds, source
+        FROM odds_ticks
+        WHERE race_id = ?
+          AND source != 'hkjc_results_final'
+          AND win_odds > 1
+        ORDER BY timestamp
+        """,
+        (race_id,),
+    )
+    parsed_rows = []
+    for row in rows:
+        timestamp = parse_timestamp(row["timestamp"])
+        if timestamp is None:
+            continue
+        parsed_rows.append(
+            {
+                "horse_id": str(row["horse_id"]),
+                "timestamp": timestamp,
+                "win_odds": float(row["win_odds"]),
+            }
+        )
+    if not parsed_rows:
+        return {}
+    reference_time = max(row["timestamp"] for row in parsed_rows)
+    by_horse: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in parsed_rows:
+        if row["timestamp"] <= reference_time:
+            by_horse[str(row["horse_id"])].append(row)
+
+    output: dict[str, dict[str, float]] = {}
+    for horse_id, horse_rows in by_horse.items():
+        horse_rows.sort(key=lambda row: row["timestamp"])
+        latest = latest_row_at_or_before(horse_rows, reference_time)
+        if latest is None:
+            continue
+        deltas = {
+            "odds_delta_5m": odds_delta_for_window(horse_rows, latest, 300.0),
+            "odds_delta_2m": odds_delta_for_window(horse_rows, latest, 120.0),
+            "odds_delta_30s": odds_delta_for_window(horse_rows, latest, 30.0),
+        }
+        positive = [max(value, 0.0) for value in deltas.values()]
+        negative = [min(value, 0.0) for value in deltas.values()]
+        output[horse_id] = {
+            **deltas,
+            "late_steam": sum(positive) / len(positive),
+            "late_drift": sum(negative) / len(negative),
+        }
+    return output
+
+
+def odds_delta_for_window(
+    rows: list[dict[str, Any]],
+    latest: dict[str, Any],
+    seconds: float,
+) -> float:
+    cutoff = float(latest["timestamp"]) - seconds
+    baseline = first_row_at_or_after(rows, cutoff)
+    if baseline is None or baseline is latest:
+        return 0.0
+    baseline_odds = float(baseline["win_odds"])
+    latest_odds = float(latest["win_odds"])
+    if baseline_odds <= 1 or latest_odds <= 1:
+        return 0.0
+    return math.log(baseline_odds / latest_odds)
+
+
+def latest_row_at_or_before(rows: list[dict[str, Any]], timestamp: float) -> dict[str, Any] | None:
+    candidate = None
+    for row in rows:
+        if float(row["timestamp"]) <= timestamp:
+            candidate = row
+        else:
+            break
+    return candidate
+
+
+def first_row_at_or_after(rows: list[dict[str, Any]], timestamp: float) -> dict[str, Any] | None:
+    for row in rows:
+        if float(row["timestamp"]) >= timestamp:
+            return row
+    return None
+
+
+def parse_timestamp(value: object) -> float | None:
+    if not value:
+        return None
+    text = str(value).strip()
+    if text.endswith("Z"):
+        text = f"{text[:-1]}+00:00"
+    try:
+        return datetime.fromisoformat(text).timestamp()
+    except ValueError:
+        return None
 
 
 def normalize_going(going: str) -> str:

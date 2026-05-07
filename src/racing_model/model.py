@@ -23,6 +23,11 @@ FEATURE_LABELS_ZH = {
     "workout_score": "操練分",
     "pace_pressure": "步速形勢",
     "market_implied": "市場機率",
+    "odds_delta_5m": "5分鐘賠率流",
+    "odds_delta_2m": "2分鐘賠率流",
+    "odds_delta_30s": "30秒賠率流",
+    "late_steam": "臨場熱捧",
+    "late_drift": "臨場轉冷",
 }
 
 
@@ -139,6 +144,11 @@ class RankingModel:
                     "place_odds": place_odds,
                     "place_odds_source": place_odds_source,
                     "market_probability": market_probability,
+                    "odds_delta_5m": runner.features.get("odds_delta_5m", 0.0),
+                    "odds_delta_2m": runner.features.get("odds_delta_2m", 0.0),
+                    "odds_delta_30s": runner.features.get("odds_delta_30s", 0.0),
+                    "late_steam": runner.features.get("late_steam", 0.0),
+                    "late_drift": runner.features.get("late_drift", 0.0),
                     "place_market_probability": place_market_probability,
                     "value_gap": value_gap,
                     "top3_value_gap": top3_value_gap,
