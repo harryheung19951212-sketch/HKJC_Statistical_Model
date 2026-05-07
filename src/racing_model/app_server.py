@@ -22,6 +22,7 @@ from .backfill import (
 from .betting import build_betting_decisions
 from .config import get_settings
 from .coverage import build_coverage_report
+from .error_taxonomy import error_taxonomy_report
 from .evolution import evaluate_model_evolution, generate_codex_iteration, generate_openai_iteration
 from .features import build_race_features
 from .live import load_hkjc_race_day, refresh_hkjc_results_if_available
@@ -234,6 +235,9 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(asdict(result))
             elif path == "/api/evolution":
                 self.send_json(evaluate_model_evolution(conn, self.app_state.model()))
+            elif path == "/api/error-taxonomy":
+                refresh = query_bool(query, "refresh", False)
+                self.send_json(error_taxonomy_report(conn, self.app_state.model(), refresh=refresh))
             elif path == "/api/model-versions":
                 self.send_json(run_walk_forward_versions(conn))
             elif path == "/api/lifecycle":
@@ -750,3 +754,10 @@ def query_float(query: dict[str, list[str]], key: str, default: float) -> float:
         return float(values[0])
     except ValueError:
         return default
+
+
+def query_bool(query: dict[str, list[str]], key: str, default: bool) -> bool:
+    values = query.get(key)
+    if not values or not values[0]:
+        return default
+    return values[0].strip().lower() in {"1", "true", "yes", "y", "on"}

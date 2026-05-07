@@ -96,6 +96,26 @@ CREATE TABLE IF NOT EXISTS race_status (
   last_backtest_at TEXT,
   notes TEXT NOT NULL DEFAULT ''
 );
+
+CREATE TABLE IF NOT EXISTS race_error_reviews (
+  race_id TEXT NOT NULL,
+  review_key TEXT NOT NULL,
+  category TEXT NOT NULL,
+  severity TEXT NOT NULL,
+  horse_id TEXT,
+  horse_no INTEGER,
+  horse_name TEXT NOT NULL DEFAULT '',
+  model_rank INTEGER,
+  finish_position INTEGER,
+  probability REAL,
+  expected_value REAL,
+  odds REAL,
+  evidence TEXT NOT NULL DEFAULT '',
+  recommendation TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (race_id, review_key)
+);
 """
 
 
@@ -121,6 +141,29 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
     ensure_column(conn, "runners", "jockey_zh", "TEXT NOT NULL DEFAULT ''")
     ensure_column(conn, "runners", "trainer_zh", "TEXT NOT NULL DEFAULT ''")
     ensure_column(conn, "races", "race_name", "TEXT NOT NULL DEFAULT ''")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS race_error_reviews (
+          race_id TEXT NOT NULL,
+          review_key TEXT NOT NULL,
+          category TEXT NOT NULL,
+          severity TEXT NOT NULL,
+          horse_id TEXT,
+          horse_no INTEGER,
+          horse_name TEXT NOT NULL DEFAULT '',
+          model_rank INTEGER,
+          finish_position INTEGER,
+          probability REAL,
+          expected_value REAL,
+          odds REAL,
+          evidence TEXT NOT NULL DEFAULT '',
+          recommendation TEXT NOT NULL DEFAULT '',
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (race_id, review_key)
+        )
+        """
+    )
 
 
 def ensure_column(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:

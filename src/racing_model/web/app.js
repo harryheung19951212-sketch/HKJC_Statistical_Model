@@ -135,6 +135,8 @@ async function refreshSelectedRace() {
   renderBacktest(backtest);
   const evolution = await api("/api/evolution");
   renderEvolution(evolution);
+  const taxonomy = await api("/api/error-taxonomy");
+  renderErrorTaxonomy(taxonomy);
   const modelVersions = await api("/api/model-versions");
   renderModelVersions(modelVersions);
   const quality = await api("/api/data-quality");
@@ -678,6 +680,57 @@ function renderDiagnostics(rows) {
   `).join("");
 }
 
+function renderErrorTaxonomy(data) {
+  const summary = data.summary || {};
+  $("error-taxonomy-summary").innerHTML = `
+    <div class="stat"><label>已覆核場次</label><strong>${summary.reviewed_races || 0}</strong></div>
+    <div class="stat"><label>錯誤標籤</label><strong>${summary.review_count || 0}</strong></div>
+    <div class="stat"><label>高嚴重</label><strong>${summary.high_severity || 0}</strong></div>
+    <div class="stat"><label>中嚴重</label><strong>${summary.medium_severity || 0}</strong></div>
+  `;
+  const recommendations = data.recommendations || [];
+  const latest = data.reviews || [];
+  $("error-taxonomy-categories").innerHTML = `
+    ${(data.categories || []).map((row) => `
+      <div class="taxonomy-card">
+        <div class="taxonomy-head">
+          <strong>${row.label}</strong>
+          <span>${row.count} 次</span>
+        </div>
+        <p>${row.sample_evidence}</p>
+      </div>
+    `).join("")}
+    ${recommendations.length ? `<div class="taxonomy-section-title">下一步實驗焦點</div>` : ""}
+    ${recommendations.map((row) => `
+      <div class="taxonomy-card focus">
+        <div class="taxonomy-head">
+          <strong>${row.label}</strong>
+          <span>${row.count} 次</span>
+        </div>
+        <p>${row.next_step}</p>
+      </div>
+    `).join("")}
+    ${latest.length ? `<div class="taxonomy-section-title">最近覆核</div>` : ""}
+    ${latest.slice(0, 8).map((row) => `
+      <div class="taxonomy-card ${row.severity}">
+        <div class="taxonomy-head">
+          <strong>${row.race_id}｜${row.category_label}</strong>
+          <span>${row.severity}</span>
+        </div>
+        <p>${row.horse_no || "-"} ${row.horse_name || row.horse_id || "-"}｜模型第 ${row.model_rank || "-"}｜跑第 ${row.finish_position || "-"}</p>
+        <p>${row.evidence}</p>
+      </div>
+    `).join("")}
+  `;
+}
+
+async function refreshErrorTaxonomy() {
+  $("system-status").textContent = "錯誤分類更新中...";
+  const taxonomy = await api("/api/error-taxonomy?refresh=1");
+  renderErrorTaxonomy(taxonomy);
+  $("system-status").textContent = `錯誤分類已更新：${(taxonomy.summary || {}).review_count || 0} 個標籤`;
+}
+
 async function runGptIteration() {
   $("gpt-iteration-notes").textContent = "Codex 分析中...";
   const result = await api("/api/gpt-iteration", { method: "POST" });
@@ -901,6 +954,7 @@ async function boot() {
   $("run-gpt-iteration").addEventListener("click", runGptIteration);
   $("repair-data").addEventListener("click", repairData);
   $("complete-runners").addEventListener("click", completeRunners);
+  $("refresh-error-taxonomy").addEventListener("click", refreshErrorTaxonomy);
   $("race-day-form").addEventListener("submit", loadRaceDay);
   $("backfill-form").addEventListener("submit", loadBackfill);
   await loadState();

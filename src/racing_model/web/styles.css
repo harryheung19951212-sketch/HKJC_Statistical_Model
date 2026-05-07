@@ -937,6 +937,7 @@ td:nth-child(4), th:nth-child(4) {
 .calibration-list,
 .idea-list,
 .diagnostic-list,
+.taxonomy-list,
 .version-grid,
 .issue-list {
   display: grid;
@@ -1008,11 +1009,41 @@ td:nth-child(4), th:nth-child(4) {
 
 .idea,
 .diagnostic,
+.taxonomy-card,
 .version-card {
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 10px;
   background: #fbfcfd;
+}
+
+.taxonomy-card.high {
+  border-color: #efc8be;
+  background: #fff8f6;
+}
+
+.taxonomy-card.medium,
+.taxonomy-card.focus {
+  border-color: #c8d8ee;
+  background: #f7faff;
+}
+
+.taxonomy-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.taxonomy-head span,
+.taxonomy-section-title {
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.taxonomy-section-title {
+  margin-top: 4px;
 }
 
 .version-card.best {
@@ -1022,6 +1053,7 @@ td:nth-child(4), th:nth-child(4) {
 
 .idea strong,
 .diagnostic strong,
+.taxonomy-card strong,
 .version-card strong {
   display: block;
   margin-bottom: 5px;
@@ -1029,6 +1061,7 @@ td:nth-child(4), th:nth-child(4) {
 
 .idea p,
 .diagnostic p,
+.taxonomy-card p,
 .version-card p {
   margin: 3px 0;
   color: var(--muted);
