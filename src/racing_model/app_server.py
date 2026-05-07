@@ -16,6 +16,7 @@ from .backfill import (
     complete_repaired_runners,
     data_quality_report,
     load_hkjc_date_range,
+    normalize_hkjc_date,
     repair_orphan_result_runners,
     train_model_if_requested,
 )
@@ -348,13 +349,13 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
             elif path == "/api/lifecycle-step":
                 self.send_json(run_lifecycle_step(conn, self.app_state))
             elif path == "/api/load-race-day":
-                race_date = required_query(query, "date")
+                race_date = normalize_hkjc_date(required_query(query, "date"))
                 venue = required_query(query, "venue")
                 race_count = int(query.get("races", ["10"])[0])
                 self.send_json(self.app_state.start_race_day_job(race_date, venue, race_count))
             elif path == "/api/backfill":
-                start_date = required_query(query, "start")
-                end_date = required_query(query, "end")
+                start_date = normalize_hkjc_date(required_query(query, "start"))
+                end_date = normalize_hkjc_date(required_query(query, "end"))
                 venue = required_query(query, "venue")
                 race_count = int(query.get("races", ["10"])[0])
                 train_epochs = int(query.get("epochs", ["120"])[0])

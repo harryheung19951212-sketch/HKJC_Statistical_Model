@@ -48,6 +48,37 @@ function localStatus(status) {
   return text[status] || status || text.scheduled;
 }
 
+function localizedHorse(row) {
+  return row.display_name || row.horse_name_zh || row.horse_name || row.horse_id || "-";
+}
+
+function localizedJockey(row) {
+  return row.display_jockey || row.jockey_zh || row.jockey || "-";
+}
+
+function localizedTrainer(row) {
+  return row.display_trainer || row.trainer_zh || row.trainer || "-";
+}
+
+function hkjcDateInputValue(value) {
+  const textValue = String(value || "").trim();
+  const match = textValue.match(/^(\d{4})[/-](\d{2})[/-](\d{2})$/);
+  return match ? `${match[1]}-${match[2]}-${match[3]}` : textValue;
+}
+
+function hkjcDisplayDate(value) {
+  const textValue = String(value || "").trim();
+  const match = textValue.match(/^(\d{4})[/-](\d{2})[/-](\d{2})$/);
+  return match ? `${match[1]}/${match[2]}/${match[3]}` : textValue || "-";
+}
+
+function requiredDateValue(id) {
+  const value = hkjcDateInputValue($(id).value);
+  if (!value) throw new Error("請先選擇日期");
+  $(id).value = value;
+  return value;
+}
+
 async function loadState() {
   const state = await api("/api/state");
   intervalSeconds = Number(state.odds_interval_seconds || 30);
@@ -199,7 +230,7 @@ function renderDecisionCard(row) {
     <div class="ticket ${ticketClass(row.action)}">
       <div class="ticket-main">
         <span>${row.market_label}</span>
-        <strong>${row.horse_no || "-"} ${row.horse_name || row.horse_id}</strong>
+        <strong>${row.horse_no || "-"} ${localizedHorse(row)}</strong>
         <small>模型第 ${row.model_rank} ｜ ${row.reason}</small>
       </div>
       <div class="ticket-metrics">
@@ -274,7 +305,7 @@ function formatMoney(value) {
 }
 
 function formatRaceMeta(race) {
-  return `${race.date}｜${localTrack(race.track)}｜${localCourse(race.course)}｜${race.distance_m}米｜${localGoing(race.going)}｜${localClass(race.class_rating)}`;
+  return `${hkjcDisplayDate(race.date)}｜${localTrack(race.track)}｜${localCourse(race.course)}｜${race.distance_m}米｜${localGoing(race.going)}｜${localClass(race.class_rating)}`;
 }
 
 function localTrack(value) {
@@ -330,10 +361,10 @@ function renderPredictions(predictions) {
     tr.innerHTML = `
       <td>${index + 1}</td>
       <td>${row.horse_no || "-"}</td>
-      <td><strong>${row.display_name || row.horse_name}</strong><br><span>${row.horse_id}</span></td>
+      <td><strong>${localizedHorse(row)}</strong><br><span>${row.horse_id}</span></td>
       <td>${row.draw || "-"}</td>
-      <td>${row.display_jockey || row.jockey || "-"}</td>
-      <td>${row.display_trainer || row.trainer || "-"}</td>
+      <td>${localizedJockey(row)}</td>
+      <td>${localizedTrainer(row)}</td>
       <td>${formatPct(row.win_probability)}</td>
       <td>${formatPct(row.top3_probability)}</td>
       <td>${formatNum(row.latest_win_odds, 2)}</td>
@@ -370,10 +401,10 @@ function renderResults(results) {
     tr.innerHTML = `
       <td>${row.finish_position || "-"}</td>
       <td>${row.horse_no || "-"}</td>
-      <td><strong>${row.display_name || row.horse_name || row.horse_id}</strong><br><span>${row.horse_id}</span></td>
+      <td><strong>${localizedHorse(row)}</strong><br><span>${row.horse_id}</span></td>
       <td>${row.draw || "-"}</td>
-      <td>${row.display_jockey || row.jockey || "-"}</td>
-      <td>${row.display_trainer || row.trainer || "-"}</td>
+      <td>${localizedJockey(row)}</td>
+      <td>${localizedTrainer(row)}</td>
       <td>${formatRaceTime(row.finish_time_sec)}</td>
       <td>${formatMargin(row.margin_lengths)}</td>
       <td>${formatNum(row.win_odds, 2)}</td>
@@ -394,10 +425,10 @@ function renderRunnerDetail(row) {
   }
   const explanation = row.explanation || { positive: [], negative: [] };
   box.innerHTML = `
-    <p class="runner-title">${row.display_name || row.horse_name}</p>
+    <p class="runner-title">${localizedHorse(row)}</p>
     <p class="runner-subtitle">
       \u99ac\u865f ${row.horse_no || "-"} | \u6a94\u4f4d ${row.draw || "-"} | ${row.horse_id}<br>
-      \u9a0e\u5e2b\uff1a${row.display_jockey || "-"} | \u7df4\u99ac\u5e2b\uff1a${row.display_trainer || "-"}<br>
+      \u9a0e\u5e2b\uff1a${localizedJockey(row)} | \u7df4\u99ac\u5e2b\uff1a${localizedTrainer(row)}<br>
       \u7368\u8d0f\u52dd\u7387\uff1a${formatPct(row.win_probability)} | \u5165\u4e09\u7532\uff1a${formatPct(row.top3_probability)} | \u4f4d\u7f6eEV\uff1a${row.top3_expected_value === null ? "-" : Number(row.top3_expected_value).toFixed(3)}<br>
       \u4e09\u7532\u4f86\u6e90\uff1a${top3SourceLabel(row.top3_model_source)}
     </p>
@@ -717,7 +748,7 @@ function renderErrorTaxonomy(data) {
           <strong>${row.race_id}｜${row.category_label}</strong>
           <span>${row.severity}</span>
         </div>
-        <p>${row.horse_no || "-"} ${row.horse_name || row.horse_id || "-"}｜模型第 ${row.model_rank || "-"}｜跑第 ${row.finish_position || "-"}</p>
+        <p>${row.horse_no || "-"} ${localizedHorse(row)}｜模型第 ${row.model_rank || "-"}｜跑第 ${row.finish_position || "-"}</p>
         <p>${row.evidence}</p>
       </div>
     `).join("")}
@@ -753,7 +784,7 @@ function renderOddsHistory(rows) {
   renderOddsChart(rows);
   $("odds-history").innerHTML = latest.map((row) => `
     <div class="history-row">
-      <span><b>${row.display_name || row.horse_name_zh || row.horse_name || row.horse_id}</b><br>馬號 ${row.horse_no || "-"} | ${formatTimestamp(row.timestamp)}</span>
+      <span><b>${localizedHorse(row)}</b><br>馬號 ${row.horse_no || "-"} | ${formatTimestamp(row.timestamp)}</span>
       <strong>${formatNum(row.win_odds, 2)}</strong>
     </div>
   `).join("");
@@ -772,7 +803,7 @@ function renderOddsChart(rows) {
     if (!byHorse.has(row.horse_id)) byHorse.set(row.horse_id, []);
     byHorse.get(row.horse_id).push(row);
     if (!labels.has(row.horse_id)) {
-      labels.set(row.horse_id, row.display_name || row.horse_name_zh || row.horse_name || row.horse_id);
+      labels.set(row.horse_id, localizedHorse(row));
     }
   });
   const series = [...byHorse.entries()]
@@ -877,7 +908,13 @@ async function refreshResults() {
 
 async function loadRaceDay(event) {
   event.preventDefault();
-  const date = $("race-date").value.trim();
+  let date;
+  try {
+    date = requiredDateValue("race-date");
+  } catch (error) {
+    $("race-day-message").textContent = error.message;
+    return;
+  }
   const venue = $("race-venue").value;
   const raceCount = Number($("race-count").value || 10);
   $("race-day-message").textContent = text.loading;
@@ -908,8 +945,15 @@ function watchRaceDayJob(jobId) {
 
 async function loadBackfill(event) {
   event.preventDefault();
-  const start = $("backfill-start").value.trim();
-  const end = $("backfill-end").value.trim();
+  let start;
+  let end;
+  try {
+    start = requiredDateValue("backfill-start");
+    end = requiredDateValue("backfill-end");
+  } catch (error) {
+    $("backfill-message").textContent = error.message;
+    return;
+  }
   const venue = $("backfill-venue").value;
   const raceCount = Number($("backfill-races").value || 10);
   const epochs = Number($("backfill-epochs").value || 120);
