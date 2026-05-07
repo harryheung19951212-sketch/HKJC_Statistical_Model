@@ -104,7 +104,34 @@ Build a Hong Kong horse-racing statistical equation that improves through eviden
 - Exotic probable-dividend model.
 - Final output: "betting opinion -> best pool -> risk-adjusted stake -> post-race learning".
 
+## Current Implementation Status
+
+Phase 1 is implemented:
+
+- `/api/coverage` exists.
+- It covers 21 core factor groups plus 11 blind spots.
+- Each item reports status, data sources, supported files, current support, gaps, next steps, model risk, and validation gate.
+- The UI has a top-level "方程式覆蓋率 / 盲點報告" page.
+- Coverage report content is localized to Chinese as much as practical.
+- Coverage items are collapsible so users click a main item to see detailed gaps.
+
+The web app now has top-level pages:
+
+- 賽事分析
+- 方程式覆蓋率 / 盲點報告
+- 回測 / 智能迭代中心
+
+Background live refresh is active-race-only to reduce server load. The manual "全域更新" button remains global and processes the next scheduled race once.
+
 ## Current Next Best Step
 
-Implement Phase 1 as a concrete `/api/coverage` endpoint and UI panel. This keeps development focused on the equation and prevents the project from drifting back into a general information dashboard.
+Do not add more generic UI first. The next work should move the equation closer to real betting EV:
+
+1. Add pool takeout and market-efficiency cost tables.
+2. Add final exotic dividend settlement.
+3. Extend betting ledger reconciliation to exotic pools.
+4. Validate live late-market-flow features from real race-day ticks.
+5. Turn calibration and promotion gates into hard blockers for staking/model replacement.
+
+Every change must include tests and must be promoted only with walk-forward / out-of-sample evidence.
 
