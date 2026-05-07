@@ -376,6 +376,14 @@ h2 {
   max-width: 860px;
 }
 
+#prediction-policy-status {
+  margin: 6px 0 0;
+  color: var(--blue);
+  font-size: 13px;
+  font-weight: 700;
+  max-width: 860px;
+}
+
 #feed-status {
   margin: 8px 0 0;
   color: var(--muted);
@@ -985,7 +993,10 @@ h3 {
   font-size: 12px;
 }
 
-.table-wrap { overflow-x: auto; }
+.table-wrap {
+  overflow-x: auto;
+  border-top: 1px solid var(--line);
+}
 
 table {
   width: 100%;
@@ -993,6 +1004,7 @@ table {
   border-collapse: collapse;
   table-layout: fixed;
   font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 
 .results-table {
@@ -1018,6 +1030,17 @@ th {
   color: var(--muted);
   font-size: 12px;
   background: #fafbfc;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+tbody tr:nth-child(even) {
+  background: #fcfdff;
+}
+
+tbody tr:hover {
+  background: #f4f8fc;
 }
 
 th:nth-child(2), td:nth-child(2) { text-align: left; }

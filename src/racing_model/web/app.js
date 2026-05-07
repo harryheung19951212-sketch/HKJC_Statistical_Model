@@ -1,4 +1,4 @@
-let races = [];
+﻿let races = [];
 let selectedRaceId = null;
 let intervalSeconds = 30;
 let countdown = 30;
@@ -79,18 +79,17 @@ function hkjcDisplayDate(value) {
 
 function requiredDateValue(id) {
   const value = hkjcDateInputValue($(id).value);
-  if (!value) throw new Error("請先選擇日期");
+  if (!value) throw new Error("請輸入日期");
   $(id).value = value;
   return value;
 }
 
 async function loadState() {
-  const state = await api("/api/state");
+  const [state, lifecycle] = await Promise.all([api("/api/state"), api("/api/lifecycle")]);
   intervalSeconds = Number(state.odds_interval_seconds || 30);
-  const active = state.active_race_id ? `｜使用中：${raceNoLabel(state.active_race_id)}` : "｜未有打開場次";
-  $("system-status").textContent = `每 ${intervalSeconds} 秒只刷新已打開場次 ${active}`;
+  const active = state.active_race_id ? `追蹤中：${raceNoLabel(state.active_race_id)}` : "未鎖定場次";
+  $("system-status").textContent = `每 ${intervalSeconds} 秒刷新 | ${active}`;
   if (!selectedRaceId && state.current_race_id) selectedRaceId = state.current_race_id;
-  const lifecycle = await api("/api/lifecycle");
   renderLifecycle(lifecycle);
   if (autoFollowRace && selectedRaceId && lifecycle.next_scheduled_race_id) {
     const selected = races.find((race) => race.race_id === selectedRaceId);
@@ -118,7 +117,7 @@ function renderRaceList() {
     resulted: races.filter((race) => race.status === "resulted"),
   };
   [
-    ["upcoming", "未進行"],
+    ["upcoming", "未完賽"],
     ["resulted", "已完賽"],
   ].forEach(([key, label]) => {
     const folder = document.createElement("details");
@@ -200,7 +199,7 @@ function raceNoLabel(raceId) {
 
 function renderLifecycle(data) {
   const counts = data.counts || {};
-  $("lifecycle-mode").textContent = data.mode === "active_race_only" ? "只更新已打開場次" : "-";
+  $("lifecycle-mode").textContent = data.mode === "active_race_only" ? "只刷新目前場次" : "-";
   $("lifecycle-current").textContent = data.active_race_id || "-";
   $("lifecycle-frozen").textContent = data.frozen_race_id || "-";
   $("lifecycle-resulted").textContent = counts.resulted || 0;
@@ -273,8 +272,13 @@ async function refreshSelectedRace(options = {}) {
   if (!selectedRaceId) return;
   const full = Boolean(options.full);
   await watchSelectedRace();
-  await loadRaces();
-  const payload = await api(`/api/predictions?race_id=${encodeURIComponent(selectedRaceId)}`);
+  const raceKey = encodeURIComponent(selectedRaceId);
+  const dashboard = await api(`/api/race-dashboard?race_id=${raceKey}&bankroll=${encodeURIComponent(bettingBankroll())}&risk=${encodeURIComponent(bettingRisk())}`);
+  races = dashboard.races || [];
+  renderLifecycle(dashboard.lifecycle || {});
+  renderRaceList();
+  renderRaceHeader();
+  const payload = dashboard.predictions || {};
   currentPredictions = payload.predictions || [];
   if (!selectedHorseId && currentPredictions.length) selectedHorseId = currentPredictions[0].horse_id;
   if (!currentPredictions.some((row) => row.horse_id === selectedHorseId)) {
@@ -282,44 +286,31 @@ async function refreshSelectedRace(options = {}) {
   }
   renderPredictions(currentPredictions);
   renderRunnerDetail(currentPredictions.find((row) => row.horse_id === selectedHorseId));
-  const betting = await api(`/api/betting?race_id=${encodeURIComponent(selectedRaceId)}&bankroll=${encodeURIComponent(bettingBankroll())}&risk=${encodeURIComponent(bettingRisk())}`);
-  renderBetting(betting);
-  const ledger = await api(`/api/betting-ledger?race_id=${encodeURIComponent(selectedRaceId)}`);
-  renderBettingLedger(ledger);
-  if (full) await refreshModelReports();
-  const feed = await api(`/api/odds-feed?race_id=${encodeURIComponent(selectedRaceId)}`);
-  renderOddsFeed(feed);
-  const comparison = await api(`/api/model-comparison?race_id=${encodeURIComponent(selectedRaceId)}`);
-  renderModelComparison(comparison);
-  const history = await api(`/api/odds-history?race_id=${encodeURIComponent(selectedRaceId)}`);
-  renderOddsHistory(history);
-  const results = await api(`/api/results?race_id=${encodeURIComponent(selectedRaceId)}`);
+  renderPredictionPolicy(payload.policy || {});
+  renderBetting(dashboard.betting || {});
+  renderBettingLedger(dashboard.betting_ledger || {});
+  renderOddsFeed(dashboard.odds_feed || {});
+  renderModelComparison(dashboard.model_comparison || {});
+  renderOddsHistory(dashboard.odds_history || []);
+  const results = dashboard.results || {};
   renderResults(results.results || [], results.place_odds_completeness);
-  const weather = await api(`/api/weather?race_id=${encodeURIComponent(selectedRaceId)}`);
-  renderWeather(weather);
+  renderWeather(dashboard.weather || {});
+  if (full) await refreshModelReports();
 }
 
 async function refreshModelReports(options = {}) {
   const includeCoverage = options.includeCoverage !== false;
-  const backtest = await api("/api/backtest");
-  renderBacktest(backtest);
-  const evolution = await api("/api/evolution");
-  renderEvolution(evolution);
-  const dualTrack = await api("/api/model-comparison-backtest");
-  renderDualTrackBacktest(dualTrack);
-  const taxonomy = await api("/api/error-taxonomy");
-  renderErrorTaxonomy(taxonomy);
-  const modelVersions = await api("/api/model-versions");
-  renderModelVersions(modelVersions);
-  const registry = await api("/api/model-registry");
-  renderModelRegistry(registry);
-  const poolReplay = await api("/api/pool-replay");
-  renderPoolReplay(poolReplay);
-  const quality = await api("/api/data-quality");
-  renderDataQuality(quality);
-  if (includeCoverage) {
-    const coverage = await api("/api/coverage");
-    renderCoverage(coverage);
+  const dashboard = await api(`/api/analytics-dashboard?include_coverage=${includeCoverage ? "1" : "0"}`);
+  renderBacktest(dashboard.backtest || {});
+  renderEvolution(dashboard.evolution || {});
+  renderDualTrackBacktest(dashboard.dual_track || {});
+  renderErrorTaxonomy(dashboard.taxonomy || {});
+  renderModelVersions(dashboard.model_versions || {});
+  renderModelRegistry(dashboard.model_registry || {});
+  renderPoolReplay(dashboard.pool_replay || {});
+  renderDataQuality(dashboard.data_quality || {});
+  if (includeCoverage && dashboard.coverage) {
+    renderCoverage(dashboard.coverage);
     viewDataLoaded.coverage = true;
   }
   viewDataLoaded.analytics = true;
@@ -333,6 +324,22 @@ function renderWeather(weather) {
   }
   const update = weather.update_time ? `｜更新 ${weather.update_time}` : "";
   box.textContent = `賽日天氣：${weather.summary}${update}`;
+}
+
+function renderPredictionPolicy(policy) {
+  const box = $("prediction-policy-status");
+  if (!box) return;
+  if (!policy || !policy.mode) {
+    box.textContent = "";
+    return;
+  }
+  const mode = {
+    baseline: "基礎融合模型",
+    ability: "純能力優先",
+    market_blend: "市場融合加權",
+  }[policy.mode] || policy.mode;
+  const races = policy.races ? ` | 回測 ${policy.races} 場` : "";
+  box.textContent = `預測策略：${mode}${races}`;
 }
 
 function bettingBankroll() {

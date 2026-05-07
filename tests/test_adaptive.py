@@ -1,0 +1,41 @@
+from racing_model.adaptive import blend_market_probabilities
+
+
+def test_market_blend_can_promote_strong_market_signal() -> None:
+    rows = [
+        {
+            "horse_id": "H001",
+            "win_probability": 0.45,
+            "top3_probability": 0.65,
+            "market_probability": 0.08,
+            "place_market_probability": 0.18,
+            "latest_win_odds": 12.0,
+            "place_odds": 3.5,
+        },
+        {
+            "horse_id": "H002",
+            "win_probability": 0.30,
+            "top3_probability": 0.55,
+            "market_probability": 0.42,
+            "place_market_probability": 0.60,
+            "latest_win_odds": 2.2,
+            "place_odds": 1.3,
+        },
+        {
+            "horse_id": "H003",
+            "win_probability": 0.25,
+            "top3_probability": 0.50,
+            "market_probability": 0.10,
+            "place_market_probability": 0.22,
+            "latest_win_odds": 9.0,
+            "place_odds": 2.8,
+        },
+    ]
+
+    blended = blend_market_probabilities(rows, market_weight=0.7)
+
+    assert blended[0]["horse_id"] == "H002"
+    assert blended[0]["raw_model_win_probability"] == 0.30
+    assert blended[0]["win_probability"] > 0.30
+    assert blended[0]["expected_value"] is not None
+    assert all(0 <= row["top3_probability"] <= 1 for row in blended)

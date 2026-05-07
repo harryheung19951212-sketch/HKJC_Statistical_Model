@@ -11,6 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from .adaptive import adaptive_prediction_policy, adaptive_predict_race
 from .backtest import run_backtest
 from .backfill import (
     complete_repaired_runners,
@@ -72,11 +73,24 @@ class AppState:
         self.active_race_seen_at = 0.0
         self.active_race_ttl_seconds = max(90, odds_interval_seconds * 3)
         self.active_race_lock = threading.Lock()
+        self.policy_cache: dict[str, object] = {"expires_at": 0.0, "policy": None}
+        self.policy_lock = threading.Lock()
 
     def model(self) -> RankingModel:
         if self.model_path.exists():
             return RankingModel.load(self.model_path)
         return RankingModel.new()
+
+    def prediction_policy(self, conn, model: RankingModel) -> dict[str, object]:
+        now = time.monotonic()
+        with self.policy_lock:
+            cached = self.policy_cache.get("policy")
+            if cached and now < float(self.policy_cache.get("expires_at") or 0):
+                return dict(cached)
+        policy = adaptive_prediction_policy(conn, model)
+        with self.policy_lock:
+            self.policy_cache = {"expires_at": now + 300.0, "policy": dict(policy)}
+        return policy
 
     def focus_race(self, race_id: str, now: float | None = None) -> dict[str, object]:
         timestamp = time.monotonic() if now is None else now
@@ -309,6 +323,14 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(api_lifecycle(conn, self.app_state))
             elif path == "/api/data-quality":
                 self.send_json(data_quality_report(conn))
+            elif path == "/api/race-dashboard":
+                race_id = required_query(query, "race_id")
+                bankroll = query_float(query, "bankroll", 10000.0)
+                risk = query.get("risk", ["standard"])[0] or "standard"
+                self.send_json(api_race_dashboard(conn, self.app_state, race_id, bankroll, risk))
+            elif path == "/api/analytics-dashboard":
+                include_coverage = query_bool(query, "include_coverage", False)
+                self.send_json(api_analytics_dashboard(conn, self.app_state, include_coverage))
             elif path == "/api/coverage":
                 self.send_json(build_coverage_report(conn))
             elif path == "/api/odds-history":
@@ -322,10 +344,14 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(race_weather(conn, race_id))
             elif path == "/api/results":
                 race_id = required_query(query, "race_id")
-                self.send_json(api_results(conn, self.app_state.model(), race_id))
+                model = self.app_state.model()
+                policy = self.app_state.prediction_policy(conn, model)
+                self.send_json(api_results(conn, model, race_id, policy=policy))
             elif path == "/api/predictions":
                 race_id = required_query(query, "race_id")
-                self.send_json(api_predictions(conn, self.app_state.model(), race_id))
+                model = self.app_state.model()
+                policy = self.app_state.prediction_policy(conn, model)
+                self.send_json(api_predictions(conn, model, race_id, policy))
             elif path == "/api/model-comparison":
                 race_id = required_query(query, "race_id")
                 self.send_json(dual_model_comparison(conn, self.app_state.model(), race_id))
@@ -335,7 +361,9 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
                 race_id = required_query(query, "race_id")
                 bankroll = query_float(query, "bankroll", 10000.0)
                 risk = query.get("risk", ["standard"])[0] or "standard"
-                self.send_json(api_betting(conn, self.app_state.model(), race_id, bankroll, risk, self.app_state.model_path))
+                model = self.app_state.model()
+                policy = self.app_state.prediction_policy(conn, model)
+                self.send_json(api_betting(conn, model, race_id, bankroll, risk, self.app_state.model_path, policy=policy))
             elif path == "/api/exotic-dividends":
                 race_id = required_query(query, "race_id")
                 self.send_json(exotic_dividend_report(conn, race_id))
@@ -750,12 +778,63 @@ def api_races(conn) -> list[dict[str, object]]:
     return [dict(row) for row in rows]
 
 
-def api_predictions(conn, model: RankingModel, race_id: str) -> dict[str, object]:
+def api_race_dashboard(conn, state: AppState, race_id: str, bankroll: float, risk: str) -> dict[str, object]:
+    model = state.model()
+    policy = state.prediction_policy(conn, model)
+    prediction_payload = api_predictions(conn, model, race_id, policy)
+    betting = api_betting(
+        conn,
+        model,
+        race_id,
+        bankroll,
+        risk,
+        state.model_path,
+        predictions=prediction_payload.get("predictions", []),
+        policy=policy,
+    )
+    return {
+        "state": api_state(conn, state),
+        "lifecycle": api_lifecycle(conn, state),
+        "races": api_races(conn),
+        "predictions": prediction_payload,
+        "betting": betting,
+        "betting_ledger": betting_ledger_report(conn, race_id=race_id),
+        "odds_feed": odds_feed_health(conn, race_id, state.odds_interval_seconds),
+        "model_comparison": dual_model_comparison(conn, model, race_id),
+        "odds_history": odds_history(conn, race_id),
+        "results": api_results(conn, model, race_id, policy=policy, predictions=prediction_payload.get("predictions", [])),
+        "weather": race_weather(conn, race_id),
+    }
+
+
+def api_analytics_dashboard(conn, state: AppState, include_coverage: bool = False) -> dict[str, object]:
+    model = state.model()
+    payload = {
+        "backtest": asdict(run_backtest(conn, model)),
+        "evolution": evaluate_model_evolution(conn, model),
+        "dual_track": dual_model_backtest(conn, model),
+        "taxonomy": error_taxonomy_report(conn, model),
+        "model_versions": run_walk_forward_versions(conn),
+        "model_registry": model_registry_report(conn),
+        "pool_replay": pool_replay_report(conn),
+        "data_quality": data_quality_report(conn),
+    }
+    if include_coverage:
+        payload["coverage"] = build_coverage_report(conn)
+    return payload
+
+
+def api_predictions(
+    conn,
+    model: RankingModel,
+    race_id: str,
+    policy: dict[str, object] | None = None,
+) -> dict[str, object]:
     race_rows = fetch_all(conn, "SELECT * FROM races WHERE race_id = ?", (race_id,))
     if not race_rows:
         return {"race": None, "predictions": []}
-    predictions = model.predict_race(build_race_features(conn, race_id))
-    return {"race": dict(race_rows[0]), "predictions": predictions}
+    adaptive = adaptive_predict_race(conn, model, race_id, policy)
+    return {"race": dict(race_rows[0]), "predictions": adaptive["predictions"], "policy": adaptive["policy"]}
 
 
 def api_betting(
@@ -765,11 +844,14 @@ def api_betting(
     bankroll: float,
     risk: str,
     model_path: Path | str | None = None,
+    predictions: list[dict[str, object]] | None = None,
+    policy: dict[str, object] | None = None,
 ) -> dict[str, object]:
     race_rows = fetch_all(conn, "SELECT * FROM races WHERE race_id = ?", (race_id,))
     if not race_rows:
         return {"race": None, "tickets": [], "decisions": []}
-    predictions = model.predict_race(build_race_features(conn, race_id))
+    if predictions is None:
+        predictions = adaptive_predict_race(conn, model, race_id, policy)["predictions"]
     status = race_lifecycle_status(conn, race_id)
     exotic_lookup = load_exotic_dividend_lookup(conn, race_id)
     payload = build_betting_decisions(
@@ -781,12 +863,19 @@ def api_betting(
     )
     race = dict(race_rows[0])
     payload["race"] = race
+    payload["prediction_policy"] = policy or {}
     if model_path is not None:
         payload["ledger"] = record_betting_payload(conn, race, payload, model_path)
     return payload
 
 
-def api_results(conn, model: RankingModel, race_id: str) -> dict[str, object]:
+def api_results(
+    conn,
+    model: RankingModel,
+    race_id: str,
+    policy: dict[str, object] | None = None,
+    predictions: list[dict[str, object]] | None = None,
+) -> dict[str, object]:
     race_rows = fetch_all(conn, "SELECT * FROM races WHERE race_id = ?", (race_id,))
     if not race_rows:
         return {"race": None, "results": []}
@@ -795,7 +884,8 @@ def api_results(conn, model: RankingModel, race_id: str) -> dict[str, object]:
         snapshot_count = freeze_final_place_snapshots(conn, race_id, datetime.now(timezone.utc).isoformat())
         if snapshot_count:
             conn.commit()
-    predictions = model.predict_race(build_race_features(conn, race_id))
+    if predictions is None:
+        predictions = adaptive_predict_race(conn, model, race_id, policy)["predictions"]
     prediction_by_horse = {
         str(row["horse_id"]): {
             "prediction_rank": index + 1,

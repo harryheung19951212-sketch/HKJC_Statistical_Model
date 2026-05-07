@@ -2,6 +2,34 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-07 - System Performance And Prediction Optimization Pass
+
+Goal:
+
+- Make the race page faster, easier to read, and more accurate under the currently available data.
+
+Changes:
+
+- Added `src/racing_model/adaptive.py`.
+- Added adaptive prediction policy selection from dual-track backtest:
+  - `baseline` when sample is insufficient or mixed.
+  - `ability` when pure-ability track leads.
+  - `market_blend` when market-fusion track leads.
+- In `market_blend`, model probabilities are blended with normalized HKJC implied probabilities, then EV and value gaps are recalculated.
+- Added `/api/race-dashboard` to return race state, race list, predictions, betting, ledger, feed health, model comparison, odds history, results, and weather in one response.
+- Added `/api/analytics-dashboard` for the analytics view so the frontend no longer chains many sequential API calls.
+- Updated the race page to use the dashboard payload and show the active prediction policy.
+- Cleaned key visible Chinese labels in the race sidebar/status areas and improved table readability with sticky headers, zebra rows, hover state, and tabular numerals.
+- Added `tests/test_adaptive.py`.
+
+Verification:
+
+- `python -m compileall -q src dashboard tests`
+- `node --check src\racing_model\web\app.js`
+- Direct execution of adaptive and pool-replay test functions because local Python does not have `pytest` installed.
+- Local smoke: `/api/race-dashboard` returned the selected race in about `279ms`, with `mode=market_blend`.
+- Local smoke: `/api/analytics-dashboard` returned successfully; analytics remains intentionally lazy-loaded.
+
 ## 2026-05-07 - Pool-Specific Replay Settlement Report
 
 Goal:
