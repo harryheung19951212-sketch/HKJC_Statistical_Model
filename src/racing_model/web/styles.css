@@ -957,6 +957,11 @@ h2 {
   border-left: 1px solid var(--line);
 }
 
+.analytics-content .analytics-wide {
+  grid-column: 1 / -1;
+  border-left: 0;
+}
+
 .subpanel-head {
   display: flex;
   align-items: center;
@@ -1264,6 +1269,50 @@ td:nth-child(4), th:nth-child(4) {
 .version-card.best {
   border-color: #8fc7ff;
   background: #f4f9ff;
+}
+
+.dual-track-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.dual-track-card {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  background: #fff;
+}
+
+.dual-track-card.ability_better {
+  border-color: #9ed8c7;
+  background: #f5fbf8;
+}
+
+.dual-track-card.market_better {
+  border-color: #b8cbea;
+  background: #f7faff;
+}
+
+.dual-track-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dual-track-card p {
+  margin: 6px 0 0;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.dual-track-card span {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .registry-card.candidate {

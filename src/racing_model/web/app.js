@@ -305,6 +305,8 @@ async function refreshModelReports(options = {}) {
   renderBacktest(backtest);
   const evolution = await api("/api/evolution");
   renderEvolution(evolution);
+  const dualTrack = await api("/api/model-comparison-backtest");
+  renderDualTrackBacktest(dualTrack);
   const taxonomy = await api("/api/error-taxonomy");
   renderErrorTaxonomy(taxonomy);
   const modelVersions = await api("/api/model-versions");
@@ -739,6 +741,62 @@ function renderComparisonRow(row) {
 function comparisonSummaryText(info) {
   const same = info.top_pick_same ? "首選一致" : "首選不同";
   return `${same} | 擺動 ${info.rank_disagreement || 0} | 移除市場特徵 ${(info.market_features_removed || []).length}`;
+}
+
+function renderDualTrackBacktest(data) {
+  const summaryBox = $("dual-track-summary");
+  const noteBox = $("dual-track-recommendation");
+  const listBox = $("dual-track-races");
+  if (!summaryBox || !noteBox || !listBox) return;
+  const summary = data && data.summary ? data.summary : {};
+  const races = Number(summary.races || 0);
+  if (!races) {
+    summaryBox.innerHTML = `<div class="stat"><label>已回測場次</label><strong>0</strong></div>`;
+    noteBox.textContent = "未有可用已完賽資料，雙軌回測會在賽果入庫後自動更新。";
+    listBox.innerHTML = "";
+    return;
+  }
+  summaryBox.innerHTML = `
+    <div class="stat"><label>已回測場次</label><strong>${races}</strong></div>
+    <div class="stat"><label>雙軌同選</label><strong>${formatPct(summary.top_pick_same_rate)}</strong></div>
+    <div class="stat"><label>能力軌獨贏</label><strong>${formatPct(summary.ability_win_rate)}</strong></div>
+    <div class="stat"><label>市場軌獨贏</label><strong>${formatPct(summary.market_win_rate)}</strong></div>
+    <div class="stat"><label>能力軌三甲</label><strong>${formatPct(summary.ability_place_rate)}</strong></div>
+    <div class="stat"><label>市場軌三甲</label><strong>${formatPct(summary.market_place_rate)}</strong></div>
+    <div class="stat"><label>能力軌勝馬排名</label><strong>${formatNum(summary.avg_ability_winner_rank, 2)}</strong></div>
+    <div class="stat"><label>市場軌勝馬排名</label><strong>${formatNum(summary.avg_market_winner_rank, 2)}</strong></div>
+    <div class="stat"><label>能力軌 Brier</label><strong>${formatNum(summary.ability_brier, 4)}</strong></div>
+    <div class="stat"><label>市場軌 Brier</label><strong>${formatNum(summary.market_brier, 4)}</strong></div>
+  `;
+  const recommendation = data.recommendation || {};
+  noteBox.textContent = `${recommendation.message || "-"} ${recommendation.action || ""}`.trim();
+  const rows = data.recent_races || [];
+  listBox.innerHTML = rows.map((row) => `
+    <div class="dual-track-card ${row.verdict || ""}">
+      <div class="dual-track-card-head">
+        <strong>${row.race_id}</strong>
+        <span>${dualTrackVerdict(row.verdict)}</span>
+      </div>
+      <p>勝出：${runnerBrief(row.winner)} | 能力軌排名 ${row.ability_winner_rank || "-"} | 市場軌排名 ${row.market_winner_rank || "-"}</p>
+      <p>能力軌首選：${runnerBrief(row.ability_top)}，跑第 ${row.ability_top_finish || "-"} | 市場軌首選：${runnerBrief(row.market_top)}，跑第 ${row.market_top_finish || "-"}</p>
+      <span>${row.date || "-"} | ${localTrack(row.track)} ${row.distance_m || "-"}米 | 排名分歧 ${row.rank_disagreement || 0} | 最大擺幅 ${row.max_rank_swing || 0}</span>
+    </div>
+  `).join("");
+}
+
+function runnerBrief(row) {
+  if (!row) return "-";
+  const number = row.horse_no ? `${row.horse_no} ` : "";
+  return `${number}${localizedHorse(row)}`;
+}
+
+function dualTrackVerdict(value) {
+  return {
+    same_pick: "雙軌同選",
+    ability_better: "能力軌較準",
+    market_better: "市場軌較準",
+    tie: "未分高下",
+  }[value] || "未分高下";
 }
 
 function formatRankDelta(value) {

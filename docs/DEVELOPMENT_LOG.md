@@ -2,6 +2,27 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-07 - Dual Track Backtest Report
+
+Goal:
+
+- Turn the single-race pure-ability vs market-fusion comparison into a cross-race backtest so model iteration can be judged by measurable accuracy gains.
+
+Changes:
+
+- Added `dual_model_backtest()` in `src/racing_model/model_compare.py`.
+- Added `/api/model-comparison-backtest`.
+- The report compares pure ability and market-fusion tracks across resulted races using top-pick win rate, top-pick top-3 rate, average winner rank, Brier score, log loss, agreement rate, and disagreement edge.
+- Added a `雙軌模型回測` panel in the analytics view with summary metrics, recommendation text, and recent race-level cases.
+- Extended `tests/test_model_compare.py` to cover the new cross-race backtest.
+
+Verification:
+
+- `python -m compileall -q src dashboard tests`
+- `node --check src\racing_model\web\app.js`
+- Direct execution of model-comparison test functions because local Python does not have `pytest` installed.
+- Local smoke: `/api/model-comparison-backtest` returned `races=9`, `ability_win=0.0`, `market_win=0.5555555555555556`, `verdict=market_leads`.
+
 ## 2026-05-07 - Sync Remote Progress And Runtime Audit
 
 Source branch:
