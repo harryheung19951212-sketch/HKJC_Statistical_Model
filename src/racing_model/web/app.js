@@ -287,6 +287,8 @@ async function refreshSelectedRace(options = {}) {
   const ledger = await api(`/api/betting-ledger?race_id=${encodeURIComponent(selectedRaceId)}`);
   renderBettingLedger(ledger);
   if (full) await refreshModelReports();
+  const feed = await api(`/api/odds-feed?race_id=${encodeURIComponent(selectedRaceId)}`);
+  renderOddsFeed(feed);
   const history = await api(`/api/odds-history?race_id=${encodeURIComponent(selectedRaceId)}`);
   renderOddsHistory(history);
   const results = await api(`/api/results?race_id=${encodeURIComponent(selectedRaceId)}`);
@@ -627,6 +629,112 @@ function placeOddsSourceLabel(value) {
   if (value === "hkjc_mqtt") return "MQTT";
   if (value === "hkjc_graphql") return "官方";
   if (value === "hkjc_results_final") return "賽後";
+  if (value === "hkjc_final_place_snapshot") return "最後位置";
+  if (value === "hkjc_final_place_backfill") return "官方補抓";
+  return "-";
+}
+
+function renderOddsFeed(feed) {
+  const box = $("feed-health");
+  const summary = $("feed-health-summary");
+  if (!feed || !feed.runner_count) {
+    summary.textContent = "未有參賽馬資料";
+    box.innerHTML = `<div class="feed-empty">未有參賽馬資料</div>`;
+    return;
+  }
+  summary.textContent = feedSummaryText(feed);
+  $("feed-status").textContent = feedStatusText(feed);
+  const rows = feed.runners || [];
+  box.innerHTML = `
+    <div class="feed-cards">
+      <div><label>獨贏覆蓋</label><strong>${feed.win_covered}/${feed.runner_count}</strong></div>
+      <div><label>位置覆蓋</label><strong>${feed.place_covered}/${feed.runner_count}</strong></div>
+      <div><label>官方 ticks</label><strong>${feed.official_tick_count}</strong></div>
+      <div><label>Live ticks</label><strong>${feed.live_tick_count}</strong></div>
+      <div><label>最新官方時間</label><strong>${formatTimestamp(feed.latest_official_timestamp)}</strong></div>
+      <div><label>訓練狀態</label><strong class="${feed.training_ready ? "positive" : "negative"}">${feed.training_ready ? "可用" : "未完整"}</strong></div>
+    </div>
+    <div class="table-wrap">
+      <table class="feed-table">
+        <thead>
+          <tr>
+            <th>馬號</th>
+            <th>馬匹</th>
+            <th>獨贏 tick</th>
+            <th>最新獨贏</th>
+            <th>位置 tick</th>
+            <th>最新位置</th>
+            <th>位置來源</th>
+            <th>缺口</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(renderFeedRunnerRow).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderFeedRunnerRow(row) {
+  const missing = [
+    row.missing_win_tick ? "獨贏" : "",
+    row.missing_place_tick ? "位置" : "",
+  ].filter(Boolean).join(" / ") || "-";
+  return `
+    <tr class="${missing === "-" ? "" : "feed-missing"}">
+      <td>${row.horse_no || "-"}</td>
+      <td><strong>${localizedHorse(row)}</strong><br><span>${row.horse_id}</span></td>
+      <td>${row.win_tick_count || 0}</td>
+      <td>${formatNum(row.latest_win_odds, 2)}<br><span>${sourceLabel(row.latest_win_source)}</span></td>
+      <td>${row.place_tick_count || 0}</td>
+      <td>${formatNum(row.latest_place_odds, 2)}<br><span>${formatTimestamp(row.latest_place_timestamp)}</span></td>
+      <td>${sourceLabel(row.final_place_source || row.latest_place_source)}</td>
+      <td>${missing}</td>
+    </tr>
+  `;
+}
+
+function feedSummaryText(feed) {
+  const status = feedStatusLabel(feed.status);
+  const stale = feed.is_stale ? " | 已過期" : "";
+  return `${status} | WIN ${feed.win_covered}/${feed.runner_count} | PLA ${feed.place_covered}/${feed.runner_count}${stale}`;
+}
+
+function feedStatusText(feed) {
+  const place = feed.place_odds_completeness || {};
+  const sourceCounts = Object.entries(feed.source_counts || {})
+    .map(([source, count]) => `${sourceLabel(source)} ${count}`)
+    .join(" / ");
+  const pieces = [
+    `賠率錄影：${feedStatusLabel(feed.status)}`,
+    `WIN ${feed.win_covered}/${feed.runner_count}`,
+    `PLA ${feed.place_covered}/${feed.runner_count}`,
+  ];
+  if (feed.lifecycle_status === "resulted") {
+    pieces.push(`最後位置 ${place.place_odds_count || 0}/${place.runner_count || feed.runner_count}`);
+  }
+  if (sourceCounts) pieces.push(sourceCounts);
+  return pieces.join(" | ");
+}
+
+function feedStatusLabel(value) {
+  const labels = {
+    recording_complete: "錄影完整",
+    training_ready: "訓練可用",
+    incomplete_final_place: "最後位置未齊",
+    partial: "錄影未齊",
+    stale: "來源過期",
+    no_official_ticks: "未有官方 tick",
+    missing_runners: "缺參賽馬",
+  };
+  return labels[value] || value || "-";
+}
+
+function sourceLabel(value) {
+  if (value === "hkjc_mqtt") return "MQTT";
+  if (value === "hkjc_graphql") return "官方";
+  if (value === "hkjc_results_final") return "賽果";
   if (value === "hkjc_final_place_snapshot") return "最後位置";
   if (value === "hkjc_final_place_backfill") return "官方補抓";
   return "-";

@@ -124,3 +124,24 @@ Verification:
 - `node --check src/racing_model/web/app.js`
 - Direct execution of `tests/test_final_place_snapshots.py` test functions because local Python does not have `pytest` installed.
 - `python -m racing_model.cli backfill-final-place-odds --race-id HK20260506-ST-01` confirmed official historical oddsNodes are unavailable for that old race and left missing rows unfilled.
+
+## 2026-05-07 - Live Odds Recorder Health Center
+
+Goal:
+
+- Make WIN/PLA tick completeness visible while races are still scheduled/live.
+- Prevent silent training-data gaps by showing which runners have no official WIN or PLA ticks before the race is frozen.
+
+Implementation:
+
+- Added `src/racing_model/feed_health.py`.
+- Added `/api/odds-feed?race_id=...` with per-race and per-runner official tick coverage.
+- The report separates official/live sources from development fallback rows, counts source usage, detects stale feeds, and marks resulted races as training-ready only when final place odds are complete.
+- Added a top-level UI panel, `賠率錄影健康`, showing WIN/PLA coverage, official/live tick counts, latest official timestamp, training readiness, and each runner's missing tick status.
+- Added `tests/test_feed_health.py`.
+
+Verification:
+
+- `python -m compileall -q src dashboard tests`
+- `node --check src/racing_model/web/app.js`
+- Direct execution of feed-health and final-place test functions because local Python does not have `pytest` installed.

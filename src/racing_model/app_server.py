@@ -28,6 +28,7 @@ from .error_taxonomy import error_taxonomy_report
 from .evolution import evaluate_model_evolution, generate_codex_iteration, generate_openai_iteration
 from .exotic_dividends import exotic_dividend_report, load_exotic_dividend_lookup, upsert_exotic_dividends
 from .exotic_live import build_exotic_dividend_provider, refresh_exotic_dividends
+from .feed_health import odds_feed_health
 from .features import build_race_features
 from .live import load_hkjc_race_day, refresh_hkjc_results_if_available
 from .model import RankingModel
@@ -311,6 +312,9 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
             elif path == "/api/odds-history":
                 race_id = required_query(query, "race_id")
                 self.send_json(odds_history(conn, race_id))
+            elif path == "/api/odds-feed":
+                race_id = required_query(query, "race_id")
+                self.send_json(odds_feed_health(conn, race_id, self.app_state.odds_interval_seconds))
             elif path == "/api/weather":
                 race_id = required_query(query, "race_id")
                 self.send_json(race_weather(conn, race_id))
