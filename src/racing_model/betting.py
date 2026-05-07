@@ -185,7 +185,7 @@ def decision_eligibility(
     if expected_value is None or edge is None:
         return False, "資料不足"
     if expected_value < profile.min_expected_value:
-        return False, "EV 未達門檻"
+        return False, "期望值未達門檻"
     if edge < profile.min_edge:
         return False, "價值差未達門檻"
     return True, "符合 Kelly 下注條件"

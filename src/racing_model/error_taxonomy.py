@@ -18,7 +18,7 @@ CATEGORY_LABELS = {
     "trip_or_sectional_error": "走位/分段錯判",
     "data_quality_error": "資料質素問題",
     "calibration_error": "機率校準問題",
-    "no_edge_discipline": "No-bet / EV 紀律",
+    "no_edge_discipline": "不下注 / 期望值紀律",
 }
 
 
@@ -239,7 +239,7 @@ def value_bet_reviews(race_id: str, row: dict[str, Any], finish_position: int) -
                 "medium",
                 row,
                 finish_position,
-                f"Positive EV bet 勝率 {probability:.1%}、EV {ev:+.3f}，但跑第 {finish_position}。",
+                f"正期望值投注勝率 {probability:.1%}、期望值 {ev:+.3f}，但跑第 {finish_position}。",
                 "把 losing value bets 納入 reliability bins；未校準前降低 Kelly fraction。",
             )
         )
@@ -252,7 +252,7 @@ def value_bet_reviews(race_id: str, row: dict[str, Any], finish_position: int) -
                 "medium",
                 row,
                 finish_position,
-                f"Value bet edge 只有 {edge:+.1%}，安全邊際偏薄。",
+                f"價值投注安全邊際只有 {edge:+.1%}，安全邊際偏薄。",
                 "提高 min_edge 或按 calibration uncertainty 動態提高下注門檻。",
             )
         )
@@ -265,7 +265,7 @@ def value_bet_reviews(race_id: str, row: dict[str, Any], finish_position: int) -
                 "low",
                 row,
                 finish_position,
-                f"Value bet 面對負面同日跑法 bias {float(row.get('same_day_pace_bias') or 0.0):+.3f}。",
+                f"價值投注面對負面同日跑法偏差 {float(row.get('same_day_pace_bias') or 0.0):+.3f}。",
                 "下注 gate 應檢查同日 bias 是否抵消模型 edge。",
             )
         )
