@@ -17,6 +17,7 @@ MIGRATION_TABLES = [
     "raw_snapshots",
     "race_status",
     "race_error_reviews",
+    "model_registry_runs",
 ]
 
 

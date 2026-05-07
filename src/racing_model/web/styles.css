@@ -939,6 +939,7 @@ td:nth-child(4), th:nth-child(4) {
 .diagnostic-list,
 .taxonomy-list,
 .version-grid,
+.registry-list,
 .issue-list {
   display: grid;
   gap: 10px;
@@ -1010,7 +1011,8 @@ td:nth-child(4), th:nth-child(4) {
 .idea,
 .diagnostic,
 .taxonomy-card,
-.version-card {
+.version-card,
+.registry-card {
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 10px;
@@ -1051,10 +1053,16 @@ td:nth-child(4), th:nth-child(4) {
   background: #f4f9ff;
 }
 
+.registry-card.candidate {
+  border-color: #9ed8c7;
+  background: #f5fbf8;
+}
+
 .idea strong,
 .diagnostic strong,
 .taxonomy-card strong,
-.version-card strong {
+.version-card strong,
+.registry-card strong {
   display: block;
   margin-bottom: 5px;
 }
@@ -1062,7 +1070,8 @@ td:nth-child(4), th:nth-child(4) {
 .idea p,
 .diagnostic p,
 .taxonomy-card p,
-.version-card p {
+.version-card p,
+.registry-card p {
   margin: 3px 0;
   color: var(--muted);
   font-size: 13px;

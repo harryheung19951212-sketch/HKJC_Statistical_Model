@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from .app_server import run_server
@@ -20,6 +21,7 @@ from .features import build_race_features, build_training_races
 from .gpt_report import generate_report
 from .html_report import export_race_report
 from .model import RankingModel
+from .model_registry import model_registry_report, run_and_record_model_registry
 from .scrapers.base import PoliteHttpClient
 from .scrapers.hkjc import HKJCSource, write_hkjc_csv_bundle
 from .storage import connect, import_csv, init_db
@@ -35,7 +37,14 @@ TABLE_FILES = {
 }
 
 
+def configure_console_encoding() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
+
+
 def main() -> None:
+    configure_console_encoding()
     parser = argparse.ArgumentParser(prog="racing-model")
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -71,6 +80,13 @@ def main() -> None:
     wf_parser.add_argument("--min-train-races", type=int, default=1)
     wf_parser.add_argument("--epochs", type=int, default=80)
     wf_parser.add_argument("--min-ev", type=float, default=0.05)
+
+    registry_parser = sub.add_parser("model-registry")
+    registry_parser.add_argument("--run", action="store_true", help="Run and persist a new out-of-sample registry entry.")
+    registry_parser.add_argument("--model-path", default="models/baseline.json")
+    registry_parser.add_argument("--min-train-races", type=int, default=1)
+    registry_parser.add_argument("--epochs", type=int, default=80)
+    registry_parser.add_argument("--min-ev", type=float, default=0.05)
 
     quality_parser = sub.add_parser("data-quality")
 
@@ -159,7 +175,7 @@ def main() -> None:
         )
         return
 
-    if args.command in {"import-sample", "import-csv"}:
+    if args.command in {"import-sample", "import-csv", "model-registry"}:
         init_db(settings.db_path)
 
     with connect(settings.db_path) as conn:
@@ -213,6 +229,19 @@ def main() -> None:
                 epochs=args.epochs,
                 min_expected_value=args.min_ev,
             )
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        elif args.command == "model-registry":
+            if args.run:
+                result = run_and_record_model_registry(
+                    conn,
+                    args.model_path,
+                    trigger="cli",
+                    min_train_races=args.min_train_races,
+                    epochs=args.epochs,
+                    min_expected_value=args.min_ev,
+                )
+            else:
+                result = model_registry_report(conn)
             print(json.dumps(result, indent=2, ensure_ascii=False))
         elif args.command == "data-quality":
             print(json.dumps(data_quality_report(conn), indent=2, ensure_ascii=False))

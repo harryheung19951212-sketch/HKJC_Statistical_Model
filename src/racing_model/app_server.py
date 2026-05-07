@@ -28,6 +28,7 @@ from .evolution import evaluate_model_evolution, generate_codex_iteration, gener
 from .features import build_race_features
 from .live import load_hkjc_race_day, refresh_hkjc_results_if_available
 from .model import RankingModel
+from .model_registry import model_registry_report, run_and_record_model_registry
 from .odds import build_odds_provider, odds_history, refresh_odds
 from .storage import connect, fetch_all, init_db, refresh_race_statuses, upsert_race_status
 from .walk_forward import run_walk_forward_versions
@@ -241,6 +242,8 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(error_taxonomy_report(conn, self.app_state.model(), refresh=refresh))
             elif path == "/api/model-versions":
                 self.send_json(run_walk_forward_versions(conn))
+            elif path == "/api/model-registry":
+                self.send_json(model_registry_report(conn))
             elif path == "/api/lifecycle":
                 self.send_json(api_lifecycle(conn, self.app_state))
             elif path == "/api/data-quality":
@@ -452,6 +455,22 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
                             "report": report,
                         }
                     )
+            elif path == "/api/model-registry/run":
+                epochs = int(query.get("epochs", ["80"])[0])
+                min_train_races = int(query.get("min_train_races", ["1"])[0])
+                min_expected_value = float(query.get("min_ev", ["0.05"])[0])
+                stake = float(query.get("stake", ["10"])[0])
+                self.send_json(
+                    run_and_record_model_registry(
+                        conn,
+                        self.app_state.model_path,
+                        trigger="manual",
+                        min_train_races=min_train_races,
+                        epochs=epochs,
+                        min_expected_value=min_expected_value,
+                        stake=stake,
+                    )
+                )
             else:
                 self.send_error(404)
 

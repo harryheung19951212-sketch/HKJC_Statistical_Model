@@ -117,6 +117,30 @@ CREATE TABLE IF NOT EXISTS race_error_reviews (
   updated_at TEXT NOT NULL,
   PRIMARY KEY (race_id, review_key)
 );
+
+CREATE TABLE IF NOT EXISTS model_registry_runs (
+  run_id TEXT PRIMARY KEY,
+  created_at TEXT NOT NULL,
+  trigger TEXT NOT NULL DEFAULT 'manual',
+  model_path TEXT NOT NULL DEFAULT '',
+  min_train_races INTEGER NOT NULL,
+  epochs INTEGER NOT NULL,
+  min_expected_value REAL NOT NULL,
+  stake REAL NOT NULL,
+  race_count INTEGER NOT NULL,
+  folds INTEGER NOT NULL,
+  best_variant_id TEXT NOT NULL DEFAULT '',
+  best_label TEXT NOT NULL DEFAULT '',
+  baseline_log_loss REAL,
+  best_log_loss REAL,
+  baseline_value_roi REAL,
+  best_value_roi REAL,
+  best_top_pick_hit_rate REAL,
+  best_max_drawdown REAL,
+  promotion_gate TEXT NOT NULL DEFAULT 'sample_insufficient',
+  recommendation TEXT NOT NULL DEFAULT '',
+  report_json TEXT NOT NULL
+);
 """
 
 
@@ -129,6 +153,7 @@ TABLE_PRIMARY_KEYS = {
     "raw_snapshots": ["source", "url", "fetched_at"],
     "race_status": ["race_id"],
     "race_error_reviews": ["race_id", "review_key"],
+    "model_registry_runs": ["run_id"],
 }
 
 
@@ -234,6 +259,33 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL,
           PRIMARY KEY (race_id, review_key)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS model_registry_runs (
+          run_id TEXT PRIMARY KEY,
+          created_at TEXT NOT NULL,
+          trigger TEXT NOT NULL DEFAULT 'manual',
+          model_path TEXT NOT NULL DEFAULT '',
+          min_train_races INTEGER NOT NULL,
+          epochs INTEGER NOT NULL,
+          min_expected_value REAL NOT NULL,
+          stake REAL NOT NULL,
+          race_count INTEGER NOT NULL,
+          folds INTEGER NOT NULL,
+          best_variant_id TEXT NOT NULL DEFAULT '',
+          best_label TEXT NOT NULL DEFAULT '',
+          baseline_log_loss REAL,
+          best_log_loss REAL,
+          baseline_value_roi REAL,
+          best_value_roi REAL,
+          best_top_pick_hit_rate REAL,
+          best_max_drawdown REAL,
+          promotion_gate TEXT NOT NULL DEFAULT 'sample_insufficient',
+          recommendation TEXT NOT NULL DEFAULT '',
+          report_json TEXT NOT NULL
         )
         """
     )

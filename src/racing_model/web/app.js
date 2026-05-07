@@ -170,6 +170,8 @@ async function refreshSelectedRace() {
   renderErrorTaxonomy(taxonomy);
   const modelVersions = await api("/api/model-versions");
   renderModelVersions(modelVersions);
+  const registry = await api("/api/model-registry");
+  renderModelRegistry(registry);
   const quality = await api("/api/data-quality");
   renderDataQuality(quality);
   const coverage = await api("/api/coverage");
@@ -561,6 +563,45 @@ function renderModelVersions(data) {
       </div>
     `;
   }).join("");
+}
+
+function renderModelRegistry(data) {
+  const summary = data.summary || {};
+  $("model-registry-summary").innerHTML = `
+    <div class="stat"><label>已保存評估</label><strong>${summary.run_count || 0}</strong></div>
+    <div class="stat"><label>最新 Gate</label><strong>${summary.latest_gate_label || "-"}</strong></div>
+    <div class="stat"><label>升級候選</label><strong>${summary.upgrade_candidates || 0}</strong></div>
+  `;
+  $("model-registry-clv").textContent = data.clv_status || "";
+  const runs = data.runs || [];
+  if (!runs.length) {
+    $("model-registry-runs").innerHTML = `<p class="runner-subtitle">未保存任何 out-of-sample 評估</p>`;
+    return;
+  }
+  $("model-registry-runs").innerHTML = runs.slice(0, 8).map((run) => `
+    <div class="registry-card ${run.promotion_gate === "upgrade_candidate" ? "candidate" : ""}">
+      <div class="version-head">
+        <strong>${formatTimestamp(run.created_at)}</strong>
+        <span>${run.promotion_gate_label || run.promotion_gate}</span>
+      </div>
+      <p>最佳版本：${run.best_label || "-"}｜驗證折數：${run.folds || 0}｜賽事：${run.race_count || 0}</p>
+      <div class="version-metrics">
+        <div><label>最佳 Log Loss</label><b>${formatNum(run.best_log_loss, 3)}</b></div>
+        <div><label>Baseline Log Loss</label><b>${formatNum(run.baseline_log_loss, 3)}</b></div>
+        <div><label>最佳 ROI</label><b class="${evClass(run.best_value_roi)}">${formatPct(run.best_value_roi)}</b></div>
+        <div><label>最大回撤</label><b>${formatNum(run.best_max_drawdown, 1)}</b></div>
+      </div>
+      <span class="version-verdict">${run.recommendation || "-"}</span>
+    </div>
+  `).join("");
+}
+
+async function runModelRegistry() {
+  $("system-status").textContent = "OOS 評估保存中...";
+  const result = await api("/api/model-registry/run", { method: "POST" });
+  renderModelRegistry(await api("/api/model-registry"));
+  if (result.report) renderModelVersions(result.report);
+  $("system-status").textContent = `OOS 評估已保存：${(result.run || {}).promotion_gate_label || "-"}`;
 }
 
 function renderDataQuality(data) {
@@ -996,6 +1037,7 @@ async function boot() {
   $("bankroll-input").addEventListener("change", refreshSelectedRace);
   $("risk-profile").addEventListener("change", refreshSelectedRace);
   $("run-gpt-iteration").addEventListener("click", runGptIteration);
+  $("run-model-registry").addEventListener("click", runModelRegistry);
   $("repair-data").addEventListener("click", repairData);
   $("complete-runners").addEventListener("click", completeRunners);
   $("refresh-error-taxonomy").addEventListener("click", refreshErrorTaxonomy);

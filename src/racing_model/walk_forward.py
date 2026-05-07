@@ -231,6 +231,7 @@ def evaluate_predictions(
         "value_wins": value_wins,
         "value_staked": value_staked,
         "value_returned": value_returned,
+        "value_profit": value_returned - value_staked,
         "winner_name": winner_prediction.get("display_name") or winner_prediction.get("horse_name"),
         "winner_horse_no": winner_prediction.get("horse_no"),
         "top_pick_name": top_pick.get("display_name") or top_pick.get("horse_name"),
@@ -252,6 +253,7 @@ def new_empty_metrics() -> dict[str, Any]:
         "value_wins": 0,
         "value_staked": 0.0,
         "value_returned": 0.0,
+        "value_profit": 0.0,
     }
 
 
@@ -273,6 +275,10 @@ def new_variant_state(variant: ModelVariant) -> dict[str, Any]:
         "value_wins": 0,
         "value_staked": 0.0,
         "value_returned": 0.0,
+        "value_profit": 0.0,
+        "equity": 0.0,
+        "peak_equity": 0.0,
+        "max_drawdown": 0.0,
     }
 
 
@@ -288,6 +294,13 @@ def update_variant_state(state: dict[str, Any], metrics: dict[str, Any]) -> None
     state["value_wins"] += int(metrics["value_wins"])
     state["value_staked"] += float(metrics["value_staked"])
     state["value_returned"] += float(metrics["value_returned"])
+    state["value_profit"] += float(metrics["value_profit"])
+    state["equity"] += float(metrics["value_profit"])
+    state["peak_equity"] = max(float(state["peak_equity"]), float(state["equity"]))
+    state["max_drawdown"] = max(
+        float(state["max_drawdown"]),
+        float(state["peak_equity"]) - float(state["equity"]),
+    )
 
 
 def finalize_variant_state(state: dict[str, Any]) -> dict[str, Any]:
@@ -305,7 +318,11 @@ def finalize_variant_state(state: dict[str, Any]) -> dict[str, Any]:
         "value_bets": int(state["value_bets"]),
         "value_wins": int(state["value_wins"]),
         "value_hit_rate": safe_div(float(state["value_wins"]), float(state["value_bets"])),
+        "value_profit": float(state["value_profit"]),
         "value_roi": safe_div(float(state["value_returned"]) - staked, staked),
+        "max_drawdown": float(state["max_drawdown"]),
+        "max_drawdown_pct": safe_div(float(state["max_drawdown"]), staked),
+        "clv_status": "需要分離下注時賠率同收市前賠率後先可計算",
     }
     verdict = variant_verdict(metrics)
     return {
