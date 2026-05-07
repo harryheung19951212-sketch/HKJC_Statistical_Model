@@ -10,8 +10,9 @@ RUN apt-get update \
         ca-certificates \
         curl \
         git \
-        nodejs \
-        npm \
+        gnupg \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
     && npm install -g @openai/codex \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
@@ -20,7 +21,7 @@ COPY pyproject.toml README.md ./
 COPY src ./src
 COPY dashboard ./dashboard
 
-RUN pip install --no-cache-dir -e .
+RUN pip install --no-cache-dir -e ".[live]"
 
 EXPOSE 8765
 
