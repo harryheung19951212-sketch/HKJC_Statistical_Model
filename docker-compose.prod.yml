@@ -12,6 +12,7 @@ services:
       - ./data:/app/data
       - ./models:/app/models
       - ./reports:/app/reports
+      - /root/.codex:/root/.codex
     depends_on:
       - postgres
 
