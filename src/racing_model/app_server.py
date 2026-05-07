@@ -94,7 +94,7 @@ class AppState:
 
     def refresh_prediction_policy_cache(self) -> None:
         try:
-            time.sleep(2.0)
+            time.sleep(15.0)
             with connect(self.settings.db_path) as conn:
                 policy = adaptive_prediction_policy(conn, self.model())
         except Exception:
@@ -849,17 +849,16 @@ def api_race_dashboard(conn, state: AppState, race_id: str, bankroll: float, ris
         include_exotics=False,
     )
     return {
-        "state": api_state(conn, state),
         "lifecycle": api_lifecycle(conn, state),
         "races": api_races(conn),
         "predictions": prediction_payload,
         "betting": betting,
         "betting_ledger": betting_ledger_report(conn, race_id=race_id),
         "odds_feed": {"deferred": True},
-        "model_comparison": dual_model_comparison(conn, model, race_id),
-        "odds_history": odds_history(conn, race_id),
-        "results": api_results(conn, model, race_id, policy=policy, predictions=prediction_payload.get("predictions", [])),
-        "weather": race_weather(conn, race_id),
+        "model_comparison": {"deferred": True},
+        "odds_history": [],
+        "results": {"deferred": True, "results": []},
+        "weather": {"deferred": True},
     }
 
 

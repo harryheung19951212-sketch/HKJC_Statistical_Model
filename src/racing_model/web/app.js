@@ -293,10 +293,11 @@ async function refreshSelectedRace(options = {}) {
   renderOddsFeed(dashboard.odds_feed || {});
   refreshOddsFeedPanel(raceKey);
   renderModelComparison(dashboard.model_comparison || {});
-  renderOddsHistory(dashboard.odds_history || []);
+  renderOddsHistoryLoading();
   const results = dashboard.results || {};
-  renderResults(results.results || [], results.place_odds_completeness);
+  renderResultsLoading();
   renderWeather(dashboard.weather || {});
+  refreshSupplementalRacePanels(raceKey);
   if (full) await refreshModelReports();
 }
 
@@ -325,6 +326,25 @@ async function refreshOddsFeedPanel(raceKey) {
   }
 }
 
+async function refreshSupplementalRacePanels(raceKey) {
+  const expectedRaceId = selectedRaceId;
+  try {
+    const [comparison, history, results, weather] = await Promise.all([
+      api(`/api/model-comparison?race_id=${raceKey}`),
+      api(`/api/odds-history?race_id=${raceKey}`),
+      api(`/api/results?race_id=${raceKey}`),
+      api(`/api/weather?race_id=${raceKey}`),
+    ]);
+    if (selectedRaceId !== expectedRaceId) return;
+    renderModelComparison(comparison);
+    renderOddsHistory(history);
+    renderResults(results.results || [], results.place_odds_completeness);
+    renderWeather(weather);
+  } catch (error) {
+    if (selectedRaceId === expectedRaceId) $("system-status").textContent = `詳細資料載入未完成：${error.message}`;
+  }
+}
+
 async function refreshModelReports(options = {}) {
   const includeCoverage = options.includeCoverage !== false;
   const dashboard = await api(`/api/analytics-dashboard?include_coverage=${includeCoverage ? "1" : "0"}`);
@@ -345,6 +365,10 @@ async function refreshModelReports(options = {}) {
 
 function renderWeather(weather) {
   const box = $("weather-status");
+  if (weather && weather.deferred) {
+    box.textContent = "賽日天氣載入中...";
+    return;
+  }
   if (!weather || weather.status !== "ok") {
     box.textContent = weather && weather.message ? weather.message : "";
     return;
@@ -611,6 +635,11 @@ function renderResults(results, completeness = null) {
   });
 }
 
+function renderResultsLoading() {
+  $("results-summary").textContent = "賽果載入中...";
+  $("results-body").innerHTML = `<tr><td colspan="14" class="empty-cell">賽果載入中...</td></tr>`;
+}
+
 function renderRunnerDetail(row) {
   const box = $("runner-detail");
   if (!row) {
@@ -726,6 +755,11 @@ function renderOddsFeed(feed) {
 function renderModelComparison(data) {
   const box = $("model-comparison");
   const summary = $("comparison-summary");
+  if (data && data.deferred) {
+    summary.textContent = "載入中...";
+    box.innerHTML = `<div class="comparison-empty">雙軌模型對照載入中...</div>`;
+    return;
+  }
   const runners = data && data.runners ? data.runners : [];
   if (!runners.length) {
     summary.textContent = "未有對照資料";
@@ -1380,6 +1414,11 @@ function renderOddsHistory(rows) {
       <strong>${formatNum(row.win_odds, 2)}</strong>
     </div>
   `).join("");
+}
+
+function renderOddsHistoryLoading() {
+  $("odds-history").innerHTML = `<div class="history-row"><span>歷史賠率載入中...</span><strong>-</strong></div>`;
+  $("odds-chart").innerHTML = `<text x="18" y="96">賠率走勢載入中...</text>`;
 }
 
 function formatTimestamp(value) {

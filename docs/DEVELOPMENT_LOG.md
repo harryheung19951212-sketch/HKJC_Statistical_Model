@@ -22,6 +22,7 @@ Changes:
 - Added `/api/analytics-dashboard` for the analytics view so the frontend no longer chains many sequential API calls.
 - Dashboard betting now returns fast WIN/PLACE decisions first and defers heavier exotic/all-pool calculation to a background frontend refresh.
 - Odds-feed health is also deferred to a background panel refresh so slow feed-audit queries do not block the main prediction table.
+- Model comparison, odds history, results, and weather are now rendered as loading placeholders and fetched concurrently after the main dashboard response.
 - Updated the race page to use the dashboard payload and show the active prediction policy.
 - Cleaned key visible Chinese labels in the race sidebar/status areas and improved table readability with sticky headers, zebra rows, hover state, and tabular numerals.
 - Added `tests/test_adaptive.py`.
@@ -31,7 +32,7 @@ Verification:
 - `python -m compileall -q src dashboard tests`
 - `node --check src\racing_model\web\app.js`
 - Direct execution of adaptive and pool-replay test functions because local Python does not have `pytest` installed.
-- Local smoke: cold `/api/race-dashboard` returned in about `1947ms` with `verdict=fast_market_default`; warm-cache returned in about `174ms` with `verdict=market_leads`.
+- Local smoke: cold `/api/race-dashboard` returned in about `1871ms` with `verdict=fast_market_default` and deferred comparison/history/results/weather panels.
 - Local smoke: `/api/analytics-dashboard` returned successfully; analytics remains intentionally lazy-loaded.
 
 ## 2026-05-07 - Pool-Specific Replay Settlement Report
