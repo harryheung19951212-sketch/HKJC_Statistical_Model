@@ -25,7 +25,7 @@ For handoff to another Codex session, read:
 - Preserves final live odds for resulted or in-running races.
 - Calculates win/place fair odds, edge, expected value, fractional Kelly, and risk-capped stake suggestions.
 - Builds exotic-pool candidates for quinella, quinella place, exacta, trio, tierce, first four, and quartet.
-- Imports probable/final/estimated exotic dividends and upgrades matching exotic candidates into EV-ranked tickets.
+- Refreshes HKJC GraphQL/MQTT probable exotic dividends and upgrades matching exotic candidates into EV-ranked tickets.
 - Saves active betting recommendations to a ledger and reconciles them against final odds/results for P/L, slippage, and CLV reference.
 - Stores out-of-sample model-registry runs with promotion-gate labels.
 - Includes a polite scraper framework for public pages, with rate limiting and raw snapshot storage.
@@ -68,6 +68,7 @@ racing-model walk-forward --epochs 80
 racing-model model-registry --run --epochs 80
 racing-model betting-ledger --reconcile
 racing-model import-exotic-dividends --race-id HK20260506-ST-01 --file data/import/exotic_dividends.csv --source manual --status probable
+racing-model refresh-exotic-dividends --race-id HK20260506-ST-01
 ```
 
 Historical HKJC backfill and data quality checks:
@@ -97,7 +98,7 @@ pip install -e ".[dashboard]"
 streamlit run dashboard/app.py
 ```
 
-Local app console, with race navigation and 30-second odds refresh:
+Local app console, with race navigation and 30-second odds/dividend refresh:
 
 ```powershell
 python -m racing_model.cli serve --port 8765 --model-path models/baseline.json --odds-interval 30
@@ -132,8 +133,10 @@ RACING_ODDS_PROVIDER=dev
 ```
 
 The `auto` mode tries HKJC GraphQL first, then HKJC MQTT push/recovery,
-then development snapshots. The console displays the active odds source in
-each race header.
+then development snapshots for WIN/PLA odds. Exotic dividends do not use a
+development fallback: GraphQL/MQTT must return official probable dividends
+before exotic tickets are treated as live EV recommendations. The console
+displays the active odds source in each race header.
 
 Optional integrations:
 
@@ -184,12 +187,13 @@ Expected columns:
 - `src/racing_model/html_report.py`: dependency-free static report exporter.
 - `src/racing_model/app_server.py`: dependency-free local web app and JSON API.
 - `src/racing_model/odds.py`: odds refresh provider interface and development provider.
+- `src/racing_model/exotic_live.py`: HKJC GraphQL/MQTT probable exotic dividend providers.
 - `dashboard/app.py`: Streamlit dashboard.
 
 ## Next Development Steps
 
 1. Build `/api/coverage` and a UI panel for the 21 core factor groups plus the extra blind spots in `docs/RACING_EQUATION_ROADMAP.md`.
-2. Add official/probable exotic-pool dividend ingestion so exotic candidates can become real EV decisions.
+2. Validate live HKJC probable-dividend availability on real race days and add final exotic dividend settlement.
 3. Add late market-flow features from final 5 minutes, 2 minutes, and 30 seconds.
 4. Add same-day track-bias learning after each completed race.
-5. Add live HKJC probable-dividend provider/parser so exotic EV can update automatically before race time.
+5. Add pool-size/tote-depth storage so exotic EV can be calibrated against liquidity.

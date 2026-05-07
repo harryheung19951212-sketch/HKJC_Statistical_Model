@@ -27,6 +27,7 @@ from .coverage import build_coverage_report
 from .error_taxonomy import error_taxonomy_report
 from .evolution import evaluate_model_evolution, generate_codex_iteration, generate_openai_iteration
 from .exotic_dividends import exotic_dividend_report, load_exotic_dividend_lookup, upsert_exotic_dividends
+from .exotic_live import build_exotic_dividend_provider, refresh_exotic_dividends
 from .features import build_race_features
 from .live import load_hkjc_race_day, refresh_hkjc_results_if_available
 from .model import RankingModel
@@ -305,6 +306,29 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
                         notes=f"odds_provider={self.app_state.settings.odds_provider}; error={str(exc)[:180]}",
                     )
                     conn.commit()
+                    self.send_json({"race_id": race_id, "inserted": 0, "status": "error", "error": str(exc)})
+            elif path == "/api/refresh-exotic-dividends":
+                race_id = required_query(query, "race_id")
+                status = race_lifecycle_status(conn, race_id)
+                if status != "scheduled":
+                    self.send_json(
+                        {
+                            "race_id": race_id,
+                            "inserted": 0,
+                            "status": "frozen",
+                            "message": "race_not_scheduled_last_live_dividends_preserved",
+                        }
+                    )
+                    return
+                try:
+                    self.send_json(
+                        refresh_exotic_dividends(
+                            conn,
+                            race_id,
+                            build_exotic_dividend_provider(self.app_state.settings),
+                        )
+                    )
+                except Exception as exc:
                     self.send_json({"race_id": race_id, "inserted": 0, "status": "error", "error": str(exc)})
             elif path == "/api/mark-resulted":
                 race_id = required_query(query, "race_id")
@@ -609,7 +633,8 @@ def api_races(conn) -> list[dict[str, object]]:
                s.notes,
                (SELECT count(*) FROM runners ru WHERE ru.race_id = r.race_id) AS runners,
                (SELECT count(*) FROM results x WHERE x.race_id = r.race_id) AS results,
-               (SELECT count(*) FROM odds_ticks o WHERE o.race_id = r.race_id) AS odds_ticks
+               (SELECT count(*) FROM odds_ticks o WHERE o.race_id = r.race_id) AS odds_ticks,
+               (SELECT count(*) FROM exotic_dividends ed WHERE ed.race_id = r.race_id) AS exotic_dividends
         FROM races r
         LEFT JOIN race_status s ON s.race_id = r.race_id
         ORDER BY r.date, r.race_id
@@ -727,6 +752,7 @@ def run_lifecycle_step(conn, state: AppState) -> dict[str, object]:
         return {"status": "idle", "message": "no_scheduled_race"}
 
     odds = {"inserted": 0, "status": "skipped"}
+    exotic = {"inserted": 0, "status": "skipped"}
     try:
         inserted = refresh_odds(conn, race_id, build_odds_provider(state.settings))
         odds = {"inserted": inserted, "status": "ok"}
@@ -741,6 +767,11 @@ def run_lifecycle_step(conn, state: AppState) -> dict[str, object]:
         conn.commit()
         odds = {"inserted": 0, "status": "error", "error": str(exc)}
 
+    try:
+        exotic = refresh_exotic_dividends(conn, race_id, build_exotic_dividend_provider(state.settings))
+    except Exception as exc:
+        exotic = {"inserted": 0, "status": "error", "error": str(exc)}
+
     result = refresh_hkjc_results_if_available(
         conn,
         race_id,
@@ -753,6 +784,7 @@ def run_lifecycle_step(conn, state: AppState) -> dict[str, object]:
         "status": "done",
         "race_id": race_id,
         "odds": odds,
+        "exotic_dividends": exotic,
         "result": result,
         "next_race_id": next_race_id,
     }

@@ -87,9 +87,10 @@ Do not commit `.env`, local SQLite databases, raw snapshots, generated reports, 
   - Quinella, quinella place, exacta, trio, tierce, first four, quartet.
   - Displays model hit probability and break-even dividend.
   - Imports probable/final/estimated exotic dividends through CLI/API.
+  - Refreshes HKJC GraphQL/MQTT probable dividends through `refresh-exotic-dividends` and the app lifecycle loop.
   - Matching exotic candidates become EV-ranked tickets and can be saved to the betting ledger.
   - Compares "position Q base" against "trio upgrade" opportunities.
-  - Automatic live HKJC probable-dividend provider is still pending.
+  - Final exotic dividend settlement and pool-size/tote-depth calibration are still pending.
 
 ## Current Loaded Example
 
@@ -127,13 +128,13 @@ The next Codex should avoid generic UI expansion. Prioritize the equation engine
 
 1. Build a feature coverage/blind-spot report for the 21 core factor groups plus extra blind spots.
 2. Make every model iteration pass walk-forward gates before promotion.
-3. Add official or reliable estimated exotic-pool dividends, then calculate real EV for each pool.
+3. Validate live HKJC probable-dividend provider on real race days, then add final exotic dividend settlement.
 4. Add market-flow features from final 5 minutes, 2 minutes, and 30 seconds.
 5. Add same-day track bias after each race and update later-race predictions.
 6. Add error taxonomy database so every losing decision has a reason category.
 7. Add exposure control across correlated bets, especially shared banker/legs across QPL/TRIO/TCE/FIRST4/QUARTET.
 
-Current high-priority gap after exotic dividend storage: add a live HKJC probable-dividend provider/parser and make CLV/slippage part of the hard promotion gate after enough live recommendations are reconciled.
+Current high-priority gap after live exotic dividends: add final exotic dividend settlement, pool-size/tote-depth data, and make CLV/slippage part of the hard promotion gate after enough live recommendations are reconciled.
 
 ## Important Design Principle
 

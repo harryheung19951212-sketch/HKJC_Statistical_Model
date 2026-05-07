@@ -82,7 +82,7 @@ function requiredDateValue(id) {
 async function loadState() {
   const state = await api("/api/state");
   intervalSeconds = Number(state.odds_interval_seconds || 30);
-  $("system-status").textContent = `\u6bcf ${intervalSeconds} \u79d2\u81ea\u52d5\u5237\u65b0\u8ce0\u7387`;
+  $("system-status").textContent = `\u6bcf ${intervalSeconds} \u79d2\u81ea\u52d5\u5237\u65b0\u8ce0\u7387/\u7d44\u5408\u6d3e\u5f69`;
   if (!selectedRaceId && state.current_race_id) selectedRaceId = state.current_race_id;
   const lifecycle = await api("/api/lifecycle");
   renderLifecycle(lifecycle);
@@ -139,7 +139,7 @@ function renderRaceHeader() {
   $("race-title").textContent = `${race.race_id}`;
   $("race-meta").textContent = formatRaceMeta(race);
   $("runner-count").textContent = race.runners || 0;
-  $("odds-count").textContent = race.odds_ticks || 0;
+  $("odds-count").textContent = `${race.odds_ticks || 0} / ${race.exotic_dividends || 0}`;
   $("last-refresh").textContent = race.last_odds_refresh_at || "-";
   $("feed-status").textContent = race.notes ? `賠率來源：${race.notes}` : "";
   $("feed-source").textContent = race.notes || "-";
@@ -268,7 +268,7 @@ function renderExoticSection(candidates, upgradePaths) {
     <div class="exotic-section">
       <div class="exotic-head">
         <strong>組合投注候選</strong>
-        <span>先睇模型機率同打和派彩，等官方組合彩池賠率接入後再計EV</span>
+        <span>先睇模型機率、打和派彩同官方即時派彩；有值先轉下注建議</span>
       </div>
       <div class="upgrade-list">
         ${(upgradePaths || []).slice(0, 3).map((path) => `
@@ -937,11 +937,16 @@ function shortLabel(value, limit) {
 
 async function manualRefreshOdds() {
   if (!selectedRaceId) return;
-  const result = await api(`/api/refresh-odds?race_id=${encodeURIComponent(selectedRaceId)}`, { method: "POST" });
-  if (result.status === "frozen") {
+  const raceKey = encodeURIComponent(selectedRaceId);
+  const result = await api(`/api/refresh-odds?race_id=${raceKey}`, { method: "POST" });
+  const exotic = await api(`/api/refresh-exotic-dividends?race_id=${raceKey}`, { method: "POST" });
+  if (result.status === "frozen" || exotic.status === "frozen") {
     $("system-status").textContent = "賽事已開跑或完場，保留最後實時賠率";
-  } else if (result.status === "error") {
-    $("system-status").textContent = `賠率未更新：${result.error || ""}`;
+  } else if (result.status === "error" || exotic.status === "error") {
+    const message = [result.error, exotic.error].filter(Boolean).join(" | ");
+    $("system-status").textContent = `賠率/派彩未完整更新：${message}`;
+  } else {
+    $("system-status").textContent = `已更新賠率 ${result.inserted || 0} 筆，組合派彩 ${exotic.inserted || 0} 筆`;
   }
   countdown = intervalSeconds;
   await refreshSelectedRace();

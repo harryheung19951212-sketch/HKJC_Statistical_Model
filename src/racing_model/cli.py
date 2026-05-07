@@ -20,6 +20,7 @@ from .config import display_database_target, get_settings
 from .db_migrate import database_counts, migrate_sqlite_to_database
 from .evolution import evaluate_model_evolution, generate_codex_iteration, generate_openai_iteration
 from .exotic_dividends import exotic_dividend_report, upsert_exotic_dividends
+from .exotic_live import build_exotic_dividend_provider, refresh_exotic_dividends
 from .features import build_race_features, build_training_races
 from .gpt_report import generate_report
 from .html_report import export_race_report
@@ -100,6 +101,9 @@ def main() -> None:
     exotic_parser.add_argument("--file", required=True, help="CSV or JSON rows with market, combination, dividend.")
     exotic_parser.add_argument("--source", default="manual")
     exotic_parser.add_argument("--status", default="probable", choices=["probable", "final", "estimated"])
+
+    refresh_exotic_parser = sub.add_parser("refresh-exotic-dividends")
+    refresh_exotic_parser.add_argument("--race-id", required=True)
 
     quality_parser = sub.add_parser("data-quality")
 
@@ -188,7 +192,14 @@ def main() -> None:
         )
         return
 
-    if args.command in {"import-sample", "import-csv", "model-registry", "betting-ledger", "import-exotic-dividends"}:
+    if args.command in {
+        "import-sample",
+        "import-csv",
+        "model-registry",
+        "betting-ledger",
+        "import-exotic-dividends",
+        "refresh-exotic-dividends",
+    }:
         init_db(settings.db_path)
 
     with connect(settings.db_path) as conn:
@@ -272,6 +283,10 @@ def main() -> None:
                 source=args.source,
                 dividend_status=args.status,
             )
+            result["report"] = exotic_dividend_report(conn, args.race_id)
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        elif args.command == "refresh-exotic-dividends":
+            result = refresh_exotic_dividends(conn, args.race_id, build_exotic_dividend_provider(settings))
             result["report"] = exotic_dividend_report(conn, args.race_id)
             print(json.dumps(result, indent=2, ensure_ascii=False))
         elif args.command == "data-quality":
