@@ -4,10 +4,10 @@ import csv
 import re
 import sqlite3
 from collections.abc import Iterable
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 LIVE_ODDS_SOURCES = {"hkjc_graphql", "hkjc_mqtt"}
@@ -611,4 +611,11 @@ def is_future_race_date(value: object) -> bool:
         target = datetime.strptime(text, "%Y/%m/%d").date()
     except ValueError:
         return False
-    return target > datetime.now(ZoneInfo("Asia/Hong_Kong")).date()
+    return target > datetime.now(hong_kong_tz()).date()
+
+
+def hong_kong_tz():
+    try:
+        return ZoneInfo("Asia/Hong_Kong")
+    except ZoneInfoNotFoundError:
+        return timezone(timedelta(hours=8))

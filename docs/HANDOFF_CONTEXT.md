@@ -33,6 +33,7 @@ Last updated: 2026-05-07
 - server 只用來部署，不在 server clone / pull repo。
 - 每次完成功能、修正或刪改功能後，要 push 到 repo，並說明改了甚麼。
 - 完成後要即時部署到 server。
+- 每次功能、修正或刪減都要更新 `docs/DEVELOPMENT_LOG.md`。
 
 不要 commit：
 

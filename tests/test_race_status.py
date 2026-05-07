@@ -1,5 +1,8 @@
 from pathlib import Path
+from zoneinfo import ZoneInfoNotFoundError
 
+import racing_model.live as live_module
+import racing_model.storage as storage_module
 from racing_model.live import is_future_hkjc_race_date
 from racing_model.storage import connect, init_db, insert_rows, race_status, refresh_race_statuses
 
@@ -69,3 +72,14 @@ def test_future_race_date_stays_scheduled_even_if_bad_results_exist(tmp_path: Pa
 def test_future_hkjc_race_date_accepts_hkjc_formats() -> None:
     assert is_future_hkjc_race_date("2099/01/01")
     assert is_future_hkjc_race_date("2099-01-01")
+
+
+def test_hong_kong_timezone_falls_back_without_tzdata(monkeypatch) -> None:
+    def missing_zoneinfo(name: str):
+        raise ZoneInfoNotFoundError(name)
+
+    monkeypatch.setattr(storage_module, "ZoneInfo", missing_zoneinfo)
+    monkeypatch.setattr(live_module, "ZoneInfo", missing_zoneinfo)
+
+    assert storage_module.is_future_race_date("2099-01-01")
+    assert live_module.is_future_hkjc_race_date("2099/01/01")

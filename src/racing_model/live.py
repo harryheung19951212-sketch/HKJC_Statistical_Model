@@ -3,8 +3,8 @@ from __future__ import annotations
 import re
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
+from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .backtest import run_backtest
 from .model import RankingModel
@@ -232,5 +232,12 @@ def is_future_hkjc_race_date(race_date: str) -> bool:
         target = datetime.strptime(normalized, "%Y/%m/%d").date()
     except ValueError:
         return False
-    today_hk = datetime.now(ZoneInfo("Asia/Hong_Kong")).date()
+    today_hk = datetime.now(hong_kong_tz()).date()
     return target > today_hk
+
+
+def hong_kong_tz():
+    try:
+        return ZoneInfo("Asia/Hong_Kong")
+    except ZoneInfoNotFoundError:
+        return timezone(timedelta(hours=8))
