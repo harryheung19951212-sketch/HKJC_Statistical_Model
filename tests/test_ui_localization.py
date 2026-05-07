@@ -23,6 +23,14 @@ def test_all_ui_date_fields_use_browser_date_picker() -> None:
     assert '<input id="backfill-end" type="date"' in html
 
 
+def test_sidebar_ingestion_forms_are_collapsible() -> None:
+    html = (ROOT / "src/racing_model/web/index.html").read_text(encoding="utf-8")
+
+    assert '<details class="sidebar-action">' in html
+    assert "<summary><span>載入賽日</span><b>賽日 / 馬場</b></summary>" in html
+    assert "<summary><span>歷史回填</span><b>日期範圍 / 重訓</b></summary>" in html
+
+
 def test_predictions_and_betting_payloads_prefer_chinese_names(tmp_path: Path) -> None:
     db_path = tmp_path / "racing.db"
     init_db(db_path)

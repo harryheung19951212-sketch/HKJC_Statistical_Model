@@ -39,52 +39,58 @@
       <button id="mark-live" type="button">凍結/開跑</button>
       <button id="mark-scheduled" type="button">恢復刷新</button>
     </div>
-    <form id="race-day-form" class="race-day-form">
-      <label>
-        賽日
-        <input id="race-date" type="date" value="2026-05-06">
-      </label>
-      <label>
-        馬場
-        <select id="race-venue">
-          <option value="ST">沙田</option>
-          <option value="HV">跑馬地</option>
-        </select>
-      </label>
-      <label>
-        場數
-        <input id="race-count" type="number" value="10" min="1" max="12">
-      </label>
-      <button type="submit">載入賽日</button>
-      <p id="race-day-message"></p>
-    </form>
-    <form id="backfill-form" class="race-day-form">
-      <label>
-        回填開始
-        <input id="backfill-start" type="date" value="2026-05-06">
-      </label>
-      <label>
-        回填結束
-        <input id="backfill-end" type="date" value="2026-05-06">
-      </label>
-      <label>
-        馬場
-        <select id="backfill-venue">
-          <option value="ST">沙田</option>
-          <option value="HV">跑馬地</option>
-        </select>
-      </label>
-      <label>
-        每日場數
-        <input id="backfill-races" type="number" value="10" min="1" max="12">
-      </label>
-      <label>
-        訓練輪數
-        <input id="backfill-epochs" type="number" value="120" min="10" max="800">
-      </label>
-      <button type="submit">回填歷史</button>
-      <p id="backfill-message"></p>
-    </form>
+    <details class="sidebar-action">
+      <summary><span>載入賽日</span><b>賽日 / 馬場</b></summary>
+      <form id="race-day-form" class="race-day-form">
+        <label>
+          賽日
+          <input id="race-date" type="date" value="2026-05-06">
+        </label>
+        <label>
+          馬場
+          <select id="race-venue">
+            <option value="ST">沙田</option>
+            <option value="HV">跑馬地</option>
+          </select>
+        </label>
+        <label>
+          場數
+          <input id="race-count" type="number" value="10" min="1" max="12">
+        </label>
+        <button type="submit">載入賽日</button>
+        <p id="race-day-message"></p>
+      </form>
+    </details>
+    <details class="sidebar-action">
+      <summary><span>歷史回填</span><b>日期範圍 / 重訓</b></summary>
+      <form id="backfill-form" class="race-day-form">
+        <label>
+          回填開始
+          <input id="backfill-start" type="date" value="2026-05-06">
+        </label>
+        <label>
+          回填結束
+          <input id="backfill-end" type="date" value="2026-05-06">
+        </label>
+        <label>
+          馬場
+          <select id="backfill-venue">
+            <option value="ST">沙田</option>
+            <option value="HV">跑馬地</option>
+          </select>
+        </label>
+        <label>
+          每日場數
+          <input id="backfill-races" type="number" value="10" min="1" max="12">
+        </label>
+        <label>
+          訓練輪數
+          <input id="backfill-epochs" type="number" value="120" min="10" max="800">
+        </label>
+        <button type="submit">回填歷史</button>
+        <p id="backfill-message"></p>
+      </form>
+    </details>
     <nav id="race-list" aria-label="場次列表"></nav>
   </aside>
 

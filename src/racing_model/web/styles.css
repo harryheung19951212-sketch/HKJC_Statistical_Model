@@ -81,15 +81,57 @@ aside {
   font-size: 12px;
 }
 
+.sidebar-action {
+  margin-bottom: 10px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 6px;
+  background: var(--side-soft);
+  overflow: hidden;
+}
+
+.sidebar-action summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 10px 12px;
+  color: #eef4fb;
+  font-weight: 700;
+}
+
+.sidebar-action summary::-webkit-details-marker {
+  display: none;
+}
+
+.sidebar-action summary::before {
+  content: "▸";
+  color: #8fc7ff;
+  flex: 0 0 auto;
+}
+
+.sidebar-action[open] summary::before {
+  content: "▾";
+}
+
+.sidebar-action summary span {
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar-action summary b {
+  color: #b9c4d2;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .race-day-form {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
-  margin-bottom: 16px;
-  padding: 12px;
-  border: 1px solid rgba(255,255,255,.08);
-  border-radius: 6px;
-  background: var(--side-soft);
+  padding: 0 10px 10px;
 }
 
 .race-day-form label {
