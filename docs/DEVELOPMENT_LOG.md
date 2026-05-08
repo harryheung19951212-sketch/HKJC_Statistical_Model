@@ -2,6 +2,25 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-09 - Temperature Calibrated Model Promotion
+
+Goal:
+
+- Continue factor 31 `避免過度擬合` by making conservative temperature-calibrated candidates executable after promotion, instead of blocking them because the model file could not save the strategy.
+
+Changes:
+
+- `RankingModel` now saves and loads a `temperature` field, with legacy model files defaulting to `1.0`.
+- Race prediction now applies saved win-score temperature before softmax, so promoted calibrated models use the same confidence strategy as walk-forward evaluation.
+- Walk-forward variants now build models with their own temperature directly, and registry promotion can persist the `conservative_calibrated` variant when gates allow it.
+- Updated factor 31 coverage notes to mark temperature-calibration serialization as supported and keep experiment manifests / ablation trails as the next open gap.
+
+Verification:
+
+- `python -m pytest tests\test_model.py tests\test_model_registry.py tests\test_coverage.py -q`
+- `python -m compileall -q src tests`
+- `python -m pytest -q`
+
 ## 2026-05-09 - Candidate OOS Reliability Artifact
 
 Goal:

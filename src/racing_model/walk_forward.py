@@ -12,7 +12,7 @@ from .features import (
     RunnerFeatures,
     build_race_features,
 )
-from .model import RankingModel, softmax
+from .model import RankingModel
 from .storage import fetch_all
 
 
@@ -189,6 +189,7 @@ def new_model_for_variant(variant: ModelVariant) -> RankingModel:
         weights={name: 0.0 for name in variant.feature_names},
         means={name: 0.0 for name in variant.feature_names},
         scales={name: 1.0 for name in variant.feature_names},
+        temperature=variant.temperature,
     )
 
 
@@ -197,29 +198,12 @@ def predict_for_variant(
     variant: ModelVariant,
     runners: list[RunnerFeatures],
 ) -> list[dict[str, Any]]:
-    if variant.temperature == 1.0:
+    previous_temperature = model.temperature
+    model.temperature = variant.temperature
+    try:
         return model.predict_race(runners)
-
-    base_rows = {str(row["horse_id"]): row for row in model.predict_race(runners)}
-    scores = [model.score_runner(runner) / max(variant.temperature, 0.01) for runner in runners]
-    probabilities = softmax(scores)
-    rows = []
-    for runner, score, probability in zip(runners, scores, probabilities):
-        row = dict(base_rows[runner.horse_id])
-        market_probability = runner.features.get("market_implied", 0.0)
-        row.update(
-            {
-                "score": score,
-                "win_probability": probability,
-                "market_probability": market_probability,
-                "value_gap": probability - market_probability,
-                "expected_value": probability * runner.latest_win_odds - 1.0
-                if runner.latest_win_odds
-                else None,
-            }
-        )
-        rows.append(row)
-    return sorted(rows, key=lambda item: float(item["win_probability"]), reverse=True)
+    finally:
+        model.temperature = previous_temperature
 
 
 def evaluate_predictions(

@@ -73,10 +73,13 @@ class RankingModel:
     top3_weights: dict[str, float] | None = None
     top3_bias: float = 0.0
     top3_model_trained: bool = False
+    temperature: float = 1.0
 
     def __post_init__(self) -> None:
         if self.top3_weights is None:
             self.top3_weights = {name: 0.0 for name in self.feature_names}
+        if self.temperature <= 0:
+            self.temperature = 1.0
 
     @classmethod
     def new(cls) -> "RankingModel":
@@ -124,7 +127,8 @@ class RankingModel:
         )
 
     def predict_race(self, runners: list[RunnerFeatures]) -> list[dict[str, float | str | None]]:
-        scores = [self.score_runner(runner) for runner in runners]
+        raw_scores = [self.score_runner(runner) for runner in runners]
+        scores = self._temperature_adjusted_scores(raw_scores)
         probabilities = softmax(scores)
         top3_scores = [self.top3_score_runner(runner) for runner in runners]
         top3_strengths = softmax(top3_scores) if self.top3_model_trained else probabilities
@@ -259,6 +263,7 @@ class RankingModel:
                     "top3_weights": self.top3_weights,
                     "top3_bias": self.top3_bias,
                     "top3_model_trained": self.top3_model_trained,
+                    "temperature": self.temperature,
                 },
                 indent=2,
                 sort_keys=True,
@@ -282,6 +287,7 @@ class RankingModel:
             or None,
             top3_bias=float(data.get("top3_bias", 0.0)),
             top3_model_trained=bool(data.get("top3_model_trained", False)),
+            temperature=float(data.get("temperature", 1.0)),
         )
 
     def _fit_scaler(self, races: list[list[RunnerFeatures]]) -> None:
@@ -300,6 +306,12 @@ class RankingModel:
 
     def _scaled(self, runner: RunnerFeatures, name: str) -> float:
         return (float(runner.features.get(name, 0.0)) - self.means[name]) / self.scales[name]
+
+    def _temperature_adjusted_scores(self, scores: list[float]) -> list[float]:
+        temperature = max(float(self.temperature), 0.01)
+        if abs(temperature - 1.0) < 0.000001:
+            return scores
+        return [score / temperature for score in scores]
 
     def _fit_top3_model(
         self,

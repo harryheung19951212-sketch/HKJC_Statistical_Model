@@ -141,15 +141,6 @@ def promote_latest_model(
             "reason": f"找不到候選模型版本：{variant_id or '-'}。",
             "run": public_registry_row(latest),
         }
-    if variant.temperature != 1.0:
-        return {
-            "status": "refused",
-            "reason": "此候選版本需要溫度校準，但現時模型檔未能保存該執行策略；先保持基線。",
-            "run": public_registry_row(latest),
-            "variant_id": variant.variant_id,
-            "variant_label": variant.label,
-        }
-
     races = build_training_races(conn)
     if not races:
         return {
@@ -186,6 +177,7 @@ def promote_latest_model(
         "variant_id": variant.variant_id,
         "variant_label": variant.label,
         "feature_count": len(variant.feature_names),
+        "temperature": variant.temperature,
         "calibration_gate": calibration,
         "run": public_registry_row(latest),
     }

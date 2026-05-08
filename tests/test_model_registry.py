@@ -217,6 +217,7 @@ def test_promote_latest_model_trains_candidate_and_backups_current_file(tmp_path
     assert result["backup_path"]
     assert Path(str(result["backup_path"])).exists()
     assert "market_implied" not in promoted.feature_names
+    assert promoted.temperature == 1.0
 
 
 def test_promote_latest_model_refuses_when_calibration_gate_is_unverified(tmp_path: Path) -> None:
@@ -244,13 +245,50 @@ def test_promote_latest_model_refuses_when_calibration_gate_is_unverified(tmp_pa
     assert result["calibration_gate"]["promote_allowed"] is False
 
 
-def registry_row(gate: str, best_variant_id: str = "no_market") -> dict[str, object]:
+def test_promote_latest_model_persists_calibrated_temperature(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    model_path = tmp_path / "baseline.json"
+    init_db(db_path)
+    sample_dir = Path("data/sample")
+    with connect(db_path) as conn:
+        for table, filename in {
+            "races": "races.csv",
+            "runners": "runners.csv",
+            "results": "results.csv",
+            "workouts": "workouts.csv",
+            "odds_ticks": "odds.csv",
+        }.items():
+            import_csv(conn, table, sample_dir / filename)
+        RankingModel.new().save(model_path)
+        insert_rows(
+            conn,
+            "model_registry_runs",
+            [
+                registry_row(
+                    "upgrade_candidate",
+                    best_variant_id="conservative_calibrated",
+                    best_label="Conservative",
+                )
+            ],
+        )
+        conn.commit()
+
+        result = promote_latest_model(conn, model_path, epochs=1, enforce_calibration=False)
+
+    promoted = RankingModel.load(model_path)
+    assert result["status"] == "promoted"
+    assert result["variant_id"] == "conservative_calibrated"
+    assert result["temperature"] == 1.35
+    assert promoted.temperature == 1.35
+
+
+def registry_row(gate: str, best_variant_id: str = "no_market", best_label: str = "No Market") -> dict[str, object]:
     report = {
         "summary": {
             "race_count": 40,
             "folds": 30,
             "best_variant_id": best_variant_id,
-            "best_label": "No Market",
+            "best_label": best_label,
             "recommendation": "候選版本通過 gate，可替換模型。",
         },
         "versions": [],
@@ -267,7 +305,7 @@ def registry_row(gate: str, best_variant_id: str = "no_market") -> dict[str, obj
         "race_count": 40,
         "folds": 30,
         "best_variant_id": best_variant_id,
-        "best_label": "No Market",
+        "best_label": best_label,
         "baseline_log_loss": 1.4,
         "best_log_loss": 1.2,
         "baseline_value_roi": 0.02,
@@ -396,6 +434,7 @@ if __name__ == "__main__":
         test_promote_latest_model_refuses_without_upgrade_gate,
         test_promote_latest_model_trains_candidate_and_backups_current_file,
         test_promote_latest_model_refuses_when_calibration_gate_is_unverified,
+        test_promote_latest_model_persists_calibrated_temperature,
     ]
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         base = Path(tmp)
