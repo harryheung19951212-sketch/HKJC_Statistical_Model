@@ -2087,6 +2087,8 @@ async function reconcileBettingLedger() {
 
 function renderPoolReplay(data) {
   const summary = data.summary || {};
+  const bankrollReplay = data.bankroll_replay || {};
+  const riskAudit = bankrollReplay.risk_audit || {};
   $("pool-replay-summary").innerHTML = `
     <div class="stat"><label>建議票數</label><strong>${summary.tickets || 0}</strong></div>
     <div class="stat"><label>已結算</label><strong>${summary.reconciled || 0}</strong></div>
@@ -2096,6 +2098,9 @@ function renderPoolReplay(data) {
     <div class="stat"><label>已確認</label><strong>${summary.executed || 0}</strong></div>
     <div class="stat"><label>整體命中率</label><strong>${summary.hit_rate === null || summary.hit_rate === undefined ? "-" : formatPct(summary.hit_rate)}</strong></div>
     <div class="stat"><label>最佳玩法</label><strong>${summary.best_market_label || "-"}</strong></div>
+    <div class="stat"><label>資金回撤</label><strong class="${evClass(bankrollReplay.max_drawdown)}">${formatMoney(bankrollReplay.max_drawdown || 0)}</strong></div>
+    <div class="stat"><label>日最大曝險</label><strong>${formatMoney((riskAudit.daily_max || {}).stake || 0)}</strong></div>
+    <div class="stat"><label>風控違規</label><strong>${riskAudit.breach_count || 0}</strong></div>
   `;
   $("pool-replay-note").textContent = summary.best_market_label
     ? `${summary.best_market_label} 暫時 ROI ${formatPct(summary.best_market_roi)}，但仍要用更多賽日樣本確認。`

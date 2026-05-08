@@ -34,6 +34,9 @@ def test_pool_replay_groups_settled_tickets_by_market(tmp_path: Path) -> None:
     assert summary["execution_profit"] == -20
     assert summary["execution_roi"] == -1.0
     assert summary["active_markets"] == 3
+    assert report["bankroll_replay"]["settled_tickets"] == 3
+    assert report["bankroll_replay"]["profit"] == 12
+    assert report["bankroll_replay"]["risk_audit"]["status"] == "pass"
     assert markets["WIN"]["reconciled"] == 2
     assert markets["WIN"]["roi"] == 0.5
     assert markets["WIN"]["executed"] == 1
@@ -42,6 +45,39 @@ def test_pool_replay_groups_settled_tickets_by_market(tmp_path: Path) -> None:
     assert markets["TRIO"]["pending"] == 1
     assert report["ranking"][0]["market"] == "WIN"
     assert any(row["level"] == "upgrade" for row in report["insights"])
+
+
+def test_pool_replay_audits_bankroll_exposure_breaches(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    conn = connect(db_path)
+    try:
+        rows = [
+            recommendation("r1-win-heavy", "WIN", 120, 0, -120, 0),
+            recommendation("r1-place-heavy", "PLACE", 120, 0, -120, 0),
+            recommendation("r1-qpl-heavy", "QPL", 130, 0, -130, 0),
+            recommendation("r1-qpl-heavy-2", "QPL", 100, 0, -100, 0),
+        ]
+        for row in rows:
+            row["horse_id"] = "1" if row["market"] in {"WIN", "PLACE"} else "1+2"
+            row["horse_name"] = "Shared Horse"
+        rows[-1]["horse_id"] = "1+3"
+        insert_rows(conn, "betting_recommendations", rows)
+        conn.commit()
+
+        report = pool_replay_report(conn)
+    finally:
+        conn.close()
+
+    replay = report["bankroll_replay"]
+    audit = replay["risk_audit"]
+    assert replay["max_drawdown"] == -470
+    assert audit["status"] == "breached"
+    assert audit["breach_count"] > 0
+    assert audit["race_breaches"]
+    assert audit["horse_breaches"]
+    assert audit["pool_breaches"]
+    assert audit["combination_breaches"]
 
 
 def recommendation(

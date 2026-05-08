@@ -2,6 +2,24 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-09 - Bankroll Replay Risk Audit
+
+Goal:
+
+- Continue the 36-factor equation work by connecting correlated-exposure controls to bankroll replay, so stake discipline can be checked from recorded betting recommendations instead of only at ticket-generation time.
+
+Changes:
+
+- `pool_replay_report` now includes `bankroll_replay` with starting/ending bankroll, settled ticket count, staked/returned/profit, ROI, max drawdown, drawdown percentage, and the latest equity curve.
+- Added a bankroll risk audit for race/day/horse/pool/combination exposure caps, including breach counts and top breaches.
+- The analytics UI now shows bankroll drawdown, daily max exposure, and risk-control breach count inside the pool replay panel.
+- Updated the coverage / blind-spot report for items 18, 19, 30, and 32, including fixing the stale note that candidate OOS reliability artifact was still missing.
+
+Verification:
+
+- `python -m pytest tests\test_pool_replay.py tests\test_betting.py -q`
+- `node --check src\racing_model\web\app.js`
+
 ## 2026-05-09 - Coverage Reporting Discipline
 
 Goal:

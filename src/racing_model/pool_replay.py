@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import sqlite3
+import re
 from typing import Any
 
+from .betting import RISK_PROFILES
 from .betting_ledger import dedupe_logical_recommendations
 from .pool_rules import POOL_RULES, cost_adjusted_expected_value, pool_rule_payload
 from .storage import fetch_all
@@ -41,11 +43,13 @@ def pool_replay_report(conn: sqlite3.Connection, race_id: str | None = None) -> 
     )
     best = ranked[0] if ranked else None
     summary = overall_summary(rows, markets, best)
+    bankroll_replay = bankroll_replay_report(rows)
     return {
         "race_id": race_id,
         "summary": summary,
         "markets": markets,
         "ranking": ranked,
+        "bankroll_replay": bankroll_replay,
         "insights": replay_insights(markets, best),
     }
 
@@ -246,6 +250,174 @@ def replay_insights(markets: list[dict[str, Any]], best: dict[str, Any] | None) 
             }
         )
     return insights
+
+
+def bankroll_replay_report(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    ordered = sorted(rows, key=lambda row: (str(row.get("race_date") or ""), str(row.get("race_id") or ""), str(row.get("created_at") or "")))
+    reconciled = [row for row in ordered if str(row.get("reconciliation_status")) == "reconciled"]
+    starting_bankroll = first_bankroll(ordered)
+    equity = starting_bankroll
+    peak = starting_bankroll
+    max_drawdown = 0.0
+    staked = 0.0
+    returned = 0.0
+    curve = []
+    for row in reconciled:
+        stake = settled_stake(row)
+        row_returned = safe_float(row.get("returned"))
+        profit = safe_float(row.get("profit"))
+        if row_returned is None and profit is not None:
+            row_returned = stake + profit
+        staked += stake
+        returned += row_returned or 0.0
+        equity += profit or 0.0
+        peak = max(peak, equity)
+        max_drawdown = min(max_drawdown, equity - peak)
+        curve.append(
+            {
+                "race_date": row.get("race_date"),
+                "race_id": row.get("race_id"),
+                "market": row.get("market"),
+                "stake": round(stake, 2),
+                "profit": round(profit or 0.0, 2),
+                "equity": round(equity, 2),
+                "drawdown": round(equity - peak, 2),
+            }
+        )
+    risk_audit = bankroll_risk_audit(ordered)
+    return {
+        "starting_bankroll": round(starting_bankroll, 2),
+        "ending_bankroll": round(equity, 2),
+        "settled_tickets": len(reconciled),
+        "staked": round(staked, 2),
+        "returned": round(returned, 2),
+        "profit": round(equity - starting_bankroll, 2),
+        "roi": safe_divide(equity - starting_bankroll, staked),
+        "max_drawdown": round(max_drawdown, 2),
+        "max_drawdown_pct": safe_divide(abs(max_drawdown), starting_bankroll),
+        "equity_curve": curve[-40:],
+        "risk_audit": risk_audit,
+    }
+
+
+def bankroll_risk_audit(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    race_exposure: dict[str, dict[str, Any]] = {}
+    daily_exposure: dict[str, dict[str, Any]] = {}
+    horse_exposure: dict[str, dict[str, Any]] = {}
+    pool_exposure: dict[str, dict[str, Any]] = {}
+    combination_exposure: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        stake = safe_float(row.get("recommended_stake")) or 0.0
+        if stake <= 0:
+            continue
+        caps = exposure_caps_for_row(row)
+        race_id = str(row.get("race_id") or "")
+        race_date = str(row.get("race_date") or "")
+        market = str(row.get("market") or "")
+        add_exposure(race_exposure, race_id, stake, caps["race"], {"race_id": race_id, "race_date": race_date})
+        add_exposure(daily_exposure, race_date, stake, caps["daily"], {"race_date": race_date})
+        add_exposure(pool_exposure, f"{race_id}:{market}", stake, caps["pool"], {"race_id": race_id, "race_date": race_date, "market": market, "market_label": row.get("market_label") or POOL_LABELS_ZH.get(market, market)})
+        horse_ids = row_horse_ids(row)
+        for horse_id in horse_ids:
+            add_exposure(horse_exposure, f"{race_id}:{horse_id}", stake, caps["horse"], {"race_id": race_id, "race_date": race_date, "horse_id": horse_id, "horse_name": row.get("horse_name") or horse_id})
+        signature = combination_signature(row)
+        if signature:
+            add_exposure(combination_exposure, f"{race_id}:{signature}", stake, caps["combination"], {"race_id": race_id, "race_date": race_date, "signature": signature, "label": row.get("horse_name") or signature})
+
+    race_breaches = exposure_breaches(race_exposure.values())
+    daily_breaches = exposure_breaches(daily_exposure.values())
+    horse_breaches = exposure_breaches(horse_exposure.values())
+    pool_breaches = exposure_breaches(pool_exposure.values())
+    combination_breaches = exposure_breaches(combination_exposure.values())
+    breach_count = len(race_breaches) + len(daily_breaches) + len(horse_breaches) + len(pool_breaches) + len(combination_breaches)
+    return {
+        "status": "breached" if breach_count else "pass",
+        "breach_count": breach_count,
+        "daily_max": max_exposure_row(daily_exposure.values()),
+        "race_max": max_exposure_row(race_exposure.values()),
+        "race_breaches": race_breaches[:8],
+        "daily_breaches": daily_breaches[:8],
+        "horse_breaches": horse_breaches[:8],
+        "pool_breaches": pool_breaches[:8],
+        "combination_breaches": combination_breaches[:8],
+    }
+
+
+def add_exposure(target: dict[str, dict[str, Any]], key: str, stake: float, cap: float, fields: dict[str, Any]) -> None:
+    if not key:
+        return
+    row = target.setdefault(key, {"stake": 0.0, "cap": round(cap, 2), "ticket_count": 0, **fields})
+    row["stake"] = round(float(row["stake"]) + stake, 2)
+    row["cap"] = max(float(row.get("cap") or 0.0), round(cap, 2))
+    row["ticket_count"] = int(row["ticket_count"]) + 1
+    row["usage"] = safe_divide(float(row["stake"]), float(row["cap"]) or 0.0)
+
+
+def exposure_breaches(rows: Any) -> list[dict[str, Any]]:
+    return sorted(
+        [
+            {**row, "over_by": round(float(row.get("stake") or 0.0) - float(row.get("cap") or 0.0), 2)}
+            for row in rows
+            if float(row.get("stake") or 0.0) > float(row.get("cap") or 0.0) > 0
+        ],
+        key=lambda row: float(row.get("over_by") or 0.0),
+        reverse=True,
+    )
+
+
+def max_exposure_row(rows: Any) -> dict[str, Any] | None:
+    rows = list(rows)
+    if not rows:
+        return None
+    return max(rows, key=lambda row: float(row.get("stake") or 0.0))
+
+
+def exposure_caps_for_row(row: dict[str, Any]) -> dict[str, float]:
+    profile = RISK_PROFILES.get(str(row.get("risk_profile") or "standard"), RISK_PROFILES["standard"])
+    bankroll = safe_float(row.get("bankroll")) or 10_000.0
+    race_cap = bankroll * profile.max_race_fraction
+    return {
+        "race": race_cap,
+        "daily": race_cap * 3.0,
+        "horse": race_cap * 0.50,
+        "pool": race_cap * 0.65,
+        "combination": bankroll * profile.max_bet_fraction * 1.25,
+    }
+
+
+def first_bankroll(rows: list[dict[str, Any]]) -> float:
+    for row in rows:
+        bankroll = safe_float(row.get("bankroll"))
+        if bankroll and bankroll > 0:
+            return bankroll
+    return 10_000.0
+
+
+def settled_stake(row: dict[str, Any]) -> float:
+    if str(row.get("execution_status") or "") == "confirmed":
+        execution_stake = safe_float(row.get("execution_stake"))
+        if execution_stake is not None:
+            return execution_stake
+    return safe_float(row.get("recommended_stake")) or 0.0
+
+
+def row_horse_ids(row: dict[str, Any]) -> list[str]:
+    market = str(row.get("market") or "")
+    horse_id = str(row.get("horse_id") or "")
+    if market in {"WIN", "PLACE"}:
+        return [horse_id] if horse_id else []
+    return re.findall(r"\d+", horse_id)
+
+
+def combination_signature(row: dict[str, Any]) -> str | None:
+    market = str(row.get("market") or "")
+    horse_id = str(row.get("horse_id") or "")
+    if market in {"WIN", "PLACE"} or not horse_id:
+        return None
+    if market in {"FCT", "TCE", "QUARTET"}:
+        return horse_id
+    legs = sorted(re.findall(r"\d+", horse_id), key=lambda value: int(value))
+    return "+".join(legs) if legs else horse_id
 
 
 def market_verdict(tickets: int, reconciled: int, roi: float | None, hit_rate: float | None) -> str:
