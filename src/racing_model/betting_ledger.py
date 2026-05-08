@@ -305,6 +305,9 @@ def existing_recommendations(conn: sqlite3.Connection, ids: list[str]) -> dict[s
 
 
 def preserve_existing_state(row: dict[str, Any], existing: dict[str, Any]) -> None:
+    previous_execution_stake = optional_float(existing.get("execution_stake")) or 0.0
+    next_execution_stake = optional_float(row.get("execution_stake")) or 0.0
+    automatic_existing = str(existing.get("execution_status") or "") == "confirmed" and not manual_execution(existing)
     preserve_fields = [
         "created_at",
         "execution_status",
@@ -322,6 +325,25 @@ def preserve_existing_state(row: dict[str, Any], existing: dict[str, Any]) -> No
     for field in preserve_fields:
         if field in existing:
             row[field] = existing[field]
+    if automatic_existing:
+        if next_execution_stake > previous_execution_stake:
+            row["execution_stake"] = next_execution_stake
+            row["execution_source"] = "auto_add_stake"
+            row["execution_value_message"] = append_message(
+                row.get("execution_value_message"),
+                f"同一張飛加注：${previous_execution_stake:.1f} -> ${next_execution_stake:.1f}",
+            )
+            row["reason"] = append_message(row.get("reason"), "同一張飛加注，已更新注碼；沒有新增重覆飛。")
+        else:
+            row["execution_stake"] = existing.get("execution_stake")
+            row["execution_odds"] = existing.get("execution_odds")
+            row["execution_source"] = "auto_same_ticket"
+            row["execution_value_message"] = append_message(
+                existing.get("execution_value_message"),
+                "同一張飛刷新，保留原入飛注碼；沒有新增重覆飛。",
+            )
+            row["reason"] = append_message(row.get("reason"), "同一張飛刷新，沒有新增重覆飛。")
+        return
     if manual_execution(existing):
         row["execution_stake"] = existing.get("execution_stake")
     if str(existing.get("reconciliation_status") or "") == "reconciled":
@@ -348,6 +370,11 @@ def manual_execution(existing: dict[str, Any]) -> bool:
     executed_at = str(existing.get("executed_at") or "")
     created_at = str(existing.get("created_at") or "")
     return bool(executed_at and created_at and executed_at != created_at)
+
+
+def append_message(value: object, message: str) -> str:
+    text = str(value or "").strip()
+    return f"{text}；{message}" if text else message
 
 
 def confirm_betting_recommendation(
@@ -668,6 +695,13 @@ def ledger_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def public_row(row: dict[str, Any]) -> dict[str, Any]:
+    source = str(row.get("execution_source") or "")
+    if source == "auto_add_stake":
+        row["ticket_update_label"] = "同飛加注"
+    elif source == "auto_same_ticket":
+        row["ticket_update_label"] = "同飛刷新"
+    else:
+        row["ticket_update_label"] = ""
     return row
 
 

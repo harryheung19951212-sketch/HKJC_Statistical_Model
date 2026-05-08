@@ -601,21 +601,22 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(self.app_state.sleep_race(race_id))
             elif path == "/api/mark-resulted":
                 race_id = required_query(query, "race_id")
-                upsert_race_status(
+                result = refresh_hkjc_results_if_available(
                     conn,
                     race_id,
-                    "resulted",
-                    last_result_refresh_at=datetime.now(timezone.utc).isoformat(),
+                    self.app_state.model(),
+                    self.app_state.settings.user_agent,
+                    self.app_state.settings.request_delay_seconds,
                 )
-                result = run_backtest(conn, self.app_state.model())
-                upsert_race_status(
-                    conn,
-                    race_id,
-                    "resulted",
-                    last_backtest_at=datetime.now(timezone.utc).isoformat(),
-                )
-                conn.commit()
-                self.send_json({"race_id": race_id, "backtest": asdict(result)})
+                if result and result.get("status") == "resulted":
+                    result["final_place_backfill"] = backfill_final_place_odds(
+                        conn,
+                        race_id,
+                        build_official_odds_provider(self.app_state.settings),
+                    )
+                    self.send_json(result)
+                else:
+                    self.send_json(result or {"race_id": race_id, "status": "not_hkjc_race"})
             elif path == "/api/mark-live":
                 race_id = required_query(query, "race_id")
                 status = race_lifecycle_status(conn, race_id)

@@ -7,7 +7,7 @@ from racing_model.betting_ledger import (
     record_betting_payload,
 )
 from racing_model.exotic_dividends import upsert_exotic_dividends
-from racing_model.storage import connect, init_db, insert_rows
+from racing_model.storage import connect, fetch_all, init_db, insert_rows
 
 
 def test_betting_ledger_records_active_ticket_once_and_reconciles(tmp_path: Path) -> None:
@@ -203,7 +203,8 @@ def test_refreshing_same_ticket_updates_one_logical_recommendation(tmp_path: Pat
     assert ledger["summary"]["recommendations"] == 1
     assert ledger["items"][0]["recommended_odds"] == 4.8
     assert ledger["items"][0]["execution_status"] == "confirmed"
-    assert ledger["items"][0]["execution_odds"] == 4.8
+    assert ledger["items"][0]["execution_odds"] == 4.0
+    assert ledger["items"][0]["ticket_update_label"] == "同飛刷新"
 
 
 def test_confirmed_ticket_keeps_live_pool_price_until_settlement(tmp_path: Path) -> None:
@@ -242,8 +243,9 @@ def test_confirmed_ticket_keeps_live_pool_price_until_settlement(tmp_path: Path)
     assert payload["tickets"][0]["recommendation_id"] == first_id
     assert item["execution_status"] == "confirmed"
     assert item["recommended_odds"] == 5.2
-    assert item["execution_odds"] == 5.2
-    assert item["execution_stake"] == 60
+    assert item["execution_odds"] == 4.0
+    assert item["execution_stake"] == 100
+    assert item["ticket_update_label"] == "同飛刷新"
     assert "不鎖入飛賠率" in ledger["clv_note"]
 
 
@@ -275,10 +277,15 @@ def test_auto_recorded_ticket_updates_execution_stake_with_latest_recommendation
         payload["tickets"][0]["recommended_stake"] = 80
         record_betting_payload(conn, race, payload, "models/baseline.json")
         ledger = betting_ledger_report(conn, "HK20260506-ST-01")
+        raw_count = fetch_all(conn, "SELECT count(*) AS n FROM betting_recommendations")[0]["n"]
 
     item = ledger["items"][0]
+    assert raw_count == 1
     assert item["recommended_stake"] == 80
     assert item["execution_stake"] == 80
+    assert item["execution_source"] == "auto_add_stake"
+    assert item["ticket_update_label"] == "同飛加注"
+    assert "沒有新增重覆飛" in item["reason"]
 
 
 def test_ledger_records_pool_choice_and_flags_stale_execution_price(tmp_path: Path) -> None:

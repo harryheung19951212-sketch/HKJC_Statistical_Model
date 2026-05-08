@@ -3,7 +3,10 @@ from zoneinfo import ZoneInfoNotFoundError
 
 import racing_model.live as live_module
 import racing_model.storage as storage_module
-from racing_model.live import enrich_runners_with_horse_profiles, is_future_hkjc_race_date
+from datetime import datetime
+
+from racing_model.live import HKJCRaceRef, before_hkjc_result_window, enrich_runners_with_horse_profiles, is_future_hkjc_race_date, refresh_hkjc_results_if_available
+from racing_model.model import RankingModel
 from racing_model.storage import connect, init_db, insert_rows, race_status, refresh_race_statuses
 
 
@@ -72,6 +75,39 @@ def test_future_race_date_stays_scheduled_even_if_bad_results_exist(tmp_path: Pa
 def test_future_hkjc_race_date_accepts_hkjc_formats() -> None:
     assert is_future_hkjc_race_date("2099/01/01")
     assert is_future_hkjc_race_date("2099-01-01")
+
+
+def test_same_day_sha_tin_first_race_is_not_resulted_before_post_time() -> None:
+    ref = HKJCRaceRef("2026/05/09", "ST", 1)
+    early = datetime(2026, 5, 9, 1, 30, tzinfo=live_module.hong_kong_tz())
+    after_post = datetime(2026, 5, 9, 12, 36, tzinfo=live_module.hong_kong_tz())
+
+    assert before_hkjc_result_window(ref, early) is True
+    assert before_hkjc_result_window(ref, after_post) is False
+
+
+def test_refresh_results_does_not_fetch_hkjc_before_result_window(tmp_path: Path, monkeypatch) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+
+    def fail_source(*args, **kwargs):
+        raise AssertionError("HKJC results should not be fetched before scheduled result window")
+
+    monkeypatch.setattr(live_module, "before_hkjc_result_window", lambda ref: True)
+    monkeypatch.setattr(live_module, "HKJCSource", fail_source)
+    with connect(db_path) as conn:
+        result = refresh_hkjc_results_if_available(
+            conn,
+            "HK20260509-ST-01",
+            RankingModel.new(),
+            "test-agent",
+            0.0,
+        )
+        status = race_status(conn, "HK20260509-ST-01")
+
+    assert result["status"] == "scheduled"
+    assert status["status"] == "scheduled"
+    assert status["notes"] == "race_not_due_for_official_results"
 
 
 def test_runner_enrichment_uses_hkjc_horse_profile_history() -> None:

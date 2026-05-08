@@ -679,7 +679,7 @@ function portfolioRoleLabel(value) {
 
 function renderDecisionCard(row) {
   const executionText = row.execution_status === "confirmed"
-    ? `已入飛｜現時估算 ${formatNum(row.execution_odds, 2)}｜${formatMoney(row.execution_stake)}`
+    ? `已入飛${row.ticket_update_label ? `｜${row.ticket_update_label}` : ""}｜現時估算 ${formatNum(row.execution_odds, 2)}｜${formatMoney(row.execution_stake)}`
     : "未入飛";
   return `
     <div class="ticket ${ticketClass(row.action)}">

@@ -39,14 +39,14 @@ def refresh_hkjc_results_if_available(
     ref = parse_hkjc_race_id(race_id)
     if not ref:
         return None
-    if is_future_hkjc_race_date(ref.race_date):
+    if is_future_hkjc_race_date(ref.race_date) or before_hkjc_result_window(ref):
         now = datetime.now(timezone.utc).isoformat()
         upsert_race_status(
             conn,
             race_id,
             "scheduled",
             last_result_refresh_at=now,
-            notes="future_race_results_not_available",
+            notes="race_not_due_for_official_results",
         )
         conn.commit()
         return {"race_id": race_id, "results": 0, "odds_ticks": 0, "status": "scheduled"}
@@ -129,7 +129,8 @@ def load_hkjc_race_day(
         if first_race_id is None:
             first_race_id = race_id
         try:
-            future_race = is_future_hkjc_race_date(race_date)
+            ref = HKJCRaceRef(race_date, venue.upper(), race_no)
+            future_race = is_future_hkjc_race_date(race_date) or before_hkjc_result_window(ref)
             parsed_result = {"results": [], "odds_ticks": [], "races": [], "runners": []}
             if not future_race:
                 result = source.fetch_results_page(race_date, venue, race_no)
@@ -304,6 +305,33 @@ def is_future_hkjc_race_date(race_date: str) -> bool:
         return False
     today_hk = datetime.now(hong_kong_tz()).date()
     return target > today_hk
+
+
+def before_hkjc_result_window(ref: HKJCRaceRef, now: datetime | None = None) -> bool:
+    post_time = estimated_hkjc_post_time(ref)
+    if post_time is None:
+        return False
+    current = now.astimezone(hong_kong_tz()) if now else datetime.now(hong_kong_tz())
+    return current < post_time + timedelta(minutes=5)
+
+
+def estimated_hkjc_post_time(ref: HKJCRaceRef) -> datetime | None:
+    normalized = str(ref.race_date or "").replace("-", "/")
+    try:
+        race_date = datetime.strptime(normalized, "%Y/%m/%d").date()
+    except ValueError:
+        return None
+    first_post_hour = 18 if ref.venue.upper() == "HV" else 12
+    first_post_minute = 40 if ref.venue.upper() == "HV" else 30
+    first_post = datetime(
+        race_date.year,
+        race_date.month,
+        race_date.day,
+        first_post_hour,
+        first_post_minute,
+        tzinfo=hong_kong_tz(),
+    )
+    return first_post + timedelta(minutes=max(int(ref.race_no) - 1, 0) * 35)
 
 
 def hong_kong_tz():

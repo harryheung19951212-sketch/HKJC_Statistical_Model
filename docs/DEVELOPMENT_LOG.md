@@ -2,6 +2,27 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-09 - Ticket Dedupe And Official Result Gate
+
+Goal:
+
+- Stop duplicate betting tickets in payout reconciliation, while still allowing the same logical ticket to be refreshed or topped up.
+- Prevent a race from becoming `resulted` before HKJC has actually published results; date/time alone must not settle a race.
+
+Changes:
+
+- Re-recording the same logical ticket now keeps one ledger row. If the stake increases, it is marked `同飛加注`; if it only refreshes odds/recommendation data, it is marked `同飛刷新`.
+- Existing auto-confirmed tickets no longer get duplicated or silently treated as a new bet; lower refreshed recommended stake does not reduce the already-recorded execution stake.
+- HKJC result refresh now has a result-window guard. For example, Sha Tin race 1 on May 9 is kept `scheduled` at 01:30 and will not fetch/import results before the first-race result window.
+- Manual `mark-resulted` now goes through HKJC result refresh instead of directly marking the race as resulted.
+- Updated the coverage / blind-spot report for items 19, 20, and 32.
+
+Verification:
+
+- `python -m pytest tests\test_betting_ledger.py tests\test_betting_settlement.py tests\test_fast_betting_refresh.py -q`
+- `python -m pytest tests\test_race_status.py tests\test_active_race_refresh.py -q`
+- `node --check src\racing_model\web\app.js`
+
 ## 2026-05-09 - Bankroll Replay Risk Audit
 
 Goal:
