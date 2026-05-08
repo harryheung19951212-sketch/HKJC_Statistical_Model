@@ -497,6 +497,7 @@ function renderDecisionCard(row) {
         <div><label>\u6240\u9700\u8ce0\u7387</label><strong>${formatNum(row.required_dividend, 2)}</strong></div>
         <div><label>\u62bd\u6c34/\u566a\u97f3</label><strong>${formatPoolCost(row.pool_rule)}</strong></div>
         <div><label>注碼</label><strong>${formatMoney(row.recommended_stake)}</strong></div>
+        <div><label>最低票</label><strong>${formatMoney(row.minimum_ticket_cost)}</strong></div>
       </div>
       <div class="ticket-action">${row.action}</div>
     </div>
@@ -579,7 +580,11 @@ function renderBankerLegCard(row) {
         <div><label>膽</label><b>${(row.bankers || []).join(" / ") || "-"}</b></div>
         <div><label>腳</label><b>${(row.legs || []).join(" / ") || "-"}</b></div>
         <div><label>組合數</label><b>${row.combination_count || 0}</b></div>
+        <div><label>最低成本</label><b>${formatMoney(row.minimum_ticket_cost)}</b></div>
+        <div><label>建議總注</label><b>${formatMoney(row.recommended_stake)}</b></div>
+        <div><label>每組約</label><b>${formatMoney(row.per_combination_stake)}</b></div>
       </div>
+      <small>${row.stake_reason || ""}</small>
       <small>${row.note || ""}</small>
       ${references.length ? `<small>參考組合：${references.map((item) => `${item.combination} ${formatPct(item.probability)}`).join("｜")}</small>` : ""}
     </div>
@@ -628,9 +633,12 @@ function renderExoticCard(row) {
         <label>打和派彩 <b>${formatNum(row.break_even_dividend, 2)}x</b></label>
         <label>\u6240\u9700\u6d3e\u5f69 <b>${formatNum(row.required_dividend, 2)}x</b></label>
         <label>官方/估算 <b>${formatNum(row.dividend, 2)}x</b></label>
+        <label>建議注碼 <b>${formatMoney(row.recommended_stake)}</b></label>
+        <label>最低票 <b>${formatMoney(row.minimum_ticket_cost)}</b></label>
         <label>期望值 <b class="${evClass(row.expected_value)}">${row.expected_value === null || row.expected_value === undefined ? "-" : Number(row.expected_value).toFixed(3)}</b></label>
         <label>\u6263\u6210\u672cEV <b class="${evClass(row.cost_adjusted_expected_value)}">${formatSigned(row.cost_adjusted_expected_value, 3)}</b></label>
       </div>
+      <small>${row.stake_reason || ""}</small>
     </div>
   `;
 }

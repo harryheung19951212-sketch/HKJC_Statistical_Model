@@ -7,6 +7,7 @@ This file records cross-device Codex handoffs, audits, fixes, pushes, and server
 Goal:
 
 - Make the live betting panel usable after a race has paid out, and add banker/leg structures for exotic tickets instead of only showing flat combination rankings.
+- Ensure every displayed betting ticket has an explicit stake calculation, even when the recommendation is `$0 / 不下注`.
 
 Changes:
 
@@ -15,6 +16,9 @@ Changes:
 - WIN/PLACE winning tickets now wait for final odds before settlement; losing tickets can still settle from the official result.
 - Added `banker_leg_suggestions` to betting output for QPL, TRIO, TCE, and FIRST4.
 - Banker/leg suggestions include banker runners, leg runners, full-leg cover flag, combination count, and model-use notes.
+- WIN/PLACE, exotic candidates, and banker/leg structures now expose recommended stake and minimum ticket cost.
+- Exotic candidates inherit the scaled Kelly stake from the matched betting decision when final/probable dividend and edge are sufficient; otherwise they show `$0` with a no-bet reason.
+- Banker/leg structures show total recommended stake, per-combination estimate, combination count, and minimum cost.
 - UI renders a `膽 / 腳建議` section and keeps the existing combination candidate section.
 
 Verification:

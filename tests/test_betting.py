@@ -41,6 +41,8 @@ def test_betting_decision_uses_fractional_kelly_and_race_cap() -> None:
     assert all(ticket["action"] == "有值博" for ticket in result["tickets"])
     exotic_markets = {candidate["market"] for candidate in result["exotic_candidates"]}
     assert {"QPL", "TRIO", "QIN", "FCT", "TCE", "FIRST4", "QUARTET"}.issubset(exotic_markets)
+    assert all("recommended_stake" in candidate for candidate in result["exotic_candidates"])
+    assert all(candidate["minimum_ticket_cost"] > 0 for candidate in result["exotic_candidates"])
 
 
 def test_resulted_race_is_review_only() -> None:
@@ -118,6 +120,8 @@ def test_banker_leg_suggestions_include_all_leg_cover() -> None:
     assert first4["bankers"] == ["1 馬1"]
     assert len(first4["legs"]) == 7
     assert first4["combination_count"] == 35
+    assert first4["minimum_ticket_cost"] == 35.0
+    assert first4["recommended_stake"] == 0.0
 
 
 def test_exotic_dividend_turns_candidate_into_ev_ticket() -> None:
@@ -158,6 +162,9 @@ def test_exotic_dividend_turns_candidate_into_ev_ticket() -> None:
     assert qpl["required_dividend"] > qpl["break_even_dividend"]
     assert qpl["pool_rule"]["takeout_rate"] > 0
     assert qpl["recommended_stake"] > 0
+    qpl_candidate = next(row for row in result["exotic_candidates"] if row["market"] == "QPL" and row["combination_key"] == "1+2")
+    assert qpl_candidate["recommended_stake"] == qpl["recommended_stake"]
+    assert qpl_candidate["stake_action"] == "有值博"
 
 
 def test_pool_cost_gate_rejects_small_nominal_edge() -> None:
