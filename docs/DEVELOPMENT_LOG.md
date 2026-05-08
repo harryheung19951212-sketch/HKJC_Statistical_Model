@@ -2,6 +2,26 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-09 - Production Race Status And Ticket Ledger Cleanup
+
+Goal:
+
+- Restore Sha Tin races 1, 3, and 4 on May 9 to unfinished status after premature result imports.
+- Remove duplicate payout-reconciliation tickets while keeping one logical ticket per race/market/selection/risk/model key.
+
+Production data maintenance:
+
+- Backed up the affected production PostgreSQL tables before changing data.
+- Set `HK20260509-ST-01`, `HK20260509-ST-03`, and `HK20260509-ST-04` back to `scheduled`.
+- Deleted 42 premature result rows, 118 premature final odds/place snapshot rows, and 27 premature final exotic-dividend rows for those races.
+- Deleted 63 duplicate betting recommendation rows, keeping the confirmed/latest row for each logical ticket.
+- Verified the three races now have zero result rows, zero final odds/dividend rows, and zero duplicate logical ticket groups.
+
+Verification:
+
+- Production PostgreSQL verification query after the transaction.
+- Production app container restarted successfully.
+
 ## 2026-05-09 - Ticket Dedupe And Official Result Gate
 
 Goal:
