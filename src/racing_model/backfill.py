@@ -173,9 +173,11 @@ def complete_repaired_runners(
             SELECT DISTINCT race_id
             FROM runners
             WHERE gear = 'repaired_from_result'
+               OR COALESCE(last_six_runs, '') = ''
                OR COALESCE(horse_name_zh, '') = ''
                OR COALESCE(jockey_zh, '') = ''
                OR COALESCE(trainer_zh, '') = ''
+               OR body_weight_lbs IS NULL
             ORDER BY race_id
             """,
         )
@@ -268,6 +270,7 @@ def update_runner_from_racecard(conn: sqlite3.Connection, runner: dict[str, Any]
         UPDATE runners
         SET
           horse_no = COALESCE(:horse_no, horse_no),
+          last_six_runs = CASE WHEN COALESCE(:last_six_runs, '') != '' THEN :last_six_runs ELSE last_six_runs END,
           horse_name = CASE WHEN COALESCE(:horse_name, '') != '' THEN :horse_name ELSE horse_name END,
           horse_name_zh = CASE WHEN COALESCE(:horse_name_zh, '') != '' THEN :horse_name_zh ELSE horse_name_zh END,
           jockey = CASE WHEN COALESCE(:jockey, '') != '' THEN :jockey ELSE jockey END,
@@ -276,6 +279,7 @@ def update_runner_from_racecard(conn: sqlite3.Connection, runner: dict[str, Any]
           trainer_zh = CASE WHEN COALESCE(:trainer_zh, '') != '' THEN :trainer_zh ELSE trainer_zh END,
           draw = CASE WHEN COALESCE(:draw, 0) > 0 THEN :draw ELSE draw END,
           weight_lbs = CASE WHEN COALESCE(:weight_lbs, 0) > 0 THEN :weight_lbs ELSE weight_lbs END,
+          body_weight_lbs = CASE WHEN COALESCE(:body_weight_lbs, 0) > 0 THEN :body_weight_lbs ELSE body_weight_lbs END,
           official_rating = CASE WHEN COALESCE(:official_rating, 0) > 0 THEN :official_rating ELSE official_rating END,
           age = CASE WHEN COALESCE(:age, 0) > 0 THEN :age ELSE age END,
           sex = CASE WHEN COALESCE(:sex, '') != '' THEN :sex ELSE sex END,
@@ -288,9 +292,11 @@ def update_runner_from_racecard(conn: sqlite3.Connection, runner: dict[str, Any]
           AND horse_id = :horse_id
           AND (
             gear = 'repaired_from_result'
+            OR COALESCE(last_six_runs, '') = ''
             OR COALESCE(horse_name_zh, '') = ''
             OR COALESCE(jockey_zh, '') = ''
             OR COALESCE(trainer_zh, '') = ''
+            OR body_weight_lbs IS NULL
           )
         """,
         runner,

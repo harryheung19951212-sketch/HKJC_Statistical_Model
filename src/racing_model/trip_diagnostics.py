@@ -76,11 +76,12 @@ def horse_context_signals(
     target_distance_m: int,
     current_body_weight_lbs: float | None = None,
     current_gear: str = "",
+    last_six_runs: str = "",
     limit: int = 6,
 ) -> dict[str, float]:
     rows = past_performances(conn, horse_id, before_date, limit=limit)
     if not rows:
-        return dict(DEFAULT_SIGNALS)
+        return fallback_signals_from_last_six(last_six_runs)
 
     analyses = [analyse_performance(row, target_distance_m) for row in rows]
     weights = recency_weights(len(analyses))
@@ -110,6 +111,58 @@ def horse_context_signals(
         "distance_stretch_signal": round(weighted("distance_stretch_signal"), 4),
         "opponent_strength_score": round(opponent_strength, 4),
     }
+
+
+def fallback_signals_from_last_six(last_six_runs: str) -> dict[str, float]:
+    signals = dict(DEFAULT_SIGNALS)
+    positions = last_six_positions(last_six_runs)
+    if not positions:
+        return signals
+
+    latest = positions[0]
+    usable = positions[:6]
+    average_finish = sum(usable) / len(usable)
+    poor_runs = sum(1 for position in usable if position >= 8)
+    top3_runs = sum(1 for position in usable if position <= 3)
+    volatility = (max(usable) - min(usable)) / 12.0 if len(usable) >= 2 else 0.0
+
+    ability = 0.0
+    if average_finish >= 6:
+        ability += min(0.35, (average_finish - 5.0) / 10.0)
+    if poor_runs:
+        ability += min(0.28, poor_runs * 0.07)
+    if latest >= 8:
+        ability += 0.10
+    if top3_runs >= 2 and average_finish <= 5.5:
+        ability -= 0.08
+
+    luck = 0.0
+    if len(usable) >= 3:
+        previous_average = sum(usable[1:]) / len(usable[1:])
+        if latest >= previous_average + 4 and previous_average <= 5.5:
+            luck += 0.22
+    if top3_runs and poor_runs and volatility >= 0.45:
+        luck += 0.12
+    if latest > 6 and min(usable[1:] or usable) <= 3:
+        luck += 0.08
+
+    signals["ability_issue_score"] = round(max(0.0, min(1.0, ability)), 4)
+    signals["trip_luck_score"] = round(max(0.0, min(0.55, luck)), 4)
+    signals["closing_gain_score"] = round(0.08 if top3_runs and latest > 3 else 0.0, 4)
+    return signals
+
+
+def last_six_positions(last_six_runs: str) -> list[int]:
+    positions: list[int] = []
+    for token in re.findall(r"\d+|WV-A|WV|PU|FE|DNF", str(last_six_runs or ""), flags=re.I):
+        upper = token.upper()
+        if upper in {"WV-A", "WV", "PU", "FE", "DNF"}:
+            positions.append(12)
+        elif token.isdigit():
+            value = int(token)
+            if value > 0:
+                positions.append(value)
+    return positions[:6]
 
 
 def past_performances(
@@ -146,8 +199,8 @@ def past_performances(
         FROM results x
         JOIN races r ON r.race_id = x.race_id
         LEFT JOIN runners ru ON ru.race_id = x.race_id AND ru.horse_id = x.horse_id
-        WHERE x.horse_id = ? AND r.date < ?
-        ORDER BY r.date DESC
+        WHERE x.horse_id = ? AND replace(r.date, '/', '-') < replace(?, '/', '-')
+        ORDER BY replace(r.date, '/', '-') DESC
         LIMIT ?
         """,
         (horse_id, before_date, limit),

@@ -2,6 +2,29 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-08 - Betting Stake And Horse Context Repair
+
+Goal:
+
+- Restore horse context visibility in the race prediction table when HKJC runner rows are missing current body weight or detailed past-performance diagnostics.
+- Align the betting header's recommended stake with the payout reconciliation ledger.
+- Let qualified betting and exotic-pool tickets enter the ledger at the HK$10 minimum while still scaling up with confidence.
+
+Changes:
+
+- Runner completion/result refresh now fills `last_six_runs` and `body_weight_lbs` when HKJC racecard/results data provides them.
+- Prediction features now fall back to the latest historical body weight and use a non-leaking last-six-runs diagnostic fallback for trip luck and ability issue scores when detailed past results are unavailable.
+- Eligible tickets now keep at least the market minimum ticket cost instead of being rounded down to zero, while high-confidence tickets can still size above HK$10 through Kelly and risk caps.
+- Betting header `本場上限` now shows the actual race risk cap; `建議總注` follows the payout reconciliation stake total when ledger tickets exist.
+- Pool/exotic tickets that clear EV, cost, source, calibration, and exposure gates are included in recorded betting tickets for payout reconciliation.
+
+Verification:
+
+- `python -m compileall -q src tests`
+- `node --check src\racing_model\web\app.js`
+- `python -m pytest tests\test_trip_diagnostics.py tests\test_betting.py tests\test_fast_betting_refresh.py -q`
+- `python -m pytest -q`
+
 ## 2026-05-08 - Adjusted Speed Figure V1
 
 Goal:

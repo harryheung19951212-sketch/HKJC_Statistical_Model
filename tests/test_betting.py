@@ -74,6 +74,50 @@ def test_resulted_race_is_review_only() -> None:
     assert {decision["action"] for decision in result["decisions"]} == {"只供回測"}
 
 
+def test_eligible_stakes_use_minimum_ticket_but_scale_with_confidence() -> None:
+    low_bankroll = build_betting_decisions(
+        [
+            {
+                "horse_id": "H001",
+                "horse_no": 1,
+                "display_name": "細注馬",
+                "win_probability": 0.22,
+                "latest_win_odds": 6.0,
+                "latest_win_odds_source": "hkjc_mqtt",
+                "top3_probability": 0.35,
+                "place_odds": None,
+                "place_odds_source": None,
+            }
+        ],
+        "scheduled",
+        bankroll=900,
+        risk_profile="standard",
+        include_exotics=False,
+    )
+    confident = build_betting_decisions(
+        [
+            {
+                "horse_id": "H002",
+                "horse_no": 2,
+                "display_name": "重注馬",
+                "win_probability": 0.50,
+                "latest_win_odds": 4.0,
+                "latest_win_odds_source": "hkjc_mqtt",
+                "top3_probability": 0.75,
+                "place_odds": None,
+                "place_odds_source": None,
+            }
+        ],
+        "scheduled",
+        bankroll=10000,
+        risk_profile="standard",
+        include_exotics=False,
+    )
+
+    assert low_bankroll["tickets"][0]["recommended_stake"] == 10.0
+    assert confident["tickets"][0]["recommended_stake"] > 10.0
+
+
 def test_trio_upgrade_path_compares_position_q_pairs() -> None:
     predictions = [
         {

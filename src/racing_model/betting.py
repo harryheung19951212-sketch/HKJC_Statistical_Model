@@ -252,7 +252,7 @@ def build_market_decision(
     )
     action = action_label(eligible, expected_value, edge, profile, reason)
     stake_fraction = capped_fraction if action == "有值博" else 0.0
-    stake = round_stake_to_unit(bankroll * stake_fraction, market) if stake_fraction > 0 else 0.0
+    stake = stake_from_fraction(bankroll, stake_fraction, market) if stake_fraction > 0 else 0.0
     return {
         "market": market,
         "market_label": "獨贏" if market == "WIN" else "位置",
@@ -403,6 +403,20 @@ def kelly_fraction(probability: float | None, odds: float | None) -> float:
     if edge <= 0:
         return 0.0
     return edge / (odds - 1.0)
+
+
+def stake_from_fraction(
+    bankroll: float,
+    stake_fraction: float,
+    market: str,
+    minimum_ticket_cost: float | None = None,
+) -> float:
+    raw_stake = max(float(bankroll or 0.0) * max(float(stake_fraction or 0.0), 0.0), 0.0)
+    if raw_stake <= 0:
+        return 0.0
+    minimum = minimum_ticket_cost if minimum_ticket_cost and minimum_ticket_cost > 0 else float(pool_rule_payload(market)["min_unit"])
+    rounded = round_stake_to_unit(raw_stake, market)
+    return max(float(minimum), rounded)
 
 
 def clamp_value(value: float, lower: float = 0.0, upper: float = 1.0) -> float:
@@ -564,7 +578,16 @@ def build_exotic_decisions(
         )
         action = action_label(eligible, expected_value, edge, profile, reason)
         stake_fraction = capped_fraction if action == "有值博" else 0.0
-        stake = round_stake_to_unit(bankroll * stake_fraction, str(candidate["market"])) if stake_fraction > 0 else 0.0
+        stake = (
+            stake_from_fraction(
+                bankroll,
+                stake_fraction,
+                str(candidate["market"]),
+                safe_float(candidate.get("minimum_ticket_cost")) or None,
+            )
+            if stake_fraction > 0
+            else 0.0
+        )
         decisions.append(
             {
                 "market": candidate["market"],

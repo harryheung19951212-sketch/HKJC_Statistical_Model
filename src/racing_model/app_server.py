@@ -1182,9 +1182,14 @@ def api_betting(
         reconcile_betting_ledger(conn, race_id=race_id)
     ledger_report = betting_ledger_report(conn, race_id=race_id)
     payload["placed_summary"] = placed_betting_summary(ledger_report)
-    payload["display_max_race_stake"] = payload["placed_summary"]["display_stake"]
-    payload["display_total_recommended_stake"] = payload["placed_summary"]["display_stake"]
     payload["settlement"] = betting_settlement_payload(ledger_report)
+    settlement_summary = payload["settlement"].get("summary", {}) if isinstance(payload["settlement"], dict) else {}
+    ledger_staked = float((settlement_summary or {}).get("staked") or 0.0) if isinstance(settlement_summary, dict) else 0.0
+    payload["display_max_race_stake"] = payload.get("max_race_stake", 0.0)
+    payload["display_total_recommended_stake"] = round(
+        ledger_staked if ledger_staked > 0 else float(payload.get("total_recommended_stake") or 0.0),
+        2,
+    )
     return payload
 
 

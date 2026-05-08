@@ -140,6 +140,8 @@ def build_race_features(conn: sqlite3.Connection, race_id: str) -> list[RunnerFe
             str(runner["running_style"] or ""),
         )
         body_weight_lbs = optional_float(row_value(runner, "body_weight_lbs"))
+        if body_weight_lbs is None:
+            body_weight_lbs = latest_historical_body_weight(conn, str(horse_id), str(race_row["date"]))
         context = horse_context_signals(
             conn,
             str(horse_id),
@@ -147,6 +149,7 @@ def build_race_features(conn: sqlite3.Connection, race_id: str) -> list[RunnerFe
             int(race_row["distance_m"]),
             current_body_weight_lbs=body_weight_lbs,
             current_gear=str(runner["gear"] or ""),
+            last_six_runs=str(runner["last_six_runs"] or "") if "last_six_runs" in runner.keys() else "",
         )
         pace_profile = pace_profiles.get(str(horse_id), {})
         pace_context = pace_contexts.get(str(horse_id), {})
@@ -674,3 +677,24 @@ def feature_summary_by_name(runners: list[RunnerFeatures]) -> dict[str, dict[str
         for name, items in values.items()
         if items
     }
+
+
+def latest_historical_body_weight(conn: sqlite3.Connection, horse_id: str, before_date: str) -> float | None:
+    rows = fetch_all(
+        conn,
+        """
+        SELECT ru.body_weight_lbs
+        FROM runners ru
+        JOIN races r ON r.race_id = ru.race_id
+        WHERE ru.horse_id = ?
+          AND replace(r.date, '/', '-') < replace(?, '/', '-')
+          AND ru.body_weight_lbs IS NOT NULL
+          AND ru.body_weight_lbs > 0
+        ORDER BY replace(r.date, '/', '-') DESC, ru.race_id DESC
+        LIMIT 1
+        """,
+        (horse_id, before_date),
+    )
+    if not rows:
+        return None
+    return optional_float(rows[0]["body_weight_lbs"])

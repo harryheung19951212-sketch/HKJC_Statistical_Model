@@ -51,6 +51,56 @@ def test_trip_diagnostics_separates_luck_from_ability_and_body_trend(tmp_path: P
     assert "ability_issue_score" in prediction
 
 
+def test_trip_diagnostics_uses_last_six_runs_when_history_is_missing(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    with connect(db_path) as conn:
+        add_race(conn, "R-TARGET", "2026/05/06", 1600)
+        insert_rows(
+            conn,
+            "runners",
+            [
+                {
+                    **runner("R-TARGET", "H001", body_weight=0, gear="B"),
+                    "last_six_runs": "8/2/3/10/4/9",
+                    "body_weight_lbs": None,
+                },
+            ],
+        )
+        conn.commit()
+
+        signals = horse_context_signals(conn, "H001", "2026/05/06", 1600, last_six_runs="8/2/3/10/4/9")
+        features = build_race_features(conn, "R-TARGET")
+        prediction = RankingModel.new().predict_race(features)[0]
+
+    assert signals["ability_issue_score"] > 0
+    assert signals["trip_luck_score"] > 0
+    assert prediction["ability_issue_score"] > 0
+    assert prediction["trip_luck_score"] > 0
+
+
+def test_prediction_uses_latest_historical_body_weight_when_current_is_missing(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    with connect(db_path) as conn:
+        add_race(conn, "R-OLD", "2026/04/20", 1600)
+        add_race(conn, "R-TARGET", "2026-05-06", 1600)
+        insert_rows(
+            conn,
+            "runners",
+            [
+                runner("R-OLD", "H001", body_weight=1116, gear="B"),
+                {**runner("R-TARGET", "H001", body_weight=0, gear="B"), "body_weight_lbs": None},
+            ],
+        )
+        conn.commit()
+
+        features = build_race_features(conn, "R-TARGET")
+        prediction = RankingModel.new().predict_race(features)[0]
+
+    assert prediction["body_weight_lbs"] == 1116.0
+
+
 def add_race(conn, race_id: str, date: str, distance_m: int) -> None:
     insert_rows(
         conn,

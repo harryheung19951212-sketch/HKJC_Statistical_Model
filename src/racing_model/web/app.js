@@ -539,11 +539,12 @@ function renderBetting(data, options = {}) {
   const exoticRefresh = data.exotic_refresh || {};
   const statusLabel = data.fast_preview ? `${localStatus(data.race_status)} / 快速預覽` : localStatus(data.race_status);
   const placed = data.placed_summary || {};
+  const raceCap = Number(data.display_max_race_stake ?? data.max_race_stake ?? 0);
   const placedStake = Number(data.display_total_recommended_stake ?? placed.display_stake ?? placed.executed_staked ?? 0);
   const suggestedStake = Number(data.total_recommended_stake || 0);
   const kellyLabel = settings.kelly_label ? `${formatPct(settings.fractional_kelly)}｜${settings.kelly_label}` : formatPct(settings.fractional_kelly);
   summary.innerHTML = `
-    <div><label>本場上限</label><strong>${formatMoney(placedStake)}</strong></div>
+    <div><label>本場上限</label><strong>${formatMoney(raceCap)}</strong></div>
     <div><label>建議總注</label><strong>${formatMoney(placedStake)}</strong></div>
     <div><label>新建議</label><strong>${formatMoney(suggestedStake)}</strong></div>
     <div><label>Kelly</label><strong>${kellyLabel}</strong></div>

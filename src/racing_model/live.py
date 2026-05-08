@@ -249,23 +249,29 @@ def update_runner_localization(conn: sqlite3.Connection, runners: object) -> int
             """
             UPDATE runners
             SET
+              last_six_runs = CASE WHEN COALESCE(:last_six_runs, '') != '' THEN :last_six_runs ELSE last_six_runs END,
               horse_name_zh = CASE WHEN COALESCE(:horse_name_zh, '') != '' THEN :horse_name_zh ELSE horse_name_zh END,
               jockey_zh = CASE WHEN COALESCE(:jockey_zh, '') != '' THEN :jockey_zh ELSE jockey_zh END,
-              trainer_zh = CASE WHEN COALESCE(:trainer_zh, '') != '' THEN :trainer_zh ELSE trainer_zh END
+              trainer_zh = CASE WHEN COALESCE(:trainer_zh, '') != '' THEN :trainer_zh ELSE trainer_zh END,
+              body_weight_lbs = CASE WHEN COALESCE(:body_weight_lbs, 0) > 0 THEN :body_weight_lbs ELSE body_weight_lbs END
             WHERE race_id = :race_id
               AND horse_id = :horse_id
               AND (
-                COALESCE(horse_name_zh, '') = ''
+                COALESCE(last_six_runs, '') = ''
+                OR COALESCE(horse_name_zh, '') = ''
                 OR COALESCE(jockey_zh, '') = ''
                 OR COALESCE(trainer_zh, '') = ''
+                OR body_weight_lbs IS NULL
               )
             """,
             {
                 "race_id": runner.get("race_id"),
                 "horse_id": runner.get("horse_id"),
+                "last_six_runs": runner.get("last_six_runs") or "",
                 "horse_name_zh": runner.get("horse_name_zh") or "",
                 "jockey_zh": runner.get("jockey_zh") or "",
                 "trainer_zh": runner.get("trainer_zh") or "",
+                "body_weight_lbs": runner.get("body_weight_lbs"),
             },
         )
         updated += cursor.rowcount
