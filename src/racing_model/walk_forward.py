@@ -120,6 +120,7 @@ def run_walk_forward_versions(
     best = versions[0] if versions else None
     recommendation = build_recommendation(best, baseline)
     oos_gate = build_oos_slice_gate(best, baseline)
+    candidate_calibration_gate = build_oos_calibration_gate(best)
     return {
         "summary": {
             "race_count": len(race_ids),
@@ -130,16 +131,26 @@ def run_walk_forward_versions(
             "recommendation": recommendation,
             "oos_slice_gate": oos_gate["gate"],
             "oos_slice_gate_label": oos_gate["label"],
+            "candidate_calibration_gate": candidate_calibration_gate["gate"],
+            "candidate_calibration_gate_label": candidate_calibration_gate["label"],
         },
         "versions": versions,
         "oos_gate": oos_gate,
         "candidate_artifact": {
-            "artifact_type": "walk_forward_oos_slice_scorecard",
+            "artifact_type": "walk_forward_candidate_oos_evidence",
             "best_variant_id": best["variant_id"] if best else None,
             "baseline_variant_id": baseline["variant_id"] if baseline else None,
             "slice_dimensions": ["場地", "跑道", "途程", "班次", "馬匹數", "市場熱門度"],
-            "gate": oos_gate,
+            "slice_gate": oos_gate,
+            "calibration_gate": candidate_calibration_gate,
         },
+        "candidate_calibration_artifact": {
+            "artifact_type": "walk_forward_oos_candidate_reliability",
+            "best_variant_id": best["variant_id"] if best else None,
+            "best_label": best["label"] if best else None,
+            "gate": candidate_calibration_gate,
+        },
+        "candidate_calibration_gate": candidate_calibration_gate,
         "folds": fold_rows[-12:],
     }
 
@@ -682,6 +693,124 @@ def oos_gate_payload(gate: str, message: str, slices: list[dict[str, Any]], min_
     }
 
 
+def build_oos_calibration_gate(
+    best: dict[str, Any] | None,
+    min_points: int = 30,
+    min_bin_count: int = 8,
+    max_abs_gap: float = 0.15,
+    max_overconfidence_gap: float = 0.08,
+) -> dict[str, Any]:
+    if not best:
+        return oos_calibration_gate_payload("no_data", "未有候選版本可靠度證據。", [], min_points, min_bin_count)
+
+    bins = list(best.get("calibration_bins", []))
+    total = sum(int(row.get("count", 0) or 0) for row in bins)
+    compared = [
+        compare_calibration_bin(row, min_bin_count, max_abs_gap, max_overconfidence_gap)
+        for row in bins
+    ]
+    eligible = [row for row in compared if row["gate"] != "sample_small"]
+    blocked = [row for row in eligible if row["gate"] == "blocked"]
+    if total < min_points:
+        return oos_calibration_gate_payload(
+            "unverified",
+            f"候選 OOS 校準點只有 {total} 個，未足 {min_points} 個。",
+            compared,
+            min_points,
+            min_bin_count,
+        )
+    if not eligible:
+        return oos_calibration_gate_payload(
+            "unverified",
+            f"候選 OOS 未有分桶達到 {min_bin_count} 個樣本。",
+            compared,
+            min_points,
+            min_bin_count,
+        )
+    if blocked:
+        worst = max(blocked, key=lambda row: abs(float(row.get("gap") or 0.0)))
+        return oos_calibration_gate_payload(
+            "blocked",
+            f"候選 OOS 校準未過關：{worst.get('label')} 分桶偏差 {float(worst.get('gap') or 0.0) * 100:.1f}%。",
+            compared,
+            min_points,
+            min_bin_count,
+        )
+    return oos_calibration_gate_payload(
+        "pass",
+        "候選 OOS reliability bins 未見明顯失準，可進入下一個 gate。",
+        compared,
+        min_points,
+        min_bin_count,
+    )
+
+
+def compare_calibration_bin(
+    row: dict[str, Any],
+    min_bin_count: int,
+    max_abs_gap: float,
+    max_overconfidence_gap: float,
+) -> dict[str, Any]:
+    count = int(row.get("count", 0) or 0)
+    gap = float(row.get("gap") or 0.0)
+    avg_prediction = float(row.get("avg_prediction") or 0.0)
+    gate = "pass"
+    reason = "通過"
+    if count < min_bin_count:
+        gate = "sample_small"
+        reason = "分桶樣本不足"
+    elif avg_prediction >= 0.15 and gap <= -max_overconfidence_gap:
+        gate = "blocked"
+        reason = "候選過度自信"
+    elif abs(gap) >= max_abs_gap:
+        gate = "blocked"
+        reason = "候選可靠度偏差過大"
+    return {
+        "label": row.get("label"),
+        "gate": gate,
+        "reason": reason,
+        "count": count,
+        "avg_prediction": row.get("avg_prediction"),
+        "observed_rate": row.get("observed_rate"),
+        "gap": gap,
+    }
+
+
+def oos_calibration_gate_payload(
+    gate: str,
+    message: str,
+    bins: list[dict[str, Any]],
+    min_points: int,
+    min_bin_count: int,
+) -> dict[str, Any]:
+    labels = {
+        "pass": "候選校準通過",
+        "blocked": "候選校準阻擋",
+        "unverified": "候選校準樣本不足",
+        "no_data": "未有候選校準",
+    }
+    blocked = [row for row in bins if row.get("gate") == "blocked"]
+    eligible = [row for row in bins if row.get("gate") != "sample_small"]
+    total = sum(int(row.get("count", 0) or 0) for row in bins)
+    return {
+        "gate": gate,
+        "label": labels.get(gate, gate),
+        "message": message,
+        "points": total,
+        "min_points": min_points,
+        "min_bin_count": min_bin_count,
+        "eligible_bins": len(eligible),
+        "blocked_bins": len(blocked),
+        "sample_small_bins": sum(1 for row in bins if row.get("gate") == "sample_small"),
+        "bins": sorted(
+            bins,
+            key=lambda row: (
+                0 if row.get("gate") == "blocked" else 1 if row.get("gate") == "pass" else 2,
+                -abs(float(row.get("gap") or 0.0)),
+                str(row.get("label") or ""),
+            ),
+        ),
+    }
 def variant_verdict(metrics: dict[str, Any]) -> str:
     if int(metrics["races"]) < 30:
         return "樣本不足，暫作研究參考"

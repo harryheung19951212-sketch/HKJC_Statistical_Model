@@ -12,7 +12,7 @@ from .calibration_gate import build_calibration_gate
 from .features import build_training_races
 from .pool_replay import pool_replay_report
 from .storage import fetch_all, insert_rows
-from .walk_forward import build_oos_slice_gate, default_variants, new_model_for_variant, run_walk_forward_versions
+from .walk_forward import build_oos_calibration_gate, build_oos_slice_gate, default_variants, new_model_for_variant, run_walk_forward_versions
 
 
 GATE_LABELS = {
@@ -27,6 +27,8 @@ GATE_LABELS.update(
     {
         "slice_unverified": "分片 OOS 樣本不足",
         "slice_blocked": "分片 OOS 阻擋",
+        "calibration_unverified": "候選 OOS 校準樣本不足",
+        "calibration_blocked": "候選 OOS 校準阻擋",
     }
 )
 
@@ -97,6 +99,7 @@ def model_registry_report(conn: sqlite3.Connection, limit: int = 12) -> dict[str
         "runs": runs,
         "latest_report": latest_report,
         "latest_oos_gate": latest_report.get("oos_gate") if isinstance(latest_report, dict) else None,
+        "latest_candidate_calibration_gate": latest_report.get("candidate_calibration_gate") if isinstance(latest_report, dict) else None,
         "clv_status": "升級 gate 已加入下注時 execution ROI / 回撤。未有足夠已確認下注樣本時，任何候選只可列為研究，不能正式替換模型。",
     }
 
@@ -241,6 +244,11 @@ def build_registry_row(
     best_metrics = (best or {}).get("metrics", {})
     baseline_metrics = (baseline or {}).get("metrics", {})
     oos_gate = report.get("oos_gate") if isinstance(report.get("oos_gate"), dict) else build_oos_slice_gate(best, baseline)
+    candidate_calibration_gate = (
+        report.get("candidate_calibration_gate")
+        if isinstance(report.get("candidate_calibration_gate"), dict)
+        else build_oos_calibration_gate(best)
+    )
     return {
         "run_id": uuid.uuid4().hex,
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -265,7 +273,7 @@ def build_registry_row(
         "execution_max_drawdown": optional_float(execution.get("execution_max_drawdown")),
         "execution_gate": str(execution.get("gate") or "unverified"),
         "promotion_gate": gate,
-        "recommendation": registry_recommendation(summary, oos_gate, gate),
+        "recommendation": registry_recommendation(summary, oos_gate, candidate_calibration_gate, gate),
         "report_json": json.dumps(report, ensure_ascii=False, sort_keys=True),
     }
 
@@ -283,6 +291,11 @@ def statistical_promotion_gate(summary: dict[str, Any], best: dict[str, Any] | N
         return "slice_blocked"
     if oos_gate["gate"] == "unverified":
         return "slice_unverified"
+    calibration_gate = build_oos_calibration_gate(best)
+    if calibration_gate["gate"] == "blocked":
+        return "calibration_blocked"
+    if calibration_gate["gate"] in {"unverified", "no_data"}:
+        return "calibration_unverified"
     best_metrics = best.get("metrics", {})
     baseline_metrics = baseline.get("metrics", {})
     best_loss = float(best_metrics.get("log_loss", 0.0) or 0.0)
@@ -302,11 +315,20 @@ def statistical_promotion_gate(summary: dict[str, Any], best: dict[str, Any] | N
     return "hold_baseline"
 
 
-def registry_recommendation(summary: dict[str, Any], oos_gate: dict[str, Any], gate: str) -> str:
+def registry_recommendation(
+    summary: dict[str, Any],
+    oos_gate: dict[str, Any],
+    candidate_calibration_gate: dict[str, Any],
+    gate: str,
+) -> str:
     if gate == "slice_blocked":
         return f"分片 OOS gate 阻擋升級：{oos_gate.get('message')}"
     if gate == "slice_unverified":
         return f"分片 OOS gate 未確認：{oos_gate.get('message')}"
+    if gate == "calibration_blocked":
+        return f"候選 OOS 校準阻擋升級：{candidate_calibration_gate.get('message')}"
+    if gate == "calibration_unverified":
+        return f"候選 OOS 校準未確認：{candidate_calibration_gate.get('message')}"
     return str(summary.get("recommendation") or "")
 
 

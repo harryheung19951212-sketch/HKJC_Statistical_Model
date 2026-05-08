@@ -2,6 +2,26 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-09 - Candidate OOS Reliability Artifact
+
+Goal:
+
+- Continue factor 31 `避免過度擬合` by saving candidate-model reliability evidence inside each walk-forward registry run, not only recalculating calibration for the currently deployed model.
+
+Changes:
+
+- Walk-forward model comparison now emits `candidate_calibration_gate` and `candidate_calibration_artifact` for the best OOS variant.
+- The model registry promotion gate now blocks or holds a candidate when its own OOS reliability bins are overconfident, under-sampled, or missing.
+- The registry UI now shows the latest candidate calibration gate, calibration points, eligible bins, blocked bins, and worst failed bins.
+- Updated factor 31 coverage notes to mark candidate OOS reliability artifacts as supported while keeping temperature-strategy serialization and experiment manifests as open gaps.
+
+Verification:
+
+- `python -m pytest tests\test_model_registry.py tests\test_promotion_scorecard.py tests\test_coverage.py -q`
+- `python -m compileall -q src tests`
+- `node --check src\racing_model\web\app.js`
+- `python -m pytest -q`
+
 ## 2026-05-09 - Pool Calibration Gate V1
 
 Goal:

@@ -1896,15 +1896,37 @@ function promotionStatusClass(status) {
 function renderModelRegistry(data) {
   const summary = data.summary || {};
   const oosGate = data.latest_oos_gate || {};
+  const calibrationGate = data.latest_candidate_calibration_gate || {};
   const blockedSlices = (oosGate.slices || []).filter((row) => row.gate === "blocked");
+  const blockedBins = (calibrationGate.bins || []).filter((row) => row.gate === "blocked");
   $("model-registry-summary").innerHTML = `
     <div class="stat"><label>已保存評估</label><strong>${summary.run_count || 0}</strong></div>
     <div class="stat"><label>最新 Gate</label><strong>${summary.latest_gate_label || "-"}</strong></div>
     <div class="stat"><label>升級候選</label><strong>${summary.upgrade_candidates || 0}</strong></div>
     <div class="stat"><label>分片 OOS</label><strong>${oosGate.label || "-"}</strong></div>
+    <div class="stat"><label>候選校準</label><strong>${calibrationGate.label || "-"}</strong></div>
   `;
   $("model-registry-clv").innerHTML = `
     <p>${data.clv_status || ""}</p>
+    ${calibrationGate.gate ? `
+      <div class="registry-card ${calibrationGate.gate === "blocked" ? "risk" : calibrationGate.gate === "pass" ? "candidate" : "unverified"}">
+        <div class="version-head">
+          <strong>${calibrationGate.label || "-"}</strong>
+          <span>校準點 ${calibrationGate.points || 0}｜可驗分桶 ${calibrationGate.eligible_bins || 0}｜阻擋 ${calibrationGate.blocked_bins || 0}</span>
+        </div>
+        <p>${calibrationGate.message || ""}</p>
+        ${blockedBins.length ? `
+          <div class="version-metrics">
+            ${blockedBins.slice(0, 4).map((row) => `
+              <div>
+                <label>${row.label || "-"}</label>
+                <b>${row.reason || "失準"}｜差距 ${formatSigned(row.gap, 3)}</b>
+              </div>
+            `).join("")}
+          </div>
+        ` : ""}
+      </div>
+    ` : ""}
     ${oosGate.gate ? `
       <div class="registry-card ${oosGate.gate === "blocked" ? "risk" : ""}">
         <div class="version-head">
