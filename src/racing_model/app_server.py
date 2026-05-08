@@ -32,6 +32,7 @@ from .betting_ledger import (
     recommendation_key,
     reconcile_betting_ledger,
     record_betting_payload,
+    refresh_open_betting_prices,
 )
 from .config import display_database_target, get_settings
 from .coverage import build_coverage_report
@@ -1181,7 +1182,11 @@ def api_betting(
             payload["ledger"] = record_betting_payload(conn, race, payload, model_path)
     if status == "resulted":
         reconcile_betting_ledger(conn, race_id=race_id)
+        price_refresh = {"checked": 0, "updated": 0}
+    else:
+        price_refresh = refresh_open_betting_prices(conn, race_id=race_id)
     ledger_report = betting_ledger_report(conn, race_id=race_id)
+    payload["ledger_price_refresh"] = price_refresh
     payload["placed_summary"] = placed_betting_summary(ledger_report)
     payload["settlement"] = betting_settlement_payload(ledger_report)
     settlement_summary = payload["settlement"].get("summary", {}) if isinstance(payload["settlement"], dict) else {}

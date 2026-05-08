@@ -683,7 +683,7 @@ function portfolioRoleLabel(value) {
 
 function renderDecisionCard(row) {
   const executionText = row.execution_status === "confirmed"
-    ? `已入飛${row.ticket_update_label ? `｜${row.ticket_update_label}` : ""}｜現時估算 ${formatNum(row.execution_odds, 2)}｜${formatMoney(row.execution_stake)}`
+    ? `已入飛${row.ticket_update_label ? `｜${row.ticket_update_label}` : ""}｜最新彩池 ${formatNum(row.execution_odds, 2)}｜${formatMoney(row.execution_stake)}`
     : "未入飛";
   return `
     <div class="ticket ${ticketClass(row.action)}">
@@ -836,7 +836,7 @@ function renderSettlementCard(row) {
       <div class="settlement-metrics">
         <label>結果 <b>${status.label}</b></label>
         <label>注碼 <b>${formatMoney(row.recommended_stake)}</b></label>
-        <label>現時估算 <b>${formatNum(row.execution_odds, 2)} / ${formatMoney(row.execution_stake)}</b></label>
+        <label>最新彩池 <b>${formatNum(row.execution_odds, 2)} / ${formatMoney(row.execution_stake)}</b></label>
         <label>派彩 <b>${formatMoney(row.returned)}</b></label>
         <label>盈虧 <b class="${evClass(row.profit)}">${formatMoney(row.profit)}</b></label>
         <label>最後賠率 <b>${formatNum(row.final_odds, 2)}</b></label>
@@ -1041,7 +1041,7 @@ function renderExoticCard(row) {
         <label>節奏修正 <b>${row.pace_adjusted_probability === null || row.pace_adjusted_probability === undefined ? "-" : formatPct(row.pace_adjusted_probability)}</b></label>
         <label>打和派彩 <b>${formatNum(row.break_even_dividend, 2)}x</b></label>
         <label>\u6240\u9700\u6d3e\u5f69 <b>${formatNum(row.required_dividend, 2)}x</b></label>
-        <label>官方/估算 <b>${formatNum(row.dividend, 2)}x</b></label>
+        <label>官方即時 <b>${formatNum(row.dividend, 2)}x</b></label>
         <label>賠率來源 <b>${dividendSourceLabel(row)}</b></label>
         <label>建議注碼 <b>${formatMoney(row.recommended_stake)}</b></label>
         <label>每組約 <b>${formatMoney(row.per_combination_stake)}</b></label>
@@ -2151,7 +2151,7 @@ function renderBettingLedger(data) {
       <div class="version-metrics">
         <div><label>建議賠率</label><b>${formatNum(row.recommended_odds, 2)}</b></div>
         <div><label>所需賠率</label><b>${formatNum(row.required_dividend, 2)}</b></div>
-        <div><label>現時估算</label><b>${row.execution_status === "confirmed" ? formatNum(row.execution_odds, 2) : "未入飛"}</b></div>
+        <div><label>最新彩池</label><b>${row.execution_status === "confirmed" ? formatNum(row.execution_odds, 2) : "未入飛"}</b></div>
         <div><label>執行狀態</label><b>${executionValueLabel(row.execution_value_status)}</b></div>
         <div><label>彩池分</label><b>${row.pool_choice_score === null || row.pool_choice_score === undefined ? "-" : formatNum(row.pool_choice_score, 2)}</b></div>
         <div><label>彩池排名</label><b>${row.pool_choice_rank || "-"}</b></div>

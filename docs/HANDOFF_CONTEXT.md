@@ -299,7 +299,7 @@ foreach ($t in $tests) {
    - 要分辨 smart money vs public chase。
 
 2. Final exotic dividend settlement
-   - 目前可用 probable / estimated dividends。
+   - 即場投注只可用官方 probable dividends；estimated dividends 不可進入即場入飛價。
    - 仍未完整自動結算 final exotic dividends。
    - 組合票 ledger / P/L / slippage 仍未完整。
 

@@ -2,6 +2,29 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-09 - Live Pool Price Refresh For Open Tickets
+
+Goal:
+
+- Ensure same-day betting advice never treats bet-time odds/dividends as locked or estimated.
+- Keep payout reconciliation, the betting-slip engine, pool-choice scoring, and exotic candidates tied to the latest official pool price refreshed every 30 seconds.
+
+Changes:
+
+- Added `refresh_open_betting_prices()` so `/api/betting` refreshes every open confirmed ticket from the latest official WIN/PLACE tick or probable exotic dividend before building settlement output.
+- Same-ticket refresh now preserves the ticket state and stake, but updates `execution_odds`, execution value status, and slippage from the latest pool price instead of keeping the older execution price.
+- WIN/PLACE staking now requires official live HKJC odds sources; non-live or estimated prices produce no active ticket.
+- Exotic dividend lookup ignores `estimated` rows for live betting and waits for official probable dividends.
+- `/api/betting` now returns `ledger_price_refresh` for observability.
+- Reworded UI labels from `現時估算` / `官方/估算` to `最新彩池` / `官方即時`.
+- Updated coverage items 23, 25, and 34 to record the 30-second live pool-price rule.
+
+Verification:
+
+- `python -m pytest tests\test_betting_ledger.py tests\test_fast_betting_refresh.py tests\test_ui_localization.py -q`
+- `python -m compileall -q src tests`
+- `node --check src\racing_model\web\app.js`
+
 ## 2026-05-09 - Settlement Requires Executed Tickets
 
 Goal:

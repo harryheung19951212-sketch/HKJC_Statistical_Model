@@ -10,6 +10,9 @@ from .betting import EXOTIC_PRODUCTS
 from .storage import fetch_all, insert_rows
 
 
+LIVE_ODDS_SOURCES = {"hkjc_graphql", "hkjc_mqtt"}
+
+
 def record_betting_payload(
     conn: sqlite3.Connection,
     race: dict[str, Any],
@@ -77,7 +80,7 @@ def current_ticket_pool_odds(conn: sqlite3.Connection, race_id: str, ticket: dic
             """
             SELECT dividend, source
             FROM exotic_dividends
-            WHERE race_id = ? AND market = ? AND combination_key = ? AND dividend_status IN ('probable', 'estimated')
+            WHERE race_id = ? AND market = ? AND combination_key = ? AND dividend_status = 'probable'
             ORDER BY updated_at DESC
             LIMIT 1
             """,
@@ -382,11 +385,16 @@ def preserve_existing_state(row: dict[str, Any], existing: dict[str, Any]) -> No
             row["reason"] = append_message(row.get("reason"), "同一張飛加注，已更新注碼；沒有新增重覆飛。")
         else:
             row["execution_stake"] = existing.get("execution_stake")
-            row["execution_odds"] = existing.get("execution_odds")
             row["execution_source"] = "auto_same_ticket"
+            latest_odds = optional_float(row.get("execution_odds"))
+            if latest_odds is not None:
+                row.update(execution_value_check(row, latest_odds))
+                row["execution_slippage"] = odds_delta(latest_odds, row.get("recommended_odds"))
+            else:
+                row["execution_odds"] = existing.get("execution_odds")
             row["execution_value_message"] = append_message(
-                existing.get("execution_value_message"),
-                "同一張飛刷新，保留原入飛注碼；沒有新增重覆飛。",
+                row.get("execution_value_message") or existing.get("execution_value_message"),
+                "同一張飛刷新，保留原入飛注碼，賠率跟最新彩池更新；沒有新增重覆飛。",
             )
             row["reason"] = append_message(row.get("reason"), "同一張飛刷新，沒有新增重覆飛。")
         return
@@ -474,7 +482,36 @@ def confirm_betting_recommendation(
     return {"status": "confirmed", "message": "已確認下注；賠率會跟最新彩池更新，直到最終派彩對數", "item": public_row(row)}
 
 
-def current_execution_odds(conn: sqlite3.Connection, row: dict[str, Any]) -> tuple[float | None, str]:
+def refresh_open_betting_prices(conn: sqlite3.Connection, race_id: str | None = None) -> dict[str, Any]:
+    where = "WHERE reconciliation_status != 'reconciled' AND execution_status = 'confirmed'"
+    params: tuple[Any, ...] = ()
+    if race_id:
+        where += " AND race_id = ?"
+        params = (race_id,)
+    rows = [dict(row) for row in fetch_all(conn, f"SELECT * FROM betting_recommendations {where}", params)]
+    updated = []
+    now = utc_now()
+    for row in rows:
+        odds, source = current_live_execution_odds(conn, row)
+        if odds is None or odds <= 1:
+            continue
+        old_odds = optional_float(row.get("execution_odds"))
+        old_source = str(row.get("execution_source") or "")
+        if old_odds == odds and old_source == source:
+            continue
+        row["updated_at"] = now
+        row["execution_odds"] = odds
+        row["execution_source"] = source
+        row["execution_slippage"] = odds_delta(odds, row.get("recommended_odds"))
+        row.update(execution_value_check(row, odds))
+        updated.append(row)
+    if updated:
+        insert_rows(conn, "betting_recommendations", updated)
+        conn.commit()
+    return {"checked": len(rows), "updated": len(updated)}
+
+
+def current_live_execution_odds(conn: sqlite3.Connection, row: dict[str, Any]) -> tuple[float | None, str]:
     market = str(row.get("market") or "")
     if market in EXOTIC_PRODUCTS:
         rows = fetch_all(
@@ -482,7 +519,7 @@ def current_execution_odds(conn: sqlite3.Connection, row: dict[str, Any]) -> tup
             """
             SELECT dividend, source
             FROM exotic_dividends
-            WHERE race_id = ? AND market = ? AND combination_key = ? AND dividend_status IN ('probable', 'final', 'estimated')
+            WHERE race_id = ? AND market = ? AND combination_key = ? AND dividend_status = 'probable'
             ORDER BY updated_at DESC
             LIMIT 1
             """,
@@ -490,23 +527,28 @@ def current_execution_odds(conn: sqlite3.Connection, row: dict[str, Any]) -> tup
         )
         if rows:
             return optional_float(rows[0]["dividend"]), str(rows[0]["source"] or "exotic_dividend")
-        return optional_float(row.get("recommended_odds")), str(row.get("odds_source") or "recommended")
+        return None, ""
 
     column = "win_odds" if market == "WIN" else "place_odds"
+    placeholders = ", ".join("?" for _ in LIVE_ODDS_SOURCES)
     rows = fetch_all(
         conn,
         f"""
         SELECT {column} AS odds, source
         FROM odds_ticks
-        WHERE race_id = ? AND horse_id = ? AND {column} IS NOT NULL
+        WHERE race_id = ? AND horse_id = ? AND {column} IS NOT NULL AND source IN ({placeholders})
         ORDER BY timestamp DESC
         LIMIT 1
         """,
-        (row.get("race_id"), row.get("horse_id")),
+        (row.get("race_id"), row.get("horse_id"), *sorted(LIVE_ODDS_SOURCES)),
     )
     if rows:
         return optional_float(rows[0]["odds"]), str(rows[0]["source"] or "odds_tick")
-    return optional_float(row.get("recommended_odds")), str(row.get("odds_source") or "recommended")
+    return None, ""
+
+
+def current_execution_odds(conn: sqlite3.Connection, row: dict[str, Any]) -> tuple[float | None, str]:
+    return current_live_execution_odds(conn, row)
 
 
 def annotate_pool_choice_context(tickets: list[dict[str, Any]], payload: dict[str, Any]) -> None:

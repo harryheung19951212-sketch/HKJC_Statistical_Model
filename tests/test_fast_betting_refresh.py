@@ -247,3 +247,50 @@ def test_full_betting_refreshes_win_place_odds_and_bypasses_cache(tmp_path: Path
     assert payload["odds_refresh"]["status"] == "refreshed"
     assert win["odds"] == 8.0
     assert place["odds"] == 3.0
+
+
+def test_full_betting_refresh_updates_existing_ticket_pool_price(tmp_path: Path, monkeypatch) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    state = AppState(tmp_path / "model.json", 30)
+    state.calibration_gate = lambda conn, model: None  # type: ignore[method-assign]
+
+    def fake_refresh_odds(conn, race_id, provider):
+        return refresh_odds(conn, race_id, FakeOddsProvider())
+
+    monkeypatch.setattr(app_server, "refresh_odds", fake_refresh_odds)
+    with connect(db_path) as conn:
+        add_minimal_race(conn)
+        first = api_betting(
+            conn,
+            RankingModel.new(),
+            "HK20990101-ST-01",
+            10000,
+            "standard",
+            state=state,
+            model_path=tmp_path / "model.json",
+            predictions=[prediction()],
+            include_exotics=False,
+            record_mode="sync",
+        )
+        first_win = next(row for row in first["settlement"]["items"] if row["market"] == "WIN")
+        assert first_win["execution_odds"] == 4.0
+
+        refreshed = api_betting(
+            conn,
+            RankingModel.new(),
+            "HK20990101-ST-01",
+            10000,
+            "standard",
+            state=state,
+            model_path=tmp_path / "model.json",
+            include_exotics=False,
+            refresh_odds_live=True,
+            record_mode="sync",
+        )
+
+    assert refreshed["odds_refresh"]["status"] == "refreshed"
+    assert refreshed["ledger_price_refresh"]["updated"] == 2
+    refreshed_win = next(row for row in refreshed["settlement"]["items"] if row["market"] == "WIN")
+    assert refreshed_win["execution_odds"] == 8.0
+    assert refreshed_win["execution_source"] == "hkjc_graphql"

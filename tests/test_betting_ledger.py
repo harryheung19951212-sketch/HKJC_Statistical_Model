@@ -203,7 +203,7 @@ def test_refreshing_same_ticket_updates_one_logical_recommendation(tmp_path: Pat
     assert ledger["summary"]["recommendations"] == 1
     assert ledger["items"][0]["recommended_odds"] == 4.8
     assert ledger["items"][0]["execution_status"] == "confirmed"
-    assert ledger["items"][0]["execution_odds"] == 4.0
+    assert ledger["items"][0]["execution_odds"] == 4.8
     assert ledger["items"][0]["ticket_update_label"] == "同飛刷新"
 
 
@@ -329,7 +329,7 @@ def test_confirmed_ticket_keeps_live_pool_price_until_settlement(tmp_path: Path)
     assert payload["tickets"][0]["recommendation_id"] == first_id
     assert item["execution_status"] == "confirmed"
     assert item["recommended_odds"] == 5.2
-    assert item["execution_odds"] == 4.0
+    assert item["execution_odds"] == 5.2
     assert item["recommended_stake"] == 100
     assert item["execution_stake"] == 100
     assert item["ticket_update_label"] == "同飛刷新"

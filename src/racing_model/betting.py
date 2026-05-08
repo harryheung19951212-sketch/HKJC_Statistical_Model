@@ -356,8 +356,8 @@ def decision_eligibility(
         return False, "已完場，只作回測"
     if race_status == "live":
         return False, "已開跑，停止下注"
-    if market == "PLACE" and source not in LIVE_ODDS_SOURCES:
-        return False, "未有位置實時賠率"
+    if market in {"WIN", "PLACE"} and source not in LIVE_ODDS_SOURCES:
+        return False, "未有官方實時賠率"
     if source == "hkjc_results_final":
         return False, "賽後賠率，只作回測"
     if expected_value is None or edge is None:

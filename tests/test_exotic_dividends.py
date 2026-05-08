@@ -39,3 +39,28 @@ def test_exotic_dividend_lookup_handles_empty_race(tmp_path: Path) -> None:
         lookup = load_exotic_dividend_lookup(conn, "HK20260506-ST-02")
 
     assert lookup == {}
+
+
+def test_exotic_dividend_lookup_ignores_estimated_prices_for_live_betting(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    with connect(db_path) as conn:
+        upsert_exotic_dividends(
+            conn,
+            "HK20260506-ST-01",
+            [{"market": "QPL", "combination": "1+2", "dividend": 18.0}],
+            source="manual_estimate",
+            dividend_status="estimated",
+        )
+        estimated_only = load_exotic_dividend_lookup(conn, "HK20260506-ST-01")
+        upsert_exotic_dividends(
+            conn,
+            "HK20260506-ST-01",
+            [{"market": "QPL", "combination": "1+2", "dividend": 20.0}],
+            source="hkjc_mqtt",
+            dividend_status="probable",
+        )
+        probable = load_exotic_dividend_lookup(conn, "HK20260506-ST-01")
+
+    assert estimated_only == {}
+    assert probable[("QPL", "1+2")]["dividend"] == 20.0

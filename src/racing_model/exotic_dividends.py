@@ -67,9 +67,11 @@ def exotic_dividend_report(conn: sqlite3.Connection, race_id: str) -> dict[str, 
 
 
 def exotic_dividend_lookup(rows: list[dict[str, Any]]) -> dict[tuple[str, str], dict[str, Any]]:
-    priority = {"probable": 3, "estimated": 2, "final": 1}
+    priority = {"probable": 3, "final": 1}
     output: dict[tuple[str, str], dict[str, Any]] = {}
     for row in rows:
+        if str(row.get("dividend_status") or "") not in priority:
+            continue
         key = (str(row["market"]), str(row["combination_key"]))
         current = output.get(key)
         if current is None or priority.get(str(row.get("dividend_status")), 0) > priority.get(

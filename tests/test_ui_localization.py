@@ -90,7 +90,8 @@ def test_browser_refresh_preserves_page_and_tab_state() -> None:
     assert "lastSixRunsLabel(row)" in js
     assert "節奏吻合" in js
     assert "row.pace_note" in js
-    assert "現時估算" in js
+    assert "最新彩池" in js
+    assert "現時估算" not in js
     assert "新建議" not in js
     assert "items.slice(0, 10).map(renderSettlementCard)" not in js
     assert "items.slice(0, 10).map((row)" not in js
