@@ -20,6 +20,7 @@ def record_betting_payload(
     tickets = [ticket for ticket in payload.get("tickets", []) if float(ticket.get("recommended_stake") or 0) > 0]
     if not tickets:
         return {"recorded": 0, "tickets": 0, "message": "no_active_tickets"}
+    annotate_pool_choice_context(tickets, payload)
     now = utc_now()
     rows = [
         recommendation_row(
@@ -137,6 +138,12 @@ def recommendation_row(
         "market_probability": optional_float(ticket.get("market_probability")),
         "edge": optional_float(ticket.get("edge")),
         "expected_value": optional_float(ticket.get("expected_value")),
+        "cost_adjusted_expected_value": optional_float(ticket.get("cost_adjusted_expected_value")),
+        "required_dividend": optional_float(ticket.get("required_dividend")),
+        "minimum_ticket_cost": optional_float(ticket.get("minimum_ticket_cost")),
+        "pool_choice_score": optional_float(ticket.get("pool_choice_score")),
+        "pool_choice_rank": optional_int(ticket.get("pool_choice_rank")),
+        "pool_choice_verdict": str(ticket.get("pool_choice_verdict") or ""),
         "recommended_stake": float(ticket.get("recommended_stake") or 0),
         "race_status_at_recommendation": str(payload.get("race_status") or ""),
         "action": str(ticket.get("action") or ""),
@@ -148,6 +155,10 @@ def recommendation_row(
         "execution_source": "",
         "execution_slippage": None,
         "execution_clv": None,
+        "execution_value_status": "",
+        "execution_value_message": "",
+        "execution_edge_at_bet": None,
+        "execution_expected_value_at_bet": None,
         "final_odds": None,
         "finish_position": None,
         "outcome_win": None,
@@ -202,6 +213,10 @@ def preserve_existing_state(row: dict[str, Any], existing: dict[str, Any]) -> No
         "execution_source",
         "execution_slippage",
         "execution_clv",
+        "execution_value_status",
+        "execution_value_message",
+        "execution_edge_at_bet",
+        "execution_expected_value_at_bet",
         "final_odds",
         "finish_position",
         "outcome_win",
@@ -249,6 +264,7 @@ def confirm_betting_recommendation(
     now = utc_now()
     recommended_odds = optional_float(row.get("recommended_odds"))
     final_odds = optional_float(row.get("final_odds"))
+    execution_value = execution_value_check(row, resolved_odds)
     row.update(
         {
             "updated_at": now,
@@ -259,6 +275,7 @@ def confirm_betting_recommendation(
             "execution_source": resolved_source,
             "execution_slippage": odds_delta(resolved_odds, recommended_odds),
             "execution_clv": (resolved_odds / final_odds - 1.0) if resolved_odds and final_odds and final_odds > 0 else None,
+            **execution_value,
         }
     )
     insert_rows(conn, "betting_recommendations", [row])
@@ -299,6 +316,51 @@ def current_execution_odds(conn: sqlite3.Connection, row: dict[str, Any]) -> tup
     if rows:
         return optional_float(rows[0]["odds"]), str(rows[0]["source"] or "odds_tick")
     return optional_float(row.get("recommended_odds")), str(row.get("odds_source") or "recommended")
+
+
+def annotate_pool_choice_context(tickets: list[dict[str, Any]], payload: dict[str, Any]) -> None:
+    market_rows = list((payload.get("pool_choice") or {}).get("markets") or [])
+    by_market = {str(row.get("market") or ""): row for row in market_rows}
+    rank_by_market = {str(row.get("market") or ""): index for index, row in enumerate(market_rows, start=1)}
+    for ticket in tickets:
+        market = str(ticket.get("market") or "")
+        context = by_market.get(market, {})
+        if context:
+            ticket.setdefault("pool_choice_score", context.get("choice_score"))
+            ticket.setdefault("pool_choice_rank", rank_by_market.get(market))
+            ticket.setdefault("pool_choice_verdict", context.get("verdict"))
+            ticket.setdefault("required_dividend", context.get("best_required_dividend"))
+            ticket.setdefault("minimum_ticket_cost", context.get("best_minimum_ticket_cost"))
+        ticket.setdefault("cost_adjusted_expected_value", ticket.get("expected_value"))
+
+
+def execution_value_check(row: dict[str, Any], execution_odds: float | None) -> dict[str, Any]:
+    probability = optional_float(row.get("probability"))
+    required_dividend = optional_float(row.get("required_dividend"))
+    if execution_odds is None or execution_odds <= 1:
+        return {
+            "execution_value_status": "no_execution_odds",
+            "execution_value_message": "未有下注時賠率",
+            "execution_edge_at_bet": None,
+            "execution_expected_value_at_bet": None,
+        }
+    expected_at_bet = probability * execution_odds - 1.0 if probability is not None else None
+    edge_at_bet = probability - (1.0 / execution_odds) if probability is not None else None
+    if required_dividend is not None and execution_odds < required_dividend:
+        status = "stale_price"
+        message = f"下注時賠率 {execution_odds:.2f} 低過所需 {required_dividend:.2f}，應標記為不合格執行。"
+    elif expected_at_bet is not None and expected_at_bet <= 0:
+        status = "negative_ev_at_execution"
+        message = "下注時已跌至負期望值。"
+    else:
+        status = "valid_execution"
+        message = "下注時賠率仍符合建議條件。"
+    return {
+        "execution_value_status": status,
+        "execution_value_message": message,
+        "execution_edge_at_bet": round(edge_at_bet, 6) if edge_at_bet is not None else None,
+        "execution_expected_value_at_bet": round(expected_at_bet, 6) if expected_at_bet is not None else None,
+    }
 
 
 def result_for_recommendation(conn: sqlite3.Connection, row: dict[str, Any]) -> dict[str, Any] | None:
@@ -446,6 +508,11 @@ def parse_combination_key(value: str) -> list[int]:
 def ledger_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
     staked = sum(float(row.get("recommended_stake") or 0) for row in items)
     confirmed = [row for row in items if row.get("execution_status") == "confirmed"]
+    valid_execution = [row for row in confirmed if row.get("execution_value_status") == "valid_execution"]
+    stale_price = [row for row in confirmed if row.get("execution_value_status") == "stale_price"]
+    negative_execution = [row for row in confirmed if row.get("execution_value_status") == "negative_ev_at_execution"]
+    execution_ev_rows = [row for row in confirmed if row.get("execution_expected_value_at_bet") is not None]
+    execution_edge_rows = [row for row in confirmed if row.get("execution_edge_at_bet") is not None]
     executed_staked = sum(float(row.get("execution_stake") or 0) for row in confirmed)
     reconciled = [row for row in items if row.get("reconciliation_status") == "reconciled"]
     reconciled_staked = sum(float(row.get("execution_stake") or row.get("recommended_stake") or 0) for row in reconciled)
@@ -455,6 +522,20 @@ def ledger_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "recommendations": len(items),
         "confirmed": len(confirmed),
+        "valid_execution": len(valid_execution),
+        "stale_price": len(stale_price),
+        "negative_ev_at_execution": len(negative_execution),
+        "execution_valid_rate": len(valid_execution) / len(confirmed) if confirmed else 0.0,
+        "avg_execution_expected_value_at_bet": (
+            sum(float(row["execution_expected_value_at_bet"]) for row in execution_ev_rows) / len(execution_ev_rows)
+            if execution_ev_rows
+            else None
+        ),
+        "avg_execution_edge_at_bet": (
+            sum(float(row["execution_edge_at_bet"]) for row in execution_edge_rows) / len(execution_edge_rows)
+            if execution_edge_rows
+            else None
+        ),
         "reconciled": len(reconciled),
         "pending": len(items) - len(reconciled),
         "staked": round(staked, 2),
@@ -477,6 +558,15 @@ def optional_float(value: object) -> float | None:
         return None
     try:
         return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def optional_int(value: object) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
     except (TypeError, ValueError):
         return None
 

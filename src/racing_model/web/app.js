@@ -1632,6 +1632,9 @@ function renderBettingLedger(data) {
   const summary = data.summary || {};
   $("betting-ledger-summary").innerHTML = `
     <div class="stat"><label>建議數</label><strong>${summary.recommendations || 0}</strong></div>
+    <div class="stat"><label>已確認</label><strong>${summary.confirmed || 0}</strong></div>
+    <div class="stat"><label>執行合格</label><strong>${summary.valid_execution || 0}</strong></div>
+    <div class="stat"><label>價跌失效</label><strong>${summary.stale_price || 0}</strong></div>
     <div class="stat"><label>已對數</label><strong>${summary.reconciled || 0}</strong></div>
     <div class="stat"><label>未對數</label><strong>${summary.pending || 0}</strong></div>
     <div class="stat"><label>實際回報率</label><strong class="${evClass(summary.roi)}">${formatPct(summary.roi)}</strong></div>
@@ -1653,14 +1656,30 @@ function renderBettingLedger(data) {
       <p>${formatTimestamp(row.created_at)}｜${row.reason || ""}</p>
       <div class="version-metrics">
         <div><label>建議賠率</label><b>${formatNum(row.recommended_odds, 2)}</b></div>
+        <div><label>所需賠率</label><b>${formatNum(row.required_dividend, 2)}</b></div>
+        <div><label>下注時</label><b>${row.execution_status === "confirmed" ? formatNum(row.execution_odds, 2) : "未確認"}</b></div>
+        <div><label>執行狀態</label><b>${executionValueLabel(row.execution_value_status)}</b></div>
+        <div><label>彩池分</label><b>${row.pool_choice_score === null || row.pool_choice_score === undefined ? "-" : formatNum(row.pool_choice_score, 2)}</b></div>
+        <div><label>彩池排名</label><b>${row.pool_choice_rank || "-"}</b></div>
         <div><label>最後賠率</label><b>${formatNum(row.final_odds, 2)}</b></div>
-        <div><label>期望值</label><b class="${evClass(row.expected_value)}">${formatSigned(row.expected_value, 3)}</b></div>
+        <div><label>建議EV</label><b class="${evClass(row.expected_value)}">${formatSigned(row.expected_value, 3)}</b></div>
+        <div><label>下注EV</label><b class="${evClass(row.execution_expected_value_at_bet)}">${row.execution_expected_value_at_bet === null || row.execution_expected_value_at_bet === undefined ? "-" : formatSigned(row.execution_expected_value_at_bet, 3)}</b></div>
         <div><label>注碼</label><b>${formatMoney(row.recommended_stake)}</b></div>
         <div><label>盈虧</label><b class="${evClass(row.profit)}">${formatMoney(row.profit)}</b></div>
         <div><label>CLV</label><b class="${evClass(row.clv)}">${row.clv === null || row.clv === undefined ? "-" : formatPct(row.clv)}</b></div>
       </div>
+      <small>${row.execution_value_message || ""}</small>
     </div>
   `).join("");
+}
+
+function executionValueLabel(status) {
+  return {
+    valid_execution: "合格",
+    stale_price: "價跌失效",
+    negative_ev_at_execution: "負EV",
+    no_execution_odds: "未有賠率",
+  }[status] || status || "-";
 }
 
 async function reconcileBettingLedger() {

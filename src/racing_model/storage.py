@@ -174,6 +174,12 @@ CREATE TABLE IF NOT EXISTS betting_recommendations (
   market_probability REAL,
   edge REAL,
   expected_value REAL,
+  cost_adjusted_expected_value REAL,
+  required_dividend REAL,
+  minimum_ticket_cost REAL,
+  pool_choice_score REAL,
+  pool_choice_rank INTEGER,
+  pool_choice_verdict TEXT NOT NULL DEFAULT '',
   recommended_stake REAL NOT NULL DEFAULT 0,
   race_status_at_recommendation TEXT NOT NULL DEFAULT '',
   action TEXT NOT NULL DEFAULT '',
@@ -185,6 +191,10 @@ CREATE TABLE IF NOT EXISTS betting_recommendations (
   execution_source TEXT NOT NULL DEFAULT '',
   execution_slippage REAL,
   execution_clv REAL,
+  execution_value_status TEXT NOT NULL DEFAULT '',
+  execution_value_message TEXT NOT NULL DEFAULT '',
+  execution_edge_at_bet REAL,
+  execution_expected_value_at_bet REAL,
   final_odds REAL,
   finish_position INTEGER,
   outcome_win INTEGER,
@@ -316,6 +326,16 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
     ensure_column(conn, "betting_recommendations", "execution_source", "TEXT NOT NULL DEFAULT ''")
     ensure_column(conn, "betting_recommendations", "execution_slippage", "REAL")
     ensure_column(conn, "betting_recommendations", "execution_clv", "REAL")
+    ensure_column(conn, "betting_recommendations", "cost_adjusted_expected_value", "REAL")
+    ensure_column(conn, "betting_recommendations", "required_dividend", "REAL")
+    ensure_column(conn, "betting_recommendations", "minimum_ticket_cost", "REAL")
+    ensure_column(conn, "betting_recommendations", "pool_choice_score", "REAL")
+    ensure_column(conn, "betting_recommendations", "pool_choice_rank", "INTEGER")
+    ensure_column(conn, "betting_recommendations", "pool_choice_verdict", "TEXT NOT NULL DEFAULT ''")
+    ensure_column(conn, "betting_recommendations", "execution_value_status", "TEXT NOT NULL DEFAULT ''")
+    ensure_column(conn, "betting_recommendations", "execution_value_message", "TEXT NOT NULL DEFAULT ''")
+    ensure_column(conn, "betting_recommendations", "execution_edge_at_bet", "REAL")
+    ensure_column(conn, "betting_recommendations", "execution_expected_value_at_bet", "REAL")
     ensure_column(conn, "model_registry_runs", "execution_confirmed", "INTEGER NOT NULL DEFAULT 0")
     ensure_column(conn, "model_registry_runs", "execution_roi", "REAL")
     ensure_column(conn, "model_registry_runs", "execution_max_drawdown", "REAL")
@@ -399,6 +419,12 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
           market_probability REAL,
           edge REAL,
           expected_value REAL,
+          cost_adjusted_expected_value REAL,
+          required_dividend REAL,
+          minimum_ticket_cost REAL,
+          pool_choice_score REAL,
+          pool_choice_rank INTEGER,
+          pool_choice_verdict TEXT NOT NULL DEFAULT '',
           recommended_stake REAL NOT NULL DEFAULT 0,
           race_status_at_recommendation TEXT NOT NULL DEFAULT '',
           action TEXT NOT NULL DEFAULT '',
@@ -410,6 +436,10 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
           execution_source TEXT NOT NULL DEFAULT '',
           execution_slippage REAL,
           execution_clv REAL,
+          execution_value_status TEXT NOT NULL DEFAULT '',
+          execution_value_message TEXT NOT NULL DEFAULT '',
+          execution_edge_at_bet REAL,
+          execution_expected_value_at_bet REAL,
           final_odds REAL,
           finish_position INTEGER,
           outcome_win INTEGER,

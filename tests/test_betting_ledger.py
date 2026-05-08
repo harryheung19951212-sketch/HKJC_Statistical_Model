@@ -168,6 +168,66 @@ def test_bet_time_confirmation_records_execution_odds_and_survives_refresh(tmp_p
     assert ledger["summary"]["executed_staked"] == 80
 
 
+def test_ledger_records_pool_choice_and_flags_stale_execution_price(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    with connect(db_path) as conn:
+        insert_rows(
+            conn,
+            "races",
+            [
+                {
+                    "race_id": "HK20260506-ST-01",
+                    "date": "2026/05/06",
+                    "track": "Sha Tin",
+                    "course": "Turf",
+                    "distance_m": 1200,
+                    "going": "Good",
+                    "class_rating": "Class 4",
+                    "prize": 1000000,
+                }
+            ],
+        )
+        conn.commit()
+
+        race = {"race_id": "HK20260506-ST-01", "date": "2026/05/06"}
+        payload = simple_win_payload("H001", 1, "Pool Choice", 100)
+        payload["tickets"][0]["required_dividend"] = 3.8
+        payload["tickets"][0]["cost_adjusted_expected_value"] = 0.55
+        payload["tickets"][0]["minimum_ticket_cost"] = 10
+        payload["pool_choice"] = {
+            "markets": [
+                {
+                    "market": "WIN",
+                    "choice_score": 42.5,
+                    "verdict": "actionable",
+                    "best_required_dividend": 3.8,
+                    "best_minimum_ticket_cost": 10,
+                }
+            ]
+        }
+        record_betting_payload(conn, race, payload, "models/baseline.json")
+        recommendation_id = payload["tickets"][0]["recommendation_id"]
+        confirmed = confirm_betting_recommendation(
+            conn,
+            recommendation_id,
+            execution_odds=3.2,
+            execution_stake=100,
+            source="unit_test",
+        )
+        ledger = betting_ledger_report(conn, "HK20260506-ST-01")
+
+    item = ledger["items"][0]
+    assert confirmed["status"] == "confirmed"
+    assert item["pool_choice_score"] == 42.5
+    assert item["pool_choice_rank"] == 1
+    assert item["pool_choice_verdict"] == "actionable"
+    assert item["required_dividend"] == 3.8
+    assert item["execution_value_status"] == "stale_price"
+    assert item["execution_expected_value_at_bet"] == 0.28
+    assert item["execution_edge_at_bet"] > 0
+
+
 def test_winning_win_ticket_waits_for_final_odds(tmp_path: Path) -> None:
     db_path = tmp_path / "racing.db"
     init_db(db_path)

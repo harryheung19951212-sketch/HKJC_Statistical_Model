@@ -96,6 +96,40 @@ def test_execution_gate_blocks_or_holds_upgrade_candidates(tmp_path: Path) -> No
     assert apply_execution_gate("hold_baseline", gate) == "hold_baseline"
 
 
+def test_execution_gate_blocks_stale_execution_prices_even_with_profit(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    with connect(db_path) as conn:
+        rows = [
+            executed_recommendation(
+                f"stale-{index}",
+                profit=20,
+                final_odds=3.0,
+                outcome_win=1,
+                execution_value_status="stale_price",
+            )
+            for index in range(6)
+        ]
+        rows.extend(
+            executed_recommendation(
+                f"valid-{index}",
+                profit=20,
+                final_odds=3.0,
+                outcome_win=1,
+                execution_value_status="valid_execution",
+            )
+            for index in range(14)
+        )
+        insert_rows(conn, "betting_recommendations", rows)
+        conn.commit()
+        gate = execution_gate_report(conn, min_confirmed=20)
+
+    assert gate["gate"] == "blocked"
+    assert gate["execution_roi"] == 2.0
+    assert gate["stale_price"] == 6
+    assert gate["invalid_execution_rate"] == 0.3
+
+
 def test_execution_gate_requires_confirmed_sample_before_upgrade(tmp_path: Path) -> None:
     db_path = tmp_path / "racing.db"
     init_db(db_path)
@@ -251,7 +285,14 @@ def version_row(
     }
 
 
-def executed_recommendation(recommendation_id: str, profit: float, final_odds: float) -> dict[str, object]:
+def executed_recommendation(
+    recommendation_id: str,
+    profit: float,
+    final_odds: float,
+    outcome_win: int = 0,
+    execution_value_status: str = "valid_execution",
+) -> dict[str, object]:
+    returned = 10 * final_odds if outcome_win and final_odds else 0
     return {
         "recommendation_id": recommendation_id,
         "created_at": "2026-05-06T12:00:00+00:00",
@@ -286,10 +327,14 @@ def executed_recommendation(recommendation_id: str, profit: float, final_odds: f
         "execution_source": "unit_test",
         "execution_slippage": -0.5,
         "execution_clv": None,
+        "execution_value_status": execution_value_status,
+        "execution_value_message": "unit test execution value status",
+        "execution_edge_at_bet": 0.05 if execution_value_status == "valid_execution" else -0.02,
+        "execution_expected_value_at_bet": 0.2 if execution_value_status == "valid_execution" else -0.05,
         "final_odds": final_odds,
-        "finish_position": 4,
-        "outcome_win": 0,
-        "returned": 0,
+        "finish_position": 1 if outcome_win else 4,
+        "outcome_win": outcome_win,
+        "returned": returned,
         "profit": profit,
         "clv": 0.0,
         "slippage": 0.0,
@@ -302,6 +347,7 @@ if __name__ == "__main__":
     direct_tests = [
         test_model_registry_records_walk_forward_gate,
         test_execution_gate_blocks_or_holds_upgrade_candidates,
+        test_execution_gate_blocks_stale_execution_prices_even_with_profit,
         test_execution_gate_requires_confirmed_sample_before_upgrade,
         test_promote_latest_model_refuses_without_upgrade_gate,
         test_promote_latest_model_trains_candidate_and_backups_current_file,

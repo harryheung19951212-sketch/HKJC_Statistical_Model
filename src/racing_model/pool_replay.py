@@ -93,6 +93,13 @@ def market_replay(market: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
     execution_clv_values = [value for value in execution_clv_values if value is not None]
     execution_slippage_values = [safe_float(row.get("execution_slippage")) for row in executed]
     execution_slippage_values = [value for value in execution_slippage_values if value is not None]
+    valid_execution = [row for row in executed if str(row.get("execution_value_status") or "") == "valid_execution"]
+    stale_price = [row for row in executed if str(row.get("execution_value_status") or "") == "stale_price"]
+    negative_execution = [row for row in executed if str(row.get("execution_value_status") or "") == "negative_ev_at_execution"]
+    execution_ev_values = [safe_float(row.get("execution_expected_value_at_bet")) for row in executed]
+    execution_ev_values = [value for value in execution_ev_values if value is not None]
+    execution_edge_values = [safe_float(row.get("execution_edge_at_bet")) for row in executed]
+    execution_edge_values = [value for value in execution_edge_values if value is not None]
     final_odds = [safe_float(row.get("final_odds")) for row in reconciled if safe_float(row.get("final_odds"))]
     low_return_hits = [
         row
@@ -125,6 +132,12 @@ def market_replay(market: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
         "avg_clv": average(clv_values),
         "avg_execution_clv": average(execution_clv_values),
         "avg_execution_slippage": average(execution_slippage_values),
+        "valid_execution": len(valid_execution),
+        "stale_price": len(stale_price),
+        "negative_ev_at_execution": len(negative_execution),
+        "execution_valid_rate": safe_divide(len(valid_execution), len(executed)),
+        "avg_execution_expected_value_at_bet": average(execution_ev_values),
+        "avg_execution_edge_at_bet": average(execution_edge_values),
         "low_return_hits": len(low_return_hits),
         "max_drawdown": max_drawdown(reconciled),
         "execution_max_drawdown": max_drawdown(executed, profit_key="execution_profit"),
@@ -142,6 +155,13 @@ def overall_summary(rows: list[dict[str, Any]], markets: list[dict[str, Any]], b
     profit = sum(safe_float(row.get("profit")) or 0.0 for row in reconciled)
     execution = execution_replay(executed)
     hits = sum(1 for row in reconciled if int(row.get("outcome_win") or 0) == 1)
+    valid_execution = [row for row in executed if str(row.get("execution_value_status") or "") == "valid_execution"]
+    stale_price = [row for row in executed if str(row.get("execution_value_status") or "") == "stale_price"]
+    negative_execution = [row for row in executed if str(row.get("execution_value_status") or "") == "negative_ev_at_execution"]
+    execution_ev_values = [safe_float(row.get("execution_expected_value_at_bet")) for row in executed]
+    execution_ev_values = [value for value in execution_ev_values if value is not None]
+    execution_edge_values = [safe_float(row.get("execution_edge_at_bet")) for row in executed]
+    execution_edge_values = [value for value in execution_edge_values if value is not None]
     active_markets = [row for row in markets if row["tickets"] > 0]
     settled_markets = [row for row in markets if row["reconciled"] > 0]
     return {
@@ -160,6 +180,12 @@ def overall_summary(rows: list[dict[str, Any]], markets: list[dict[str, Any]], b
         "execution_profit": execution["profit"],
         "execution_roi": execution["roi"],
         "execution_max_drawdown": max_drawdown(executed, profit_key="execution_profit"),
+        "valid_execution": len(valid_execution),
+        "stale_price": len(stale_price),
+        "negative_ev_at_execution": len(negative_execution),
+        "execution_valid_rate": safe_divide(len(valid_execution), len(executed)),
+        "avg_execution_expected_value_at_bet": average(execution_ev_values),
+        "avg_execution_edge_at_bet": average(execution_edge_values),
         "hit_rate": safe_divide(hits, len(reconciled)),
         "best_market": best["market"] if best else None,
         "best_market_label": best["market_label"] if best else None,

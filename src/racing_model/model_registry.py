@@ -314,21 +314,42 @@ def promotion_gate(summary: dict[str, Any], best: dict[str, Any] | None, baselin
     return statistical_promotion_gate(summary, best, baseline)
 
 
-def execution_gate_report(conn: sqlite3.Connection, min_confirmed: int = 20) -> dict[str, Any]:
+def execution_gate_report(
+    conn: sqlite3.Connection,
+    min_confirmed: int = 20,
+    max_invalid_execution_rate: float = 0.25,
+) -> dict[str, Any]:
     replay = pool_replay_report(conn)
     summary = replay.get("summary", {})
     confirmed = int(summary.get("executed", 0) or 0)
     execution_roi = optional_float(summary.get("execution_roi"))
     execution_drawdown = optional_float(summary.get("execution_max_drawdown"))
+    valid_execution = int(summary.get("valid_execution", 0) or 0)
+    stale_price = int(summary.get("stale_price", 0) or 0)
+    negative_execution = int(summary.get("negative_ev_at_execution", 0) or 0)
+    invalid_execution = stale_price + negative_execution
+    execution_valid_rate = optional_float(summary.get("execution_valid_rate"))
+    invalid_execution_rate = invalid_execution / confirmed if confirmed else None
+    avg_execution_ev = optional_float(summary.get("avg_execution_expected_value_at_bet"))
+    avg_execution_edge = optional_float(summary.get("avg_execution_edge_at_bet"))
     if confirmed < min_confirmed or execution_roi is None:
         gate = "unverified"
         message = f"已確認下注樣本 {confirmed}/{min_confirmed}，暫時不足以批准模型替換。"
+    elif invalid_execution_rate is not None and invalid_execution_rate > max_invalid_execution_rate:
+        gate = "blocked"
+        message = (
+            f"下注價失效比例 {invalid_execution_rate * 100:.1f}% "
+            f"高過上限 {max_invalid_execution_rate * 100:.1f}%，禁止模型升級。"
+        )
     elif execution_roi < 0:
         gate = "blocked"
         message = f"下注時 ROI {execution_roi * 100:.1f}% 為負，禁止模型升級。"
     else:
         gate = "pass"
-        message = f"下注時 ROI {execution_roi * 100:.1f}% 通過最低執行 gate。"
+        message = (
+            f"下注時 ROI {execution_roi * 100:.1f}%、"
+            f"執行合格率 {(execution_valid_rate or 0.0) * 100:.1f}% 通過最低執行 gate。"
+        )
     return {
         "gate": gate,
         "gate_label": EXECUTION_GATE_LABELS.get(gate, gate),
@@ -337,6 +358,15 @@ def execution_gate_report(conn: sqlite3.Connection, min_confirmed: int = 20) -> 
         "min_confirmed": min_confirmed,
         "execution_roi": execution_roi,
         "execution_max_drawdown": execution_drawdown,
+        "valid_execution": valid_execution,
+        "stale_price": stale_price,
+        "negative_ev_at_execution": negative_execution,
+        "invalid_execution": invalid_execution,
+        "execution_valid_rate": execution_valid_rate,
+        "invalid_execution_rate": invalid_execution_rate,
+        "max_invalid_execution_rate": max_invalid_execution_rate,
+        "avg_execution_expected_value_at_bet": avg_execution_ev,
+        "avg_execution_edge_at_bet": avg_execution_edge,
     }
 
 

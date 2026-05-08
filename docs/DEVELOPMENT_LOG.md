@@ -2,6 +2,28 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-08 - Execution Value Ledger Gate
+
+Goal:
+
+- Make the model judge whether a recommendation was still worth betting at the actual execution odds, not only at the price seen when the ticket was generated.
+
+Changes:
+
+- Added cost-adjusted EV, required dividend, pool-choice rank/score/verdict, and execution value fields to the betting ledger schema.
+- Betting ledger now records pool-choice context on each ticket and flags confirmed bets as `valid_execution`, `stale_price`, or `negative_ev_at_execution`.
+- Ledger UI now shows required odds, actual execution odds, pool-choice score/rank, suggested EV, execution EV, and execution status.
+- Pool replay and model registry now aggregate valid execution, stale-price, negative-execution, execution EV, and execution edge.
+- Model promotion gate now blocks upgrades when too many confirmed bets were placed after the value had already disappeared, even if settled ROI happens to look positive.
+- Added regression tests for stale execution-price blocking and ledger recording of pool-choice/execution value fields.
+
+Verification:
+
+- `python -m pytest tests\test_betting_ledger.py tests\test_model_registry.py`
+- `python -m pytest`
+- `node --check src\racing_model\web\app.js`
+- `python -m compileall -q src dashboard tests`
+
 ## 2026-05-08 - Pool Choice Efficiency Scorecard
 
 Goal:
