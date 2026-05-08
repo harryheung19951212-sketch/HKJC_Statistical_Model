@@ -2,6 +2,26 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-08 - Ledger Stake Refresh And Full Ticket Display
+
+Goal:
+
+- Make the payout reconciliation panel visibly match the stake total shown in the betting header.
+- Keep HK$10 as a minimum ticket amount, not a fixed ticket amount.
+
+Changes:
+
+- Removed the 10-ticket frontend display limit from both `派彩對數` and betting ledger lists, so all saved tickets are visible instead of only the first HK$100-looking block.
+- Auto-recorded tickets now refresh `execution_stake` from the latest `recommended_stake`; only manually confirmed or already reconciled tickets keep their historical execution stake.
+- Added regression coverage for auto-recorded stake refresh and full-ticket display.
+
+Verification:
+
+- `python -m compileall -q src tests`
+- `node --check src\racing_model\web\app.js`
+- `python -m pytest tests\test_betting_ledger.py tests\test_betting.py tests\test_fast_betting_refresh.py tests\test_ui_localization.py -q`
+- `python -m pytest -q`
+
 ## 2026-05-08 - Betting Header Stake Alignment
 
 Goal:

@@ -309,7 +309,6 @@ def preserve_existing_state(row: dict[str, Any], existing: dict[str, Any]) -> No
         "created_at",
         "execution_status",
         "executed_at",
-        "execution_stake",
         "final_odds",
         "finish_position",
         "outcome_win",
@@ -323,7 +322,10 @@ def preserve_existing_state(row: dict[str, Any], existing: dict[str, Any]) -> No
     for field in preserve_fields:
         if field in existing:
             row[field] = existing[field]
+    if manual_execution(existing):
+        row["execution_stake"] = existing.get("execution_stake")
     if str(existing.get("reconciliation_status") or "") == "reconciled":
+        row["execution_stake"] = existing.get("execution_stake")
         for field in [
             "execution_odds",
             "execution_source",
@@ -337,6 +339,15 @@ def preserve_existing_state(row: dict[str, Any], existing: dict[str, Any]) -> No
             if field in existing:
                 row[field] = existing[field]
         return
+
+
+def manual_execution(existing: dict[str, Any]) -> bool:
+    source = str(existing.get("execution_source") or "")
+    if source in {"manual_confirm", "ui_confirm"}:
+        return True
+    executed_at = str(existing.get("executed_at") or "")
+    created_at = str(existing.get("created_at") or "")
+    return bool(executed_at and created_at and executed_at != created_at)
 
 
 def confirm_betting_recommendation(

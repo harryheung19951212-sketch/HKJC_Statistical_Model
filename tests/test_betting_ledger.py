@@ -243,8 +243,42 @@ def test_confirmed_ticket_keeps_live_pool_price_until_settlement(tmp_path: Path)
     assert item["execution_status"] == "confirmed"
     assert item["recommended_odds"] == 5.2
     assert item["execution_odds"] == 5.2
-    assert item["execution_stake"] == 100
+    assert item["execution_stake"] == 60
     assert "不鎖入飛賠率" in ledger["clv_note"]
+
+
+def test_auto_recorded_ticket_updates_execution_stake_with_latest_recommendation(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    with connect(db_path) as conn:
+        insert_rows(
+            conn,
+            "races",
+            [
+                {
+                    "race_id": "HK20260506-ST-01",
+                    "date": "2026/05/06",
+                    "track": "Sha Tin",
+                    "course": "Turf",
+                    "distance_m": 1200,
+                    "going": "Good",
+                    "class_rating": "Class 4",
+                    "prize": 1000000,
+                }
+            ],
+        )
+        conn.commit()
+
+        race = {"race_id": "HK20260506-ST-01", "date": "2026/05/06"}
+        payload = simple_win_payload("H001", 1, "測試馬", 10)
+        record_betting_payload(conn, race, payload, "models/baseline.json")
+        payload["tickets"][0]["recommended_stake"] = 80
+        record_betting_payload(conn, race, payload, "models/baseline.json")
+        ledger = betting_ledger_report(conn, "HK20260506-ST-01")
+
+    item = ledger["items"][0]
+    assert item["recommended_stake"] == 80
+    assert item["execution_stake"] == 80
 
 
 def test_ledger_records_pool_choice_and_flags_stale_execution_price(tmp_path: Path) -> None:

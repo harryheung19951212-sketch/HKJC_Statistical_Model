@@ -744,7 +744,7 @@ function renderBettingSettlement(settlement) {
         <span>中 ${summary.hit || 0}｜唔中 ${summary.miss || 0}｜待派彩 ${summary.pending || 0}｜盈虧 ${formatMoney(summary.profit)}</span>
       </div>
       <div class="settlement-grid">
-        ${items.slice(0, 10).map(renderSettlementCard).join("")}
+        ${items.map(renderSettlementCard).join("")}
       </div>
       <small>${settlement.note || ""}</small>
     </div>
@@ -1994,7 +1994,7 @@ function renderBettingLedger(data) {
     $("betting-ledger-list").innerHTML = `<p class="runner-subtitle">本場未有已保存投注建議</p>`;
     return;
   }
-  $("betting-ledger-list").innerHTML = items.slice(0, 10).map((row) => `
+  $("betting-ledger-list").innerHTML = items.map((row) => `
     <div class="ledger-card ${row.reconciliation_status === "reconciled" ? "reconciled" : ""}">
       <div class="version-head">
         <strong>${row.market_label || row.market}｜${row.horse_no || "-"} ${row.horse_name || row.horse_id}</strong>
