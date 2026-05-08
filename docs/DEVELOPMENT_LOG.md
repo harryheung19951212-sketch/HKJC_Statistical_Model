@@ -2,6 +2,25 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-09 - Clear Current Settlement Tickets
+
+Goal:
+
+- Clear the current payout reconciliation ticket list on production before the next betting-model run.
+- Preserve model recommendation rows for audit instead of deleting the underlying analysis records.
+
+Changes:
+
+- Backed up the production `betting_recommendations` table to `/opt/hkjc-model/data/backups/betting_recommendations_clear_20260509_070310.sql`.
+- Reset all production rows with `execution_status='confirmed'` back to `suggested`.
+- Cleared execution, live odds, stake, settlement, return, profit/loss, CLV, slippage, and reconciliation fields for those rows.
+- Marked cleared rows with `execution_value_status='cleared_from_settlement'` so the manual maintenance action remains traceable.
+
+Verification:
+
+- Production confirmed ticket count: `194 -> 0`.
+- `curl http://127.0.0.1:8765/api/state` on the server returned `ok`.
+
 ## 2026-05-09 - Pre-Post Training Fill Tickets
 
 Goal:
