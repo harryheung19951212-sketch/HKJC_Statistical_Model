@@ -100,6 +100,49 @@ def test_calibration_gate_ignores_tiny_slice_bins() -> None:
     assert gate["worst_slice"]["worst_bin"]["label"] == "10-15%"
 
 
+def test_calibration_gate_blocks_failed_pool_market() -> None:
+    report = {
+        "metrics": {"races": 50, "runners": 500},
+        "calibration": [
+            {"label": "10-15%", "count": 180, "avg_prediction": 0.12, "observed_rate": 0.13, "gap": 0.01}
+        ],
+        "pool_calibration": {
+            "markets": [
+                {
+                    "market": "PLACE",
+                    "market_label": "位置",
+                    "tickets": 30,
+                    "avg_probability": 0.55,
+                    "observed_rate": 0.30,
+                    "gap": -0.25,
+                    "worst_bin": {
+                        "label": "50-100%",
+                        "count": 30,
+                        "avg_prediction": 0.55,
+                        "observed_rate": 0.30,
+                        "gap": -0.25,
+                    },
+                    "bins": [
+                        {
+                            "label": "50-100%",
+                            "count": 30,
+                            "avg_prediction": 0.55,
+                            "observed_rate": 0.30,
+                            "gap": -0.25,
+                        }
+                    ],
+                }
+            ]
+        },
+    }
+
+    gate = calibration_gate_from_report(report)
+
+    assert gate["status"] == "blocked"
+    assert gate["worst_pool_market"]["market"] == "PLACE"
+    assert "彩池校準未過關" in gate["message"]
+
+
 def test_model_evolution_exports_slice_calibration_bins() -> None:
     with TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
         db_path = Path(temp_dir) / "racing.db"

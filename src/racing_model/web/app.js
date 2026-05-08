@@ -1737,6 +1737,7 @@ function renderEvolution(report) {
   `;
   renderCalibration(report.calibration || []);
   renderCalibrationSlices(report.calibration_slices || []);
+  renderPoolCalibration(report.pool_calibration || {});
   renderEvolutionIdeas(report.ideas || [], report.data_quality || []);
   renderDiagnostics(report.diagnostics || []);
   if (report.model_versions) renderModelVersions(report.model_versions);
@@ -2253,6 +2254,36 @@ function renderCalibrationSlices(rows) {
         <div class="calibration-head">
           <span>${bin.label || "-"} 分桶</span>
           <span>差距 <b class="${evClass(gap)}">${formatPct(gap)}</b></span>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderPoolCalibration(data) {
+  const target = $("pool-calibration");
+  if (!target) return;
+  const markets = [...(data.markets || [])]
+    .filter((row) => row.tickets > 0)
+    .sort((a, b) => Math.abs(Number((b.worst_bin || {}).gap) || 0) - Math.abs(Number((a.worst_bin || {}).gap) || 0))
+    .slice(0, 8);
+  if (!markets.length) {
+    target.innerHTML = `<p class="runner-subtitle">未有已結算投注留痕可做彩池校準</p>`;
+    return;
+  }
+  target.innerHTML = markets.map((row) => {
+    const bin = row.worst_bin || {};
+    const gap = Number(row.gap) || 0;
+    const binGap = Number(bin.gap) || 0;
+    return `
+      <div class="calibration-row">
+        <div class="calibration-head">
+          <strong>${row.market_label || row.market}</strong>
+          <span>${row.tickets || 0} 票｜整體差距 <b class="${evClass(gap)}">${formatPct(gap)}</b></span>
+        </div>
+        <div class="calibration-head">
+          <span>${bin.label || "-"} 最差分桶</span>
+          <span><b class="${evClass(binGap)}">${formatPct(binGap)}</b></span>
         </div>
       </div>
     `;

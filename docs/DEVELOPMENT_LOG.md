@@ -2,6 +2,26 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-09 - Pool Calibration Gate V1
+
+Goal:
+
+- Continue factor 30 `模型校準` by separating calibration by betting pool, so WIN, PLACE, and exotic combination tickets are not judged only by one overall win-probability reliability curve.
+
+Changes:
+
+- Added `pool_calibration.py` to build reliability bins from reconciled `betting_recommendations` by market.
+- `evaluate_model_evolution` now exposes `pool_calibration`, and `calibration_gate` can block or discount stakes when a qualified pool market is badly miscalibrated.
+- Added a model analytics UI section for `彩池校準`, showing settled ticket counts, overall calibration gap, and worst probability bin per pool.
+- Updated factor 30 coverage notes to include per-pool calibration support and the remaining candidate OOS artifact / exotic-structure calibration work.
+
+Verification:
+
+- `python -m pytest tests\test_pool_calibration.py tests\test_calibration_gate.py tests\test_model_registry.py tests\test_betting.py tests\test_coverage.py -q`
+- `python -m compileall -q src tests`
+- `node --check src\racing_model\web\app.js`
+- `python -m pytest -q`
+
 ## 2026-05-09 - Sliced Calibration Gate V1
 
 Goal:

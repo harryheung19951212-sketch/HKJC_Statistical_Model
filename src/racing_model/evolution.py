@@ -9,6 +9,7 @@ from typing import Any
 
 from .features import build_race_features
 from .model import RankingModel
+from .pool_calibration import pool_calibration_report
 from .storage import fetch_all
 
 
@@ -128,6 +129,7 @@ def evaluate_model_evolution(
         "metrics": metrics,
         "calibration": finalized_bins,
         "calibration_slices": finalize_slice_calibration(slice_bins),
+        "pool_calibration": pool_calibration_report(conn),
         "diagnostics": diagnostics[:12],
         "feature_weights": feature_weight_summary(model),
         "ideas": ideas,
