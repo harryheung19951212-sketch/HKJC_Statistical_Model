@@ -117,8 +117,15 @@
         </div>
       </section>
 
+      <nav class="race-tabs" aria-label="賽事頁分頁">
+        <button class="race-tab active" type="button" data-race-tab-target="overview">總覽</button>
+        <button class="race-tab" type="button" data-race-tab-target="betting">投注</button>
+        <button class="race-tab" type="button" data-race-tab-target="results">賽果 / 賠率</button>
+        <button class="race-tab" type="button" data-race-tab-target="diagnostics">診斷</button>
+      </nav>
+
       <section class="grid">
-      <div class="panel predictions-panel">
+      <div class="panel predictions-panel" data-race-tab="overview">
         <div class="panel-head">
           <h3>本場預測</h3>
           <span id="last-refresh">-</span>
@@ -141,7 +148,7 @@
         </div>
       </div>
 
-      <div class="panel detail-panel">
+      <div class="panel detail-panel" data-race-tab="overview">
         <div class="panel-head">
           <h3>馬匹詳情 / 單匹賠率走勢</h3>
           <span id="selected-horse-chart-summary">-</span>
@@ -150,7 +157,7 @@
         <svg id="odds-chart" class="odds-chart" viewBox="0 0 360 190" role="img" aria-label="單匹賠率走勢圖"></svg>
       </div>
 
-      <div class="panel situation-panel">
+      <div class="panel situation-panel" data-race-tab="overview">
         <div class="panel-head">
           <h3>本場形勢圖表</h3>
           <span>概率 / 價值 / 資金流</span>
@@ -158,7 +165,7 @@
         <div id="race-situation" class="race-situation"></div>
       </div>
 
-      <div class="panel market-flow-panel">
+      <div class="panel market-flow-panel" data-race-tab="overview">
         <div class="panel-head">
           <h3>臨場資金流 / 賠率異動</h3>
           <span id="market-flow-headline">-</span>
@@ -168,7 +175,7 @@
         <div id="market-flow-insights" class="market-flow-insights"></div>
       </div>
 
-      <div class="panel betting-panel">
+      <div class="panel betting-panel" data-race-tab="betting">
         <div class="panel-head betting-head">
           <h3>即場投注建議</h3>
           <div class="betting-controls">
@@ -190,7 +197,7 @@
         <div id="betting-tickets" class="betting-tickets"></div>
       </div>
 
-      <div class="panel results-panel">
+      <div class="panel results-panel" data-race-tab="results">
         <div class="panel-head">
           <h3>賽果對照</h3>
           <span id="results-summary">-</span>
@@ -220,7 +227,7 @@
         </div>
       </div>
 
-        <div class="panel history-panel">
+        <div class="panel history-panel" data-race-tab="results">
         <div class="panel-head">
           <h3>歷史賠率數據</h3>
           <span>最新記錄</span>
@@ -228,7 +235,7 @@
         <div id="odds-history" class="history odds-history-grid"></div>
         </div>
 
-        <details class="panel feed-panel fold-panel">
+        <details class="panel feed-panel fold-panel" data-race-tab="results">
           <summary class="panel-head">
             <h3>賠率錄影健康</h3>
             <span id="feed-health-summary">-</span>
@@ -236,7 +243,7 @@
           <div id="feed-health" class="feed-health"></div>
         </details>
 
-        <details class="panel comparison-panel fold-panel">
+        <details class="panel comparison-panel fold-panel" data-race-tab="diagnostics">
           <summary class="panel-head">
             <h3>雙軌模型對照</h3>
             <span id="comparison-summary">-</span>

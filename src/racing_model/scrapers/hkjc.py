@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import re
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from html import unescape
 from html.parser import HTMLParser
 from pathlib import Path
@@ -128,7 +129,14 @@ class HKJCSource:
             for row in raw_results
             if row.get("win_odds") is not None
         ]
-        return {"races": [race] if race else [], "runners": runners, "results": results, "odds_ticks": odds}
+        exotic_dividends = parse_final_exotic_dividends(lines, race_id)
+        return {
+            "races": [race] if race else [],
+            "runners": runners,
+            "results": results,
+            "odds_ticks": odds,
+            "exotic_dividends": exotic_dividends,
+        }
 
     def parse_trackwork(
         self,
@@ -711,6 +719,97 @@ def parse_place_dividends(lines: list[str]) -> dict[int, float]:
             continue
         index += 1
     return output
+
+
+def parse_final_exotic_dividends(lines: list[str], race_id: str) -> list[dict[str, Any]]:
+    start = find_line(lines, "Dividend")
+    if start is None:
+        return []
+    label_map = {
+        "QUINELLA": "QIN",
+        "QUINELLA PLACE": "QPL",
+        "FORECAST": "FCT",
+        "TIERCE": "TCE",
+        "TRIO": "TRIO",
+        "FIRST 4": "FIRST4",
+        "QUARTET": "QUARTET",
+    }
+    stop_labels = {
+        "DIVIDEND NOTE",
+        "RACING RUNNING POSITION PHOTOS",
+        "COMMENTS ON RUNNING",
+        "FINISH PHOTO",
+        "RACING INCIDENT REPORT",
+    }
+    rows: list[dict[str, Any]] = []
+    market = ""
+    index = start + 1
+    while index < len(lines):
+        token = lines[index].strip()
+        upper = token.upper()
+        if any(upper.startswith(label) for label in stop_labels):
+            break
+        if upper in label_map:
+            market = label_map[upper]
+            index += 1
+            continue
+        if market and looks_like_combination(token) and index + 1 < len(lines) and looks_like_dividend_amount(lines[index + 1]):
+            dividend = final_dividend_multiplier(lines[index + 1])
+            key = final_exotic_combination_key(market, token)
+            if key and dividend:
+                rows.append(
+                    {
+                        "market": market,
+                        "combination": token,
+                        "combination_key": key,
+                        "dividend": dividend,
+                        "dividend_status": "final",
+                        "source": "hkjc_results_final",
+                        "fetched_at": datetime.now(timezone.utc).isoformat(),
+                        "notes": "result_dividend_table",
+                    }
+                )
+            index += 2
+            continue
+        index += 1
+    return rows
+
+
+def looks_like_combination(value: object) -> bool:
+    text = str(value or "").strip()
+    if not text:
+        return False
+    return bool(re.fullmatch(r"[0-9FM,\s]+", text, re.I)) and any(char.isdigit() for char in text)
+
+
+def final_dividend_multiplier(value: object) -> float | None:
+    text = str(value or "").replace(",", "").strip()
+    try:
+        dividend = float(text)
+    except ValueError:
+        return None
+    if dividend <= 0:
+        return None
+    return round(dividend / 10.0, 3)
+
+
+def looks_like_dividend_amount(value: object) -> bool:
+    return bool(re.fullmatch(r"\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?", str(value or "").strip()))
+
+
+def final_exotic_combination_key(market: str, combination: str) -> str:
+    ordered = market in {"FCT", "TCE", "QUARTET"}
+    numbers = []
+    for part in combination.replace(">", ",").replace("+", ",").split(","):
+        part = part.strip()
+        if part.isdigit():
+            numbers.append(int(part))
+    if not numbers:
+        return ""
+    if not ordered:
+        numbers = sorted(numbers)
+    separator = ">" if ordered else "+"
+    return separator.join(str(number) for number in numbers)
 
 
 def first_result_index(tokens: list[str]) -> int | None:

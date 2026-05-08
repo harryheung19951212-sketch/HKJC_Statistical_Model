@@ -17,6 +17,7 @@ let bettingRefreshInFlight = false;
 let bettingRefreshQueued = false;
 let currentOddsHistory = [];
 let currentMarketFlow = null;
+let activeRaceTab = "overview";
 const predictionSort = { key: "rank", direction: "asc" };
 
 const text = {
@@ -213,6 +214,16 @@ function renderLifecycle(data) {
 
 function selectedRace() {
   return races.find((race) => race.race_id === selectedRaceId);
+}
+
+function setRaceTab(tabName) {
+  activeRaceTab = tabName || "overview";
+  document.querySelectorAll(".race-tab").forEach((button) => {
+    button.classList.toggle("active", button.dataset.raceTabTarget === activeRaceTab);
+  });
+  document.querySelectorAll("[data-race-tab]").forEach((panel) => {
+    panel.classList.toggle("hidden", panel.dataset.raceTab !== activeRaceTab);
+  });
 }
 
 async function switchAppView(view) {
@@ -474,6 +485,10 @@ function preservePanelDuringRefresh(contentId, summaryId, message) {
 function renderBetting(data, options = {}) {
   const summary = $("betting-summary");
   const box = $("betting-tickets");
+  if (data && data.fast_preview && options.preserveDeferred && hasStableContent("betting-tickets")) {
+    summary.classList.add("refreshing");
+    return;
+  }
   if (data && data.deferred) {
     if (options.preserveDeferred && hasStableContent("betting-tickets")) {
       summary.classList.add("refreshing");
@@ -629,10 +644,9 @@ function portfolioRoleLabel(value) {
 }
 
 function renderDecisionCard(row) {
-  const canConfirm = row.recommendation_id && Number(row.recommended_stake || 0) > 0 && row.execution_status !== "confirmed";
   const executionText = row.execution_status === "confirmed"
-    ? `已確認｜下注時 ${formatNum(row.execution_odds, 2)}｜${formatMoney(row.execution_stake)}`
-    : "未確認下注";
+    ? `已入飛｜下注時 ${formatNum(row.execution_odds, 2)}｜${formatMoney(row.execution_stake)}`
+    : "未入飛";
   return `
     <div class="ticket ${ticketClass(row.action)}">
       <div class="ticket-main">
@@ -653,12 +667,11 @@ function renderDecisionCard(row) {
         <div><label>注碼</label><strong>${formatMoney(row.recommended_stake)}</strong></div>
         <div><label>最低票</label><strong>${formatMoney(row.minimum_ticket_cost)}</strong></div>
         <div><label>曝險</label><strong>${row.exposure_action || "保留"}</strong></div>
-        <div><label>下注確認</label><strong>${row.execution_status === "confirmed" ? "已確認" : "未確認"}</strong></div>
+        <div><label>入飛狀態</label><strong>${row.execution_status === "confirmed" ? "已入飛" : "未入飛"}</strong></div>
       </div>
       <small>${row.exposure_reason || ""}</small>
       <div class="ticket-action">
         <span>${row.action}</span>
-        ${canConfirm ? `<button type="button" class="mini-action" onclick="confirmBettingTicket('${row.recommendation_id}', ${Number(row.recommended_stake || 0)})">確認下注</button>` : ""}
       </div>
     </div>
   `;
@@ -715,7 +728,7 @@ function renderSettlementCard(row) {
       <div class="settlement-metrics">
         <label>結果 <b>${status.label}</b></label>
         <label>注碼 <b>${formatMoney(row.recommended_stake)}</b></label>
-        <label>下注時 <b>${row.execution_status === "confirmed" ? `${formatNum(row.execution_odds, 2)} / ${formatMoney(row.execution_stake)}` : "未確認"}</b></label>
+        <label>下注時 <b>${row.execution_status === "confirmed" ? `${formatNum(row.execution_odds, 2)} / ${formatMoney(row.execution_stake)}` : "未入飛"}</b></label>
         <label>派彩 <b>${formatMoney(row.returned)}</b></label>
         <label>盈虧 <b class="${evClass(row.profit)}">${formatMoney(row.profit)}</b></label>
         <label>最後賠率 <b>${formatNum(row.final_odds, 2)}</b></label>
@@ -803,6 +816,7 @@ function renderPoolChoiceCard(row) {
         <label>所需派彩差 <b class="${evClass(row.efficiency_gap)}">${formatSigned(row.efficiency_gap, 2)}x</b></label>
         <label>抽水 <b>${formatPct(row.takeout_rate)}</b></label>
         <label>建議注碼 <b>${formatMoney(row.best_recommended_stake)}</b></label>
+        <label>最佳派彩 <b>${formatNum(row.best_dividend, 2)}x</b></label>
       </div>
     </div>
   `;
@@ -893,6 +907,7 @@ function renderExoticCard(row) {
         <label>打和派彩 <b>${formatNum(row.break_even_dividend, 2)}x</b></label>
         <label>\u6240\u9700\u6d3e\u5f69 <b>${formatNum(row.required_dividend, 2)}x</b></label>
         <label>官方/估算 <b>${formatNum(row.dividend, 2)}x</b></label>
+        <label>賠率來源 <b>${dividendSourceLabel(row)}</b></label>
         <label>建議注碼 <b>${formatMoney(row.recommended_stake)}</b></label>
         <label>每組約 <b>${formatMoney(row.per_combination_stake)}</b></label>
         <label>組合數 <b>${row.combination_count || 1}</b></label>
@@ -905,6 +920,15 @@ function renderExoticCard(row) {
       <small>${row.stake_reason || ""}</small>
     </div>
   `;
+}
+
+function dividendSourceLabel(row) {
+  if (row.dividend) {
+    const source = row.dividend_source === "hkjc_results_final" ? "賽果派彩" : row.dividend_source === "hkjc_graphql" || row.dividend_source === "hkjc_mqtt" ? "官方即時" : row.dividend_source || "官方";
+    return `${source}｜${row.dividend_status || "-"}`;
+  }
+  if (["TCE", "QUARTET"].includes(row.market)) return "官方未提供逐注即時派彩，完場後抓最終派彩";
+  return "等官方派彩";
 }
 
 function formatPoolCost(rule) {
@@ -1753,11 +1777,12 @@ function renderBettingLedger(data) {
   const summary = data.summary || {};
   $("betting-ledger-summary").innerHTML = `
     <div class="stat"><label>建議數</label><strong>${summary.recommendations || 0}</strong></div>
-    <div class="stat"><label>已確認</label><strong>${summary.confirmed || 0}</strong></div>
+    <div class="stat"><label>已入飛</label><strong>${summary.confirmed || 0}</strong></div>
     <div class="stat"><label>執行合格</label><strong>${summary.valid_execution || 0}</strong></div>
     <div class="stat"><label>價跌失效</label><strong>${summary.stale_price || 0}</strong></div>
     <div class="stat"><label>已對數</label><strong>${summary.reconciled || 0}</strong></div>
     <div class="stat"><label>未對數</label><strong>${summary.pending || 0}</strong></div>
+    <div class="stat"><label>已合併重覆</label><strong>${data.deduped_count || 0}</strong></div>
     <div class="stat"><label>實際回報率</label><strong class="${evClass(summary.roi)}">${formatPct(summary.roi)}</strong></div>
     <div class="stat"><label>命中率</label><strong>${formatPct(summary.hit_rate)}</strong></div>
     <div class="stat"><label>平均 CLV</label><strong class="${evClass(summary.avg_clv)}">${summary.avg_clv === null || summary.avg_clv === undefined ? "-" : formatPct(summary.avg_clv)}</strong></div>
@@ -1778,7 +1803,7 @@ function renderBettingLedger(data) {
       <div class="version-metrics">
         <div><label>建議賠率</label><b>${formatNum(row.recommended_odds, 2)}</b></div>
         <div><label>所需賠率</label><b>${formatNum(row.required_dividend, 2)}</b></div>
-        <div><label>下注時</label><b>${row.execution_status === "confirmed" ? formatNum(row.execution_odds, 2) : "未確認"}</b></div>
+        <div><label>下注時</label><b>${row.execution_status === "confirmed" ? formatNum(row.execution_odds, 2) : "未入飛"}</b></div>
         <div><label>執行狀態</label><b>${executionValueLabel(row.execution_value_status)}</b></div>
         <div><label>彩池分</label><b>${row.pool_choice_score === null || row.pool_choice_score === undefined ? "-" : formatNum(row.pool_choice_score, 2)}</b></div>
         <div><label>彩池排名</label><b>${row.pool_choice_rank || "-"}</b></div>
@@ -2348,6 +2373,9 @@ async function boot() {
   $("mark-scheduled").addEventListener("click", markScheduled);
   $("bankroll-input").addEventListener("change", refreshSelectedRace);
   $("risk-profile").addEventListener("change", refreshSelectedRace);
+  document.querySelectorAll(".race-tab").forEach((button) => {
+    button.addEventListener("click", () => setRaceTab(button.dataset.raceTabTarget || "overview"));
+  });
   $("run-gpt-iteration").addEventListener("click", runGptIteration);
   $("run-model-registry").addEventListener("click", runModelRegistry);
   $("promote-model").addEventListener("click", promoteModel);
@@ -2367,6 +2395,7 @@ async function boot() {
   });
   window.addEventListener("beforeunload", sleepSelectedRace);
   await loadState();
+  setRaceTab(activeRaceTab);
   await loadRaces();
   await refreshSelectedRace({ full: false });
   countdown = intervalSeconds;

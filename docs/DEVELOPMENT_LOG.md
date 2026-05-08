@@ -653,3 +653,28 @@ Verification:
 - `python -m compileall -q src dashboard tests`
 - `node --check src/racing_model/web/app.js`
 - `python -m pytest tests/test_fast_betting_refresh.py -q`
+
+## 2026-05-08 - Exotic Dividend Training And Race Page Cleanup
+
+Goal:
+
+- Stop losing training value from Tierce/Quartet and other exotic bets.
+- Treat model-generated betting tickets as executed suggestions instead of requiring a manual UI confirmation.
+- Stop repeated 30-second refreshes from creating duplicate-looking betting ledger tickets.
+- Split the independent race screen into clearer tabs so the race page is not one long wall of panels.
+
+Implementation:
+
+- Result-page parsing now imports final exotic dividends from the HKJC dividend table, including TCE/三重彩 and QUARTET/四重彩, into `exotic_dividends` as `hkjc_results_final` training rows.
+- HKJC exotic live parsing now also reads nested banker odds when GraphQL supplies them.
+- Betting recommendation IDs now use a stable logical key per race/market/selection/risk/model, so odds refreshes update one recommendation instead of creating repeated tickets.
+- Active tickets are automatically marked as executed at the recommendation odds and stake; the UI no longer asks the user to confirm bets manually.
+- Betting ledger and pool replay dedupe older repeated rows before display/backtest, preventing refresh noise from polluting model iteration.
+- The race page now has tabs for overview, betting, results/odds, and diagnostics.
+- 30-second dashboard fast previews no longer replace the full betting engine while the full panel is already visible, preventing the betting section from shrinking during refresh.
+
+Verification:
+
+- `python -m compileall -q src dashboard tests`
+- `node --check src/racing_model/web/app.js`
+- `python -m pytest tests`

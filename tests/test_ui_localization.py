@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 from racing_model.app_server import api_betting, api_predictions
@@ -76,14 +77,17 @@ def test_race_page_prioritizes_prediction_betting_and_collapsible_diagnostics() 
     js = (ROOT / "src/racing_model/web/app.js").read_text(encoding="utf-8")
     css = (ROOT / "src/racing_model/web/styles.css").read_text(encoding="utf-8")
 
-    prediction_pos = html.index('<div class="panel predictions-panel">')
-    detail_pos = html.index('<div class="panel detail-panel">')
-    situation_pos = html.index('<div class="panel situation-panel">')
-    betting_pos = html.index('<div class="panel betting-panel">')
-    feed_pos = html.index('<details class="panel feed-panel fold-panel">')
-    comparison_pos = html.index('<details class="panel comparison-panel fold-panel">')
+    prediction_pos = re.search(r'<div class="panel predictions-panel"[^>]*>', html).start()
+    detail_pos = re.search(r'<div class="panel detail-panel"[^>]*>', html).start()
+    situation_pos = re.search(r'<div class="panel situation-panel"[^>]*>', html).start()
+    betting_pos = re.search(r'<div class="panel betting-panel"[^>]*>', html).start()
+    feed_pos = re.search(r'<details class="panel feed-panel fold-panel"[^>]*>', html).start()
+    comparison_pos = re.search(r'<details class="panel comparison-panel fold-panel"[^>]*>', html).start()
 
     assert prediction_pos < detail_pos < situation_pos < betting_pos < feed_pos < comparison_pos
+    assert 'class="race-tab active"' in html
+    assert 'data-race-tab-target="betting"' in html
+    assert 'data-race-tab="betting"' in html
     assert '<h3>馬匹詳情 / 單匹賠率走勢</h3>' in html
     assert 'aria-label="單匹賠率走勢圖"' in html
     assert '<div class="panel odds-panel">' not in html

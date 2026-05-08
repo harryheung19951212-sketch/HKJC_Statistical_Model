@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
+from .betting_ledger import dedupe_logical_recommendations
 from .pool_rules import POOL_RULES, cost_adjusted_expected_value, pool_rule_payload
 from .storage import fetch_all
 
@@ -14,7 +15,7 @@ POOL_LABELS_ZH = {
     "QPL": "位置Q",
     "FCT": "二重彩",
     "TRIO": "單T",
-    "TCE": "三連彩",
+    "TCE": "三重彩",
     "FIRST4": "四連環",
     "QUARTET": "四重彩",
 }
@@ -55,7 +56,7 @@ def load_recommendations(conn: sqlite3.Connection, race_id: str | None) -> list[
     if race_id:
         where = "WHERE race_id = ?"
         params = (race_id,)
-    return [
+    rows = [
         dict(row)
         for row in fetch_all(
             conn,
@@ -68,6 +69,7 @@ def load_recommendations(conn: sqlite3.Connection, race_id: str | None) -> list[
             params,
         )
     ]
+    return dedupe_logical_recommendations(rows)
 
 
 def market_replay(market: str, rows: list[dict[str, Any]]) -> dict[str, Any]:

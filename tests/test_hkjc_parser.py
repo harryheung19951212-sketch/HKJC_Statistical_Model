@@ -3,6 +3,7 @@ from racing_model.scrapers.hkjc import (
     merge_runner_localization,
     parse_chinese_racecard_runners,
     parse_chinese_result_runners,
+    parse_final_exotic_dividends,
     parse_racecard_runners,
     parse_result_rows,
 )
@@ -208,6 +209,48 @@ def test_parse_results_builds_fallback_race_and_runners() -> None:
     assert parsed["runners"][0]["weight_lbs"] == 128.0
     assert parsed["results"][0]["finish_position"] == 1
     assert parsed["odds_ticks"][0]["source"] == "hkjc_results_final"
+
+
+def test_parse_result_dividend_table_imports_final_exotic_dividends() -> None:
+    lines = [
+        "Dividend",
+        "Pool",
+        "Winning Combination",
+        "Dividend (HK$)",
+        "QUINELLA",
+        "9,13",
+        "1,490.00",
+        "QUINELLA PLACE",
+        "9,13",
+        "408.00",
+        "9,11",
+        "28.00",
+        "FORECAST",
+        "9,13",
+        "2,215.00",
+        "TIERCE",
+        "9,13,11",
+        "10,103.00",
+        "TRIO",
+        "9,11,13",
+        "1,397.00",
+        "FIRST 4",
+        "1,9,11,13",
+        "1,314.00",
+        "QUARTET",
+        "9,13,11,1",
+        "49,644.00",
+        "Dividend Note: For Winning Combination",
+    ]
+
+    rows = parse_final_exotic_dividends(lines, "HK20260506-ST-01")
+
+    by_market = {row["market"]: row for row in rows}
+    assert by_market["TCE"]["combination_key"] == "9>13>11"
+    assert by_market["TCE"]["dividend"] == 1010.3
+    assert by_market["QUARTET"]["combination_key"] == "9>13>11>1"
+    assert by_market["QUARTET"]["dividend"] == 4964.4
+    assert by_market["FIRST4"]["combination_key"] == "1+9+11+13"
 
 
 def test_merge_chinese_runner_names() -> None:

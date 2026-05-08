@@ -284,6 +284,10 @@ def graphql_exotic_payload_to_rows(data: dict[str, Any], race_id: str, source: s
                 row = exotic_node_to_row(race_id, market, node, source, fetched_at)
                 if row:
                     rows.append(row)
+                for banker_node in node.get("bankerOdds") or []:
+                    banker_row = exotic_node_to_row(race_id, market, banker_node, source, fetched_at)
+                    if banker_row:
+                        rows.append(banker_row)
     return rows
 
 

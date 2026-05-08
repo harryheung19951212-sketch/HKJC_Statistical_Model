@@ -7,6 +7,7 @@ from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .backtest import run_backtest
+from .exotic_dividends import upsert_exotic_dividends
 from .model import RankingModel
 from .scrapers.base import PoliteHttpClient
 from .scrapers.hkjc import HKJCSource
@@ -60,6 +61,7 @@ def refresh_hkjc_results_if_available(
     results = parsed.get("results", [])
     odds = parsed.get("odds_ticks", [])
     runners = parsed.get("runners", [])
+    exotic_dividends = parsed.get("exotic_dividends", [])
     now = datetime.now(timezone.utc).isoformat()
     if not results:
         upsert_race_status(
@@ -75,6 +77,13 @@ def refresh_hkjc_results_if_available(
     update_runner_localization(conn, runners)
     result_rows = insert_rows(conn, "results", results)
     odds_rows = insert_rows(conn, "odds_ticks", odds)
+    exotic_rows = upsert_exotic_dividends(
+        conn,
+        race_id,
+        exotic_dividends,
+        source="hkjc_results_final",
+        dividend_status="final",
+    )["imported"] if exotic_dividends else 0
     place_snapshot_rows = freeze_final_place_snapshots(conn, race_id, now)
     backtest = run_backtest(conn, model)
     upsert_race_status(
@@ -90,6 +99,7 @@ def refresh_hkjc_results_if_available(
         "race_id": race_id,
         "results": result_rows,
         "odds_ticks": odds_rows + place_snapshot_rows,
+        "exotic_dividends": exotic_rows,
         "place_snapshots": place_snapshot_rows,
         "status": "resulted",
     }
@@ -156,9 +166,18 @@ def load_hkjc_race_day(
 
             results = parsed_result.get("results", [])
             odds = parsed_result.get("odds_ticks", [])
+            exotic_dividends = parsed_result.get("exotic_dividends", [])
             if results:
                 imported_results += insert_rows(conn, "results", results)
                 imported_odds += insert_rows(conn, "odds_ticks", odds)
+                if exotic_dividends:
+                    upsert_exotic_dividends(
+                        conn,
+                        race_id,
+                        exotic_dividends,
+                        source="hkjc_results_final",
+                        dividend_status="final",
+                    )
                 imported_odds += freeze_final_place_snapshots(conn, race_id, datetime.now(timezone.utc).isoformat())
                 upsert_race_status(conn, race_id, "resulted")
             elif runners:

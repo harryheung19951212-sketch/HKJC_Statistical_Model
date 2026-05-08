@@ -341,6 +341,10 @@ main { padding: 24px; min-width: 0; }
   display: block;
 }
 
+.hidden {
+  display: none !important;
+}
+
 .race-header {
   display: flex;
   justify-content: space-between;
@@ -399,6 +403,30 @@ h2 {
 #weather-status.refreshing,
 #prediction-policy-status.refreshing {
   opacity: 0.72;
+}
+
+.race-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 0 14px;
+}
+
+.race-tab {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 9px 14px;
+  background: #fff;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.race-tab.active {
+  border-color: #8fc7ff;
+  background: #eef7ff;
+  color: var(--blue);
 }
 
 .metrics {
@@ -887,6 +915,8 @@ h2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   padding: 14px 16px;
+  min-height: 620px;
+  align-content: start;
 }
 
 .betting-empty {

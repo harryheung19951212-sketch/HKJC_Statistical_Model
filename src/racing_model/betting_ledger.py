@@ -68,10 +68,13 @@ def betting_ledger_report(conn: sqlite3.Connection, race_id: str | None = None, 
         """,
         params,
     )
-    items = [public_row(dict(row)) for row in rows]
+    raw_items = [public_row(dict(row)) for row in rows]
+    items = dedupe_logical_recommendations(raw_items)[:limit]
     return {
         "summary": ledger_summary(items),
         "items": items,
+        "raw_count": len(raw_items),
+        "deduped_count": max(len(raw_items) - len(items), 0),
         "clv_note": "CLV 用建議當刻賠率對比最後/派彩賠率；香港彩池不保證鎖價，現階段用作市場驗證及 slippage 監控。",
     }
 
@@ -115,6 +118,7 @@ def recommendation_row(
     now: str,
 ) -> dict[str, Any]:
     key = recommendation_key(ticket, race, payload, model_path)
+    execution = auto_execution_payload(ticket, now)
     return {
         "recommendation_id": key,
         "created_at": now,
@@ -155,17 +159,17 @@ def recommendation_row(
         "race_status_at_recommendation": str(payload.get("race_status") or ""),
         "action": str(ticket.get("action") or ""),
         "reason": str(ticket.get("reason") or ""),
-        "execution_status": "suggested",
-        "executed_at": None,
-        "execution_odds": None,
-        "execution_stake": None,
-        "execution_source": "",
+        "execution_status": execution["execution_status"],
+        "executed_at": execution["executed_at"],
+        "execution_odds": execution["execution_odds"],
+        "execution_stake": execution["execution_stake"],
+        "execution_source": execution["execution_source"],
         "execution_slippage": None,
         "execution_clv": None,
-        "execution_value_status": "",
-        "execution_value_message": "",
-        "execution_edge_at_bet": None,
-        "execution_expected_value_at_bet": None,
+        "execution_value_status": execution["execution_value_status"],
+        "execution_value_message": execution["execution_value_message"],
+        "execution_edge_at_bet": execution["execution_edge_at_bet"],
+        "execution_expected_value_at_bet": execution["execution_expected_value_at_bet"],
         "final_odds": None,
         "finish_position": None,
         "outcome_win": None,
@@ -190,12 +194,52 @@ def recommendation_key(
         str(ticket.get("horse_id") or ""),
         str(payload.get("risk_profile") or ""),
         str(model_path),
-        stable_number(ticket.get("probability")),
-        stable_number(ticket.get("odds")),
-        stable_number(ticket.get("expected_value")),
-        stable_number(ticket.get("recommended_stake")),
     ]
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:32]
+
+
+def auto_execution_payload(ticket: dict[str, Any], now: str) -> dict[str, Any]:
+    stake = optional_float(ticket.get("recommended_stake")) or 0.0
+    odds = optional_float(ticket.get("odds"))
+    if stake <= 0:
+        return {
+            "execution_status": "suggested",
+            "executed_at": None,
+            "execution_odds": None,
+            "execution_stake": None,
+            "execution_source": "",
+            "execution_value_status": "",
+            "execution_value_message": "",
+            "execution_edge_at_bet": None,
+            "execution_expected_value_at_bet": None,
+        }
+    execution_value = execution_value_check(ticket, odds)
+    return {
+        "execution_status": "confirmed",
+        "executed_at": now,
+        "execution_odds": odds,
+        "execution_stake": stake,
+        "execution_source": str(ticket.get("odds_source") or "auto_recommended"),
+        **execution_value,
+    }
+
+
+def dedupe_logical_recommendations(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    latest: dict[tuple[object, ...], dict[str, Any]] = {}
+    for item in items:
+        key = (
+            item.get("race_id"),
+            item.get("market"),
+            item.get("horse_id"),
+            item.get("risk_profile"),
+            item.get("model_path"),
+        )
+        current = latest.get(key)
+        if current is None or str(item.get("updated_at") or item.get("created_at") or "") >= str(
+            current.get("updated_at") or current.get("created_at") or ""
+        ):
+            latest[key] = item
+    return sorted(latest.values(), key=lambda row: str(row.get("updated_at") or row.get("created_at") or ""), reverse=True)
 
 
 def existing_recommendations(conn: sqlite3.Connection, ids: list[str]) -> dict[str, dict[str, Any]]:

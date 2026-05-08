@@ -50,6 +50,47 @@ def test_graphql_exotic_payload_maps_hkjc_markets() -> None:
     assert rows[1]["dividend"] == 1250.0
 
 
+def test_graphql_exotic_payload_reads_nested_banker_odds() -> None:
+    payload = {
+        "data": {
+            "raceMeetings": [
+                {
+                    "pmPools": [
+                        {
+                            "oddsType": "TCE",
+                            "lastUpdateTime": "2026-05-06T11:00:00Z",
+                            "oddsNodes": [
+                                {
+                                    "combString": "",
+                                    "oddsValue": "",
+                                    "bankerOdds": [
+                                        {"combString": "09,13,11", "oddsValue": "1010.3"},
+                                    ],
+                                }
+                            ],
+                        },
+                    ]
+                }
+            ]
+        }
+    }
+
+    rows = graphql_exotic_payload_to_rows(payload, "HK20260506-ST-09", "hkjc_graphql")
+
+    assert rows == [
+        {
+            "race_id": "HK20260506-ST-09",
+            "market": "TCE",
+            "combination": "09,13,11",
+            "dividend": 1010.3,
+            "dividend_status": "probable",
+            "source": "hkjc_graphql",
+            "fetched_at": "2026-05-06T11:00:00Z",
+            "notes": "live_exotic_dividend",
+        }
+    ]
+
+
 def test_mqtt_exotic_messages_parse_topic_market() -> None:
     topic = "hk/d/prdt/wager/evt/01/upd/racing/20260506/st/09/qpl/odds/full"
     payload = b'{"oddsNodes":[{"combString":"7+4","oddsValue":"22.0"}]}'
