@@ -118,6 +118,35 @@ def test_eligible_stakes_use_minimum_ticket_but_scale_with_confidence() -> None:
     assert confident["tickets"][0]["recommended_stake"] > 10.0
 
 
+def test_recommended_total_never_exceeds_race_cap_after_minimum_tickets() -> None:
+    predictions = [
+        {
+            "horse_id": f"H{index:03d}",
+            "horse_no": index,
+            "display_name": f"馬{index}",
+            "win_probability": 0.24,
+            "latest_win_odds": 6.0,
+            "latest_win_odds_source": "hkjc_mqtt",
+            "top3_probability": 0.35,
+            "place_odds": None,
+            "place_odds_source": None,
+        }
+        for index in range(1, 9)
+    ]
+
+    result = build_betting_decisions(
+        predictions,
+        "scheduled",
+        bankroll=10000,
+        risk_profile="standard",
+        include_exotics=False,
+    )
+
+    ticket_total = sum(float(ticket["recommended_stake"]) for ticket in result["tickets"])
+    assert ticket_total <= result["max_race_stake"]
+    assert result["total_recommended_stake"] <= result["max_race_stake"]
+
+
 def test_trio_upgrade_path_compares_position_q_pairs() -> None:
     predictions = [
         {

@@ -2,6 +2,28 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-08 - Betting Header Stake Alignment
+
+Goal:
+
+- Make the betting header use one clear stake accounting rule.
+- Remove the confusing `新建議` header metric.
+- Prevent recommended ticket totals from ever exceeding the race stake cap after minimum-ticket and exotic-ticket sizing.
+
+Changes:
+
+- `建議總注` now uses the payout reconciliation ticket total whenever ledger items exist; otherwise it uses the current bet slip total capped by `本場上限`.
+- Removed the `新建議` stat from the betting header.
+- Added a final race-cap enforcement pass after correlated exposure controls so minimum HK$10 tickets cannot push the final ticket list above the race cap.
+- Added regression tests for race-cap enforcement and the removed header label.
+
+Verification:
+
+- `python -m compileall -q src tests`
+- `node --check src\racing_model\web\app.js`
+- `python -m pytest tests\test_betting.py tests\test_fast_betting_refresh.py tests\test_ui_localization.py -q`
+- `python -m pytest -q`
+
 ## 2026-05-08 - Betting Stake And Horse Context Repair
 
 Goal:

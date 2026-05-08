@@ -1184,10 +1184,13 @@ def api_betting(
     payload["placed_summary"] = placed_betting_summary(ledger_report)
     payload["settlement"] = betting_settlement_payload(ledger_report)
     settlement_summary = payload["settlement"].get("summary", {}) if isinstance(payload["settlement"], dict) else {}
+    ledger_ticket_count = int((settlement_summary or {}).get("tickets") or 0) if isinstance(settlement_summary, dict) else 0
     ledger_staked = float((settlement_summary or {}).get("staked") or 0.0) if isinstance(settlement_summary, dict) else 0.0
+    max_race_stake = float(payload.get("max_race_stake") or 0.0)
+    current_ticket_stake = float((payload.get("bet_slip") or {}).get("summary", {}).get("total_stake") or payload.get("total_recommended_stake") or 0.0)
     payload["display_max_race_stake"] = payload.get("max_race_stake", 0.0)
     payload["display_total_recommended_stake"] = round(
-        ledger_staked if ledger_staked > 0 else float(payload.get("total_recommended_stake") or 0.0),
+        ledger_staked if ledger_ticket_count > 0 else min(current_ticket_stake, max_race_stake) if max_race_stake > 0 else current_ticket_stake,
         2,
     )
     return payload
@@ -1204,7 +1207,7 @@ def placed_betting_summary(ledger: dict[str, object]) -> dict[str, object]:
         "executed_staked": round(executed, 2),
         "display_stake": round(executed, 2),
         "source": "betting_ledger_confirmed",
-        "note": "即場顯示以派彩對數內已落飛注碼加總；未落飛的新建議只在下注單列表顯示。",
+        "note": "即場建議總注以派彩對數內已保存飛數加總；未保存前則顯示今次通過風險上限的下注單總額。",
     }
 
 
