@@ -2,6 +2,29 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-08 - Exotic Ledger Final Dividend Settlement Gate
+
+Goal:
+
+- Prevent combination-pool ROI from being polluted by settling winning exotic tickets before official final dividends are available.
+
+Changes:
+
+- Updated exotic betting-ledger reconciliation so winning QIN/QPL/FCT/TRIO/TCE/FIRST4/QUARTET tickets require `dividend_status='final'` before they are marked reconciled.
+- Losing exotic tickets can still settle from the official race result without final dividend, because payout is zero and P/L is known.
+- `final_exotic_dividend()` no longer falls back to probable dividends for settlement.
+- Added tests for:
+  - winning exotic ticket with only probable dividend remains pending;
+  - losing exotic ticket settles without final dividend;
+  - existing final-dividend exotic win still reconciles correctly.
+
+Verification:
+
+- `python tests\test_betting_ledger.py`
+- `python tests\test_pool_replay.py`
+- `python -m compileall -q src dashboard tests`
+- `node --check src\racing_model\web\app.js`
+
 ## 2026-05-08 - GitHub Sync And Production Redeploy
 
 Goal:

@@ -228,6 +228,8 @@ def result_for_exotic_recommendation(conn: sqlite3.Connection, row: dict[str, An
     finish_by_no = {int(result["horse_no"]): int(result["finish_position"]) for result in result_rows if result["horse_no"]}
     outcome = exotic_outcome(market, selected, finish_by_no)
     final_odds = final_exotic_dividend(conn, str(row["race_id"]), market, str(row["horse_id"]))
+    if outcome and final_odds is None:
+        return None
     stake = float(row["recommended_stake"] or 0)
     returned = stake * final_odds if outcome and final_odds else 0.0
     profit = returned - stake
@@ -269,8 +271,8 @@ def final_exotic_dividend(conn: sqlite3.Connection, race_id: str, market: str, c
         """
         SELECT dividend
         FROM exotic_dividends
-        WHERE race_id = ? AND market = ? AND combination_key = ?
-        ORDER BY CASE dividend_status WHEN 'final' THEN 0 WHEN 'probable' THEN 1 ELSE 2 END, updated_at DESC
+        WHERE race_id = ? AND market = ? AND combination_key = ? AND dividend_status = 'final'
+        ORDER BY updated_at DESC
         LIMIT 1
         """,
         (race_id, market, combination_key),
