@@ -2,6 +2,25 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-08 - HKJC Horse Profile Last Six Runs
+
+Goal:
+
+- Use HKJC horse profile pages, for example `/zh-hk/local/information/horse?HorseNo=J488`, as the source for each runner's recent six-run form.
+
+Changes:
+
+- Added HKJC horse profile URL/fetch support and a parser for the `馬匹近三季往績紀錄` table.
+- Race-day loading now enriches each runner's `last_six_runs` from its HorseNo/Brand No profile, falling back to the racecard value only when the profile cannot be fetched or parsed.
+- Added parser and race-day enrichment regression tests based on the J488 profile structure; J488 now parses as `WV-A/12/4/1/4/8`.
+
+Verification:
+
+- `python -m compileall -q src tests`
+- `python -m pytest tests\test_hkjc_parser.py tests\test_race_status.py -q`
+- Live parse check against `https://racing.hkjc.com/zh-hk/local/information/horse?HorseNo=J488`
+- `python -m pytest -q`
+
 ## 2026-05-08 - Preserve Race Page State And Refresh Exotic Odds
 
 Goal:

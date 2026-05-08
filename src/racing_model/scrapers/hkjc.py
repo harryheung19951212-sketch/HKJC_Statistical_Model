@@ -44,6 +44,9 @@ class HKJCSource:
     def fetch_trackwork_page(self, race_date: str, venue: str, race_no: int) -> FetchResult:
         return self.client.fetch(self.trackwork_url(race_date, venue, race_no))
 
+    def fetch_horse_profile_page(self, horse_id: str) -> FetchResult:
+        return self.client.fetch(self.horse_profile_url(horse_id))
+
     def racecard_url(self, race_date: str, venue: str, race_no: int, language: str = "English") -> str:
         return (
             f"{self.base_url}/racing/information/{language}/Racing/RaceCard.aspx"
@@ -61,6 +64,9 @@ class HKJCSource:
             f"{self.base_url}/racing/information/English/Racing/LocalTrackwork.aspx"
             f"?RaceDate={race_date}&Racecourse={venue}&RaceNo={race_no}"
         )
+
+    def horse_profile_url(self, horse_id: str) -> str:
+        return f"{self.base_url}/zh-hk/local/information/horse?HorseNo={horse_id}"
 
     def parse_racecard(
         self,
@@ -147,6 +153,10 @@ class HKJCSource:
     ) -> dict[str, list[dict[str, Any]]]:
         lines = html_lines(html)
         return {"workouts": parse_trackwork_rows(lines)}
+
+    def parse_horse_profile(self, html: str) -> dict[str, Any]:
+        lines = html_lines(html)
+        return {"last_six_runs": parse_horse_profile_last_six_runs(lines)}
 
 
 class TextExtractor(HTMLParser):
@@ -477,6 +487,49 @@ def parse_chinese_racecard_runner_tokens(tokens: list[str], race_id: str) -> lis
             continue
         index += 1
     return dedupe_by_key(rows, "horse_id")
+
+
+def parse_horse_profile_last_six_runs(lines: list[str], limit: int = 6) -> str:
+    """Parse HKJC horse profile recent form from the three-season record table."""
+    start = next((index for index, line in enumerate(lines) if "往績紀錄" in line and "馬匹" in line), None)
+    if start is None:
+        return ""
+    runs: list[str] = []
+    for index in range(start + 1, len(lines) - 2):
+        if not (
+            looks_like_profile_race_no(lines[index])
+            and looks_like_profile_finish(lines[index + 1])
+            and looks_like_profile_date(lines[index + 2])
+        ):
+            continue
+        runs.append(normalize_profile_finish(lines[index + 1]))
+        if len(runs) >= limit:
+            break
+    return "/".join(runs)
+
+
+def looks_like_profile_race_no(token: str) -> bool:
+    return bool(re.fullmatch(r"\d{1,4}", token.strip()))
+
+
+def looks_like_profile_finish(token: str) -> bool:
+    text = token.strip().upper()
+    return bool(
+        re.fullmatch(r"\d{1,2}", text)
+        or re.fullmatch(r"[A-Z]{1,4}(?:-[A-Z])?", text)
+        or text in {"--", "---"}
+    )
+
+
+def looks_like_profile_date(token: str) -> bool:
+    return bool(re.fullmatch(r"\d{2}/\d{2}/\d{2}", token.strip()))
+
+
+def normalize_profile_finish(token: str) -> str:
+    text = token.strip().upper()
+    if re.fullmatch(r"\d{1,2}", text):
+        return str(int(text))
+    return text
 
 
 def merge_runner_localization(

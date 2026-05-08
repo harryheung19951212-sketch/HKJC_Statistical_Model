@@ -155,6 +155,10 @@ def load_hkjc_race_day(
                 )
                 races = usable_races(parsed_card.get("races", [])) or usable_races(result_races)
                 runners = parsed_card.get("runners", []) or result_runners
+                if runners:
+                    if progress:
+                        progress(race_no, race_count, f"loading_horse_profiles_{race_no}")
+                    runners = enrich_runners_with_horse_profiles(source, runners)
             except Exception:
                 races = usable_races(result_races)
                 runners = result_runners
@@ -201,6 +205,37 @@ def load_hkjc_race_day(
         "error_details": errors,
         "first_race_id": first_race_id,
     }
+
+
+def enrich_runners_with_horse_profiles(
+    source: HKJCSource,
+    runners: object,
+) -> list[dict[str, object]]:
+    if not isinstance(runners, list):
+        return []
+    enriched: list[dict[str, object]] = []
+    history_by_horse_id: dict[str, str] = {}
+    for runner in runners:
+        if not isinstance(runner, dict):
+            continue
+        updated = dict(runner)
+        horse_id = str(runner.get("horse_id") or "").strip()
+        if horse_id:
+            if horse_id not in history_by_horse_id:
+                history_by_horse_id[horse_id] = fetch_profile_last_six_runs(source, horse_id)
+            if history_by_horse_id[horse_id]:
+                updated["last_six_runs"] = history_by_horse_id[horse_id]
+        enriched.append(updated)
+    return enriched
+
+
+def fetch_profile_last_six_runs(source: HKJCSource, horse_id: str) -> str:
+    try:
+        profile = source.fetch_horse_profile_page(horse_id)
+        parsed = source.parse_horse_profile(profile.body)
+    except Exception:
+        return ""
+    return str(parsed.get("last_six_runs") or "")
 
 
 def update_runner_localization(conn: sqlite3.Connection, runners: object) -> int:

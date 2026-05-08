@@ -4,6 +4,7 @@ from racing_model.scrapers.hkjc import (
     parse_chinese_racecard_runners,
     parse_chinese_result_runners,
     parse_final_exotic_dividends,
+    parse_horse_profile_last_six_runs,
     parse_racecard_runners,
     parse_result_rows,
 )
@@ -70,6 +71,53 @@ def test_parse_hkjc_tokenized_racecard_rows() -> None:
             "gear": "B/TT",
         }
     ]
+
+
+def test_parse_horse_profile_last_six_runs_from_three_season_record() -> None:
+    lines = [
+        "北地烈馬 (J488)",
+        "馬匹近三季往績紀錄 - 北地烈馬",
+        "場次",
+        "名次",
+        "日期",
+        "25/26",
+        "馬季",
+        "610",
+        "WV-A",
+        "15/04/26",
+        '跑馬地草地"A"',
+        "1200",
+        "558",
+        "12",
+        "29/03/26",
+        '沙田草地"A+3"',
+        "1000",
+        "512",
+        "04",
+        "11/03/26",
+        '跑馬地草地"C+3"',
+        "1200",
+        "467",
+        "01",
+        "25/02/26",
+        '跑馬地草地"B"',
+        "1200",
+        "419",
+        "04",
+        "08/02/26",
+        '沙田草地"C"',
+        "1200",
+        "348",
+        "08",
+        "14/01/26",
+        '跑馬地草地"B"',
+        "1650",
+        "319",
+        "06",
+        "04/01/26",
+    ]
+
+    assert parse_horse_profile_last_six_runs(lines) == "WV-A/12/4/1/4/8"
 
 
 def test_parse_hkjc_tokenized_result_rows() -> None:
