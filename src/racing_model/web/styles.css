@@ -971,7 +971,18 @@ h2 {
   text-align: center;
   background: #edf2f7;
   font-weight: 800;
+  display: grid;
+  gap: 6px;
 }
+
+.mini-action {
+  padding: 6px 8px;
+  font-size: 12px;
+  background: #176f87;
+  color: #fff;
+}
+
+.mini-action:hover { background: #12596c; }
 
 .exotic-section,
 .settlement-section {

@@ -249,6 +249,22 @@ foreach ($t in $tests) {
 - UI「即場投注建議」會顯示「下注組合風險控制」開合區塊及每張飛的曝險狀態。
 - 仍未完成：要用 bankroll replay 證明 exposure graph 降低最大回撤且不破壞 ROI。
 
+## 2026-05-08 下注執行層 / Bet-time Confirmation
+
+- `betting_recommendations` 新增下注確認欄位：
+  - `execution_status`
+  - `executed_at`
+  - `execution_odds`
+  - `execution_stake`
+  - `execution_source`
+  - `execution_slippage`
+  - `execution_clv`
+- 新增 `confirm_betting_recommendation()`，可按 recommendation id 確認下注時賠率及實際注碼。
+- 新增 `POST /api/betting-ledger/confirm`。
+- UI ticket card 會顯示下注確認狀態；可按「確認下注」把當刻最新 odds/dividend 記錄到 ledger。
+- `record_betting_payload()` 會保留已確認及已對數欄位，避免 30 秒刷新重新寫入建議時覆蓋下注確認。
+- 仍未完成：未有自動下注、下注單號、取消/部分成交、以及 slippage-adjusted ROI 報告。
+
 ## 仍未完成 / 未做事項
 
 ### 最高優先

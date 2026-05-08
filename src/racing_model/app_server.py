@@ -22,7 +22,12 @@ from .backfill import (
     train_model_if_requested,
 )
 from .betting import build_betting_decisions
-from .betting_ledger import betting_ledger_report, reconcile_betting_ledger, record_betting_payload
+from .betting_ledger import (
+    betting_ledger_report,
+    confirm_betting_recommendation,
+    reconcile_betting_ledger,
+    record_betting_payload,
+)
 from .config import display_database_target, get_settings
 from .coverage import build_coverage_report
 from .error_taxonomy import error_taxonomy_report
@@ -660,6 +665,20 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
                 result = reconcile_betting_ledger(conn, race_id=race_id)
                 result["ledger"] = betting_ledger_report(conn, race_id=race_id)
                 self.send_json(result)
+            elif path == "/api/betting-ledger/confirm":
+                body = self.read_json_body()
+                body_recommendation_id = body.get("recommendation_id") if isinstance(body, dict) else ""
+                recommendation_id = str(body_recommendation_id or query.get("recommendation_id", [""])[0])
+                result = confirm_betting_recommendation(
+                    conn,
+                    recommendation_id,
+                    execution_odds=query_float_from_body(body, query, "execution_odds", None),
+                    execution_stake=query_float_from_body(body, query, "execution_stake", None),
+                    source=str(body.get("source") or "manual_confirm") if isinstance(body, dict) else "manual_confirm",
+                )
+                race_id = query.get("race_id", [None])[0] or (result.get("item") or {}).get("race_id")
+                result["ledger"] = betting_ledger_report(conn, race_id=race_id)
+                self.send_json(result)
             elif path == "/api/pool-replay/reconcile":
                 race_id = query.get("race_id", [None])[0]
                 result = reconcile_betting_ledger(conn, race_id=race_id)
@@ -1161,6 +1180,24 @@ def query_float(query: dict[str, list[str]], key: str, default: float) -> float:
     try:
         return float(values[0])
     except ValueError:
+        return default
+
+
+def query_float_from_body(
+    body: object,
+    query: dict[str, list[str]],
+    key: str,
+    default: float | None,
+) -> float | None:
+    value = body.get(key) if isinstance(body, dict) else None
+    if value in {None, ""}:
+        values = query.get(key)
+        value = values[0] if values else None
+    if value in {None, ""}:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
         return default
 
 

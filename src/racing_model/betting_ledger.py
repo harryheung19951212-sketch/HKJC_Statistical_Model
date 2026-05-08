@@ -32,10 +32,19 @@ def record_betting_payload(
         )
         for ticket in tickets
     ]
-    existing_created = existing_created_at(conn, [row["recommendation_id"] for row in rows])
+    existing_rows = existing_recommendations(conn, [row["recommendation_id"] for row in rows])
     for row in rows:
-        if row["recommendation_id"] in existing_created:
-            row["created_at"] = existing_created[row["recommendation_id"]]
+        existing = existing_rows.get(row["recommendation_id"])
+        if existing:
+            preserve_existing_state(row, existing)
+        ticket = next((item for item in tickets if recommendation_key(item, race, payload, model_path) == row["recommendation_id"]), None)
+        if ticket is not None:
+            ticket["recommendation_id"] = row["recommendation_id"]
+            ticket["execution_status"] = row.get("execution_status")
+            ticket["executed_at"] = row.get("executed_at")
+            ticket["execution_odds"] = row.get("execution_odds")
+            ticket["execution_stake"] = row.get("execution_stake")
+            ticket["execution_source"] = row.get("execution_source")
     inserted = insert_rows(conn, "betting_recommendations", rows)
     conn.commit()
     return {"recorded": inserted, "tickets": len(tickets)}
@@ -132,6 +141,13 @@ def recommendation_row(
         "race_status_at_recommendation": str(payload.get("race_status") or ""),
         "action": str(ticket.get("action") or ""),
         "reason": str(ticket.get("reason") or ""),
+        "execution_status": "suggested",
+        "executed_at": None,
+        "execution_odds": None,
+        "execution_stake": None,
+        "execution_source": "",
+        "execution_slippage": None,
+        "execution_clv": None,
         "final_odds": None,
         "finish_position": None,
         "outcome_win": None,
@@ -164,16 +180,125 @@ def recommendation_key(
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:32]
 
 
-def existing_created_at(conn: sqlite3.Connection, ids: list[str]) -> dict[str, str]:
+def existing_recommendations(conn: sqlite3.Connection, ids: list[str]) -> dict[str, dict[str, Any]]:
     if not ids:
         return {}
     placeholders = ", ".join("?" for _ in ids)
     rows = fetch_all(
         conn,
-        f"SELECT recommendation_id, created_at FROM betting_recommendations WHERE recommendation_id IN ({placeholders})",
+        f"SELECT * FROM betting_recommendations WHERE recommendation_id IN ({placeholders})",
         tuple(ids),
     )
-    return {str(row["recommendation_id"]): str(row["created_at"]) for row in rows}
+    return {str(row["recommendation_id"]): dict(row) for row in rows}
+
+
+def preserve_existing_state(row: dict[str, Any], existing: dict[str, Any]) -> None:
+    preserve_fields = [
+        "created_at",
+        "execution_status",
+        "executed_at",
+        "execution_odds",
+        "execution_stake",
+        "execution_source",
+        "execution_slippage",
+        "execution_clv",
+        "final_odds",
+        "finish_position",
+        "outcome_win",
+        "returned",
+        "profit",
+        "clv",
+        "slippage",
+        "reconciled_at",
+        "reconciliation_status",
+    ]
+    for field in preserve_fields:
+        if field in existing:
+            row[field] = existing[field]
+
+
+def confirm_betting_recommendation(
+    conn: sqlite3.Connection,
+    recommendation_id: str,
+    execution_odds: float | None = None,
+    execution_stake: float | None = None,
+    source: str = "manual_confirm",
+) -> dict[str, Any]:
+    rows = fetch_all(
+        conn,
+        "SELECT * FROM betting_recommendations WHERE recommendation_id = ?",
+        (recommendation_id,),
+    )
+    if not rows:
+        return {"status": "missing", "message": "找不到投注建議"}
+
+    row = dict(rows[0])
+    if row.get("reconciliation_status") == "reconciled":
+        return {"status": "locked", "message": "已完成派彩對數，不能再確認下注", "item": public_row(row)}
+
+    resolved_odds = optional_float(execution_odds)
+    resolved_source = source
+    if resolved_odds is None:
+        resolved_odds, resolved_source = current_execution_odds(conn, row)
+    if resolved_odds is None or resolved_odds <= 1:
+        return {"status": "no_odds", "message": "未有可確認的下注時賠率", "item": public_row(row)}
+
+    stake = optional_float(execution_stake)
+    if stake is None or stake <= 0:
+        stake = float(row.get("recommended_stake") or 0)
+    now = utc_now()
+    recommended_odds = optional_float(row.get("recommended_odds"))
+    final_odds = optional_float(row.get("final_odds"))
+    row.update(
+        {
+            "updated_at": now,
+            "execution_status": "confirmed",
+            "executed_at": now,
+            "execution_odds": resolved_odds,
+            "execution_stake": stake,
+            "execution_source": resolved_source,
+            "execution_slippage": (resolved_odds - recommended_odds) if recommended_odds else None,
+            "execution_clv": (resolved_odds / final_odds - 1.0) if resolved_odds and final_odds and final_odds > 0 else None,
+        }
+    )
+    insert_rows(conn, "betting_recommendations", [row])
+    conn.commit()
+    return {"status": "confirmed", "message": "已確認下注時賠率及注碼", "item": public_row(row)}
+
+
+def current_execution_odds(conn: sqlite3.Connection, row: dict[str, Any]) -> tuple[float | None, str]:
+    market = str(row.get("market") or "")
+    if market in EXOTIC_PRODUCTS:
+        rows = fetch_all(
+            conn,
+            """
+            SELECT dividend, source
+            FROM exotic_dividends
+            WHERE race_id = ? AND market = ? AND combination_key = ? AND dividend_status IN ('probable', 'final', 'estimated')
+            ORDER BY updated_at DESC
+            LIMIT 1
+            """,
+            (row.get("race_id"), market, row.get("horse_id")),
+        )
+        if rows:
+            return optional_float(rows[0]["dividend"]), str(rows[0]["source"] or "exotic_dividend")
+        return optional_float(row.get("recommended_odds")), str(row.get("odds_source") or "recommended")
+
+    column = "win_odds" if market == "WIN" else "place_odds"
+    rows = fetch_all(
+        conn,
+        f"""
+        SELECT {column} AS odds, source
+        FROM odds_ticks
+        WHERE race_id = ? AND horse_id = ? AND {column} IS NOT NULL
+        ORDER BY timestamp DESC
+        LIMIT 1
+        """,
+        (row.get("race_id"), row.get("horse_id")),
+    )
+    if rows:
+        return optional_float(rows[0]["odds"]), str(rows[0]["source"] or "odds_tick")
+    return optional_float(row.get("recommended_odds")), str(row.get("odds_source") or "recommended")
 
 
 def result_for_recommendation(conn: sqlite3.Connection, row: dict[str, Any]) -> dict[str, Any] | None:
@@ -192,10 +317,11 @@ def result_for_recommendation(conn: sqlite3.Connection, row: dict[str, Any]) -> 
     outcome = finish_position == 1 if market == "WIN" else finish_position <= 3
     if outcome and final_odds is None:
         return None
-    stake = float(row["recommended_stake"] or 0)
+    stake = optional_float(row.get("execution_stake")) or float(row["recommended_stake"] or 0)
     returned = stake * final_odds if outcome and final_odds else 0.0
     profit = returned - stake
     recommended_odds = optional_float(row.get("recommended_odds"))
+    execution_odds = optional_float(row.get("execution_odds"))
     clv = None
     if recommended_odds and final_odds and final_odds > 0:
         clv = recommended_odds / final_odds - 1.0
@@ -206,6 +332,7 @@ def result_for_recommendation(conn: sqlite3.Connection, row: dict[str, Any]) -> 
         "returned": returned,
         "profit": profit,
         "clv": clv,
+        "execution_clv": (execution_odds / final_odds - 1.0) if execution_odds and final_odds and final_odds > 0 else None,
         "slippage": (final_odds - recommended_odds) if recommended_odds and final_odds else None,
     }
 
@@ -232,10 +359,11 @@ def result_for_exotic_recommendation(conn: sqlite3.Connection, row: dict[str, An
     final_odds = final_exotic_dividend(conn, str(row["race_id"]), market, str(row["horse_id"]))
     if outcome and final_odds is None:
         return None
-    stake = float(row["recommended_stake"] or 0)
+    stake = optional_float(row.get("execution_stake")) or float(row["recommended_stake"] or 0)
     returned = stake * final_odds if outcome and final_odds else 0.0
     profit = returned - stake
     recommended_odds = optional_float(row.get("recommended_odds"))
+    execution_odds = optional_float(row.get("execution_odds"))
     clv = recommended_odds / final_odds - 1.0 if recommended_odds and final_odds and final_odds > 0 else None
     best_finish = min((finish_by_no.get(number, 99) for number in selected), default=None)
     return {
@@ -245,6 +373,7 @@ def result_for_exotic_recommendation(conn: sqlite3.Connection, row: dict[str, An
         "returned": returned,
         "profit": profit,
         "clv": clv,
+        "execution_clv": (execution_odds / final_odds - 1.0) if execution_odds and final_odds and final_odds > 0 else None,
         "slippage": (final_odds - recommended_odds) if recommended_odds and final_odds else None,
     }
 
@@ -316,16 +445,20 @@ def parse_combination_key(value: str) -> list[int]:
 
 def ledger_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
     staked = sum(float(row.get("recommended_stake") or 0) for row in items)
+    confirmed = [row for row in items if row.get("execution_status") == "confirmed"]
+    executed_staked = sum(float(row.get("execution_stake") or 0) for row in confirmed)
     reconciled = [row for row in items if row.get("reconciliation_status") == "reconciled"]
-    reconciled_staked = sum(float(row.get("recommended_stake") or 0) for row in reconciled)
+    reconciled_staked = sum(float(row.get("execution_stake") or row.get("recommended_stake") or 0) for row in reconciled)
     returned = sum(float(row.get("returned") or 0) for row in reconciled)
     profit = sum(float(row.get("profit") or 0) for row in reconciled)
     clv_rows = [row for row in reconciled if row.get("clv") is not None]
     return {
         "recommendations": len(items),
+        "confirmed": len(confirmed),
         "reconciled": len(reconciled),
         "pending": len(items) - len(reconciled),
         "staked": round(staked, 2),
+        "executed_staked": round(executed_staked, 2),
         "reconciled_staked": round(reconciled_staked, 2),
         "returned": round(returned, 2),
         "profit": round(profit, 2),

@@ -504,12 +504,17 @@ function renderBetting(data, options = {}) {
 }
 
 function renderDecisionCard(row) {
+  const canConfirm = row.recommendation_id && Number(row.recommended_stake || 0) > 0 && row.execution_status !== "confirmed";
+  const executionText = row.execution_status === "confirmed"
+    ? `已確認｜下注時 ${formatNum(row.execution_odds, 2)}｜${formatMoney(row.execution_stake)}`
+    : "未確認下注";
   return `
     <div class="ticket ${ticketClass(row.action)}">
       <div class="ticket-main">
         <span>${row.market_label}</span>
         <strong>${row.horse_no || "-"} ${localizedHorse(row)}</strong>
         <small>模型第 ${row.model_rank} ｜ ${row.reason}</small>
+        <small>${executionText}</small>
       </div>
       <div class="ticket-metrics">
         <div><label>機率</label><strong>${formatPct(row.probability)}</strong></div>
@@ -523,11 +528,30 @@ function renderDecisionCard(row) {
         <div><label>注碼</label><strong>${formatMoney(row.recommended_stake)}</strong></div>
         <div><label>最低票</label><strong>${formatMoney(row.minimum_ticket_cost)}</strong></div>
         <div><label>曝險</label><strong>${row.exposure_action || "保留"}</strong></div>
+        <div><label>下注確認</label><strong>${row.execution_status === "confirmed" ? "已確認" : "未確認"}</strong></div>
       </div>
       <small>${row.exposure_reason || ""}</small>
-      <div class="ticket-action">${row.action}</div>
+      <div class="ticket-action">
+        <span>${row.action}</span>
+        ${canConfirm ? `<button type="button" class="mini-action" onclick="confirmBettingTicket('${row.recommendation_id}', ${Number(row.recommended_stake || 0)})">確認下注</button>` : ""}
+      </div>
     </div>
   `;
+}
+
+async function confirmBettingTicket(recommendationId, stake) {
+  if (!recommendationId || !selectedRaceId) return;
+  const result = await api(`/api/betting-ledger/confirm?race_id=${encodeURIComponent(selectedRaceId)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      recommendation_id: recommendationId,
+      execution_stake: stake,
+      source: "ui_confirm",
+    }),
+  });
+  $("system-status").textContent = result.message || "已確認下注";
+  await refreshSelectedRace({ preserve: true });
 }
 
 function ticketClass(action) {
@@ -566,10 +590,12 @@ function renderSettlementCard(row) {
       <div class="settlement-metrics">
         <label>結果 <b>${status.label}</b></label>
         <label>注碼 <b>${formatMoney(row.recommended_stake)}</b></label>
+        <label>下注時 <b>${row.execution_status === "confirmed" ? `${formatNum(row.execution_odds, 2)} / ${formatMoney(row.execution_stake)}` : "未確認"}</b></label>
         <label>派彩 <b>${formatMoney(row.returned)}</b></label>
         <label>盈虧 <b class="${evClass(row.profit)}">${formatMoney(row.profit)}</b></label>
         <label>最後賠率 <b>${formatNum(row.final_odds, 2)}</b></label>
         <label>CLV <b class="${evClass(row.clv)}">${row.clv === null || row.clv === undefined ? "-" : formatPct(row.clv)}</b></label>
+        <label>下注CLV <b class="${evClass(row.execution_clv)}">${row.execution_clv === null || row.execution_clv === undefined ? "-" : formatPct(row.execution_clv)}</b></label>
       </div>
     </div>
   `;

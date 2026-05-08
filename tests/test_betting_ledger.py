@@ -1,6 +1,11 @@
 from pathlib import Path
 
-from racing_model.betting_ledger import betting_ledger_report, reconcile_betting_ledger, record_betting_payload
+from racing_model.betting_ledger import (
+    betting_ledger_report,
+    confirm_betting_recommendation,
+    reconcile_betting_ledger,
+    record_betting_payload,
+)
 from racing_model.exotic_dividends import upsert_exotic_dividends
 from racing_model.storage import connect, init_db, insert_rows
 
@@ -97,6 +102,70 @@ def test_betting_ledger_records_active_ticket_once_and_reconciles(tmp_path: Path
     assert after["summary"]["reconciled"] == 1
     assert after["summary"]["profit"] == 250
     assert after["items"][0]["clv"] > 0
+
+
+def test_bet_time_confirmation_records_execution_odds_and_survives_refresh(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    with connect(db_path) as conn:
+        insert_rows(
+            conn,
+            "races",
+            [
+                {
+                    "race_id": "HK20260506-ST-01",
+                    "date": "2026/05/06",
+                    "track": "Sha Tin",
+                    "course": "Turf",
+                    "distance_m": 1200,
+                    "going": "Good",
+                    "class_rating": "Class 4",
+                    "prize": 1000000,
+                }
+            ],
+        )
+        insert_rows(
+            conn,
+            "odds_ticks",
+            [
+                {
+                    "race_id": "HK20260506-ST-01",
+                    "horse_id": "H001",
+                    "timestamp": "2026-05-06T12:00:00+00:00",
+                    "win_odds": 4.0,
+                    "place_odds": 1.4,
+                    "source": "hkjc_mqtt",
+                },
+                {
+                    "race_id": "HK20260506-ST-01",
+                    "horse_id": "H001",
+                    "timestamp": "2026-05-06T12:01:00+00:00",
+                    "win_odds": 3.6,
+                    "place_odds": 1.3,
+                    "source": "hkjc_mqtt",
+                },
+            ],
+        )
+        conn.commit()
+
+        race = {"race_id": "HK20260506-ST-01", "date": "2026/05/06"}
+        payload = simple_win_payload("H001", 1, "測試馬", 100)
+        record_betting_payload(conn, race, payload, "models/baseline.json")
+        recommendation_id = payload["tickets"][0]["recommendation_id"]
+
+        confirmed = confirm_betting_recommendation(conn, recommendation_id, execution_stake=80, source="unit_test")
+        record_betting_payload(conn, race, payload, "models/baseline.json")
+        ledger = betting_ledger_report(conn, "HK20260506-ST-01")
+
+    assert confirmed["status"] == "confirmed"
+    item = ledger["items"][0]
+    assert item["execution_status"] == "confirmed"
+    assert item["execution_odds"] == 3.6
+    assert item["execution_stake"] == 80
+    assert item["execution_source"] == "hkjc_mqtt"
+    assert item["execution_slippage"] == -0.4
+    assert ledger["summary"]["confirmed"] == 1
+    assert ledger["summary"]["executed_staked"] == 80
 
 
 def test_winning_win_ticket_waits_for_final_odds(tmp_path: Path) -> None:

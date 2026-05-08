@@ -174,6 +174,13 @@ CREATE TABLE IF NOT EXISTS betting_recommendations (
   race_status_at_recommendation TEXT NOT NULL DEFAULT '',
   action TEXT NOT NULL DEFAULT '',
   reason TEXT NOT NULL DEFAULT '',
+  execution_status TEXT NOT NULL DEFAULT 'suggested',
+  executed_at TEXT,
+  execution_odds REAL,
+  execution_stake REAL,
+  execution_source TEXT NOT NULL DEFAULT '',
+  execution_slippage REAL,
+  execution_clv REAL,
   final_odds REAL,
   finish_position INTEGER,
   outcome_win INTEGER,
@@ -298,6 +305,13 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
     ensure_column(conn, "runners", "jockey_zh", "TEXT NOT NULL DEFAULT ''")
     ensure_column(conn, "runners", "trainer_zh", "TEXT NOT NULL DEFAULT ''")
     ensure_column(conn, "races", "race_name", "TEXT NOT NULL DEFAULT ''")
+    ensure_column(conn, "betting_recommendations", "execution_status", "TEXT NOT NULL DEFAULT 'suggested'")
+    ensure_column(conn, "betting_recommendations", "executed_at", "TEXT")
+    ensure_column(conn, "betting_recommendations", "execution_odds", "REAL")
+    ensure_column(conn, "betting_recommendations", "execution_stake", "REAL")
+    ensure_column(conn, "betting_recommendations", "execution_source", "TEXT NOT NULL DEFAULT ''")
+    ensure_column(conn, "betting_recommendations", "execution_slippage", "REAL")
+    ensure_column(conn, "betting_recommendations", "execution_clv", "REAL")
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS race_error_reviews (
@@ -377,6 +391,13 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
           race_status_at_recommendation TEXT NOT NULL DEFAULT '',
           action TEXT NOT NULL DEFAULT '',
           reason TEXT NOT NULL DEFAULT '',
+          execution_status TEXT NOT NULL DEFAULT 'suggested',
+          executed_at TEXT,
+          execution_odds REAL,
+          execution_stake REAL,
+          execution_source TEXT NOT NULL DEFAULT '',
+          execution_slippage REAL,
+          execution_clv REAL,
           final_odds REAL,
           finish_position INTEGER,
           outcome_win INTEGER,
