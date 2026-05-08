@@ -588,3 +588,25 @@ Verification:
 - `python -m compileall -q src dashboard tests`
 - `node --check src/racing_model/web/app.js`
 - `python -m pytest tests`
+
+## 2026-05-08 - Betting Slip Dividend/Label Cleanup
+
+Goal:
+
+- Remove duplicate-looking settled tickets from the race page settlement panel.
+- Fix garbled win/place labels and actionable counting in the pool-choice model.
+- Pull official HKJC exotic odds/dividends into combination candidates instead of leaving all candidate dividends blank when HKJC has already published them.
+
+Implementation:
+
+- Changed the HKJC exotic dividend GraphQL provider to use the same whitelisted query shape and browser-compatible headers as the working WIN/PLA provider.
+- Added gzip response handling and fixed MQTT exotic connect-result parsing to avoid callback errors.
+- Added an opportunistic exotic-dividend refresh inside `/api/betting` when a scheduled race has no local exotic dividend rows yet.
+- Fixed `market_label("WIN")` / `market_label("PLACE")` and the `有值博` actionable check used by the pool-choice scorecard.
+- Deduped settlement display by logical race/market/horse/risk/model key, keeping the latest ticket while retaining the raw ticket count for diagnostics.
+
+Verification:
+
+- `python -m compileall -q src dashboard tests`
+- `node --check src/racing_model/web/app.js`
+- `python -m pytest tests`

@@ -29,7 +29,7 @@ def test_graphql_exotic_payload_maps_hkjc_markets() -> None:
                         {
                             "oddsType": "TRI",
                             "lastUpdateTime": "2026-05-06T11:00:00Z",
-                            "oddsNodes": [{"combString": "1+2+3", "oddsValue": "88.5"}],
+                            "oddsNodes": [{"combString": "01,02,03", "oddsValue": "88.5"}],
                         },
                         {
                             "oddsType": "QTT",
@@ -44,6 +44,7 @@ def test_graphql_exotic_payload_maps_hkjc_markets() -> None:
     rows = graphql_exotic_payload_to_rows(payload, "HK20260506-ST-09", "hkjc_graphql")
 
     assert rows[0]["market"] == "TRIO"
+    assert rows[0]["combination"] == "01,02,03"
     assert rows[0]["dividend"] == 88.5
     assert rows[1]["market"] == "QUARTET"
     assert rows[1]["dividend"] == 1250.0

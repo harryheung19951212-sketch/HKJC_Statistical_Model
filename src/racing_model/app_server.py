@@ -971,6 +971,12 @@ def api_betting(
         predictions = adaptive_predict_race(conn, model, race_id, policy)["predictions"]
     status = race_lifecycle_status(conn, race_id)
     exotic_lookup = load_exotic_dividend_lookup(conn, race_id)
+    if include_exotics and status == "scheduled" and not exotic_lookup:
+        try:
+            refresh_exotic_dividends(conn, race_id, build_exotic_dividend_provider(get_settings()))
+            exotic_lookup = load_exotic_dividend_lookup(conn, race_id)
+        except Exception:
+            exotic_lookup = {}
     payload = build_betting_decisions(
         predictions,
         status,
@@ -993,24 +999,44 @@ def api_betting(
 
 def betting_settlement_payload(ledger: dict[str, object]) -> dict[str, object]:
     items = list(ledger.get("items", [])) if isinstance(ledger, dict) else []
-    settled = [row for row in items if row.get("reconciliation_status") == "reconciled"]
+    unique_items = latest_logical_settlement_items(items)
+    settled = [row for row in unique_items if row.get("reconciliation_status") == "reconciled"]
     hits = [row for row in settled if int(row.get("outcome_win") or 0) == 1]
     misses = [row for row in settled if int(row.get("outcome_win") or 0) == 0]
-    pending = [row for row in items if row.get("reconciliation_status") != "reconciled"]
+    pending = [row for row in unique_items if row.get("reconciliation_status") != "reconciled"]
     return {
         "summary": {
-            "tickets": len(items),
+            "tickets": len(unique_items),
+            "raw_tickets": len(items),
             "settled": len(settled),
             "hit": len(hits),
             "miss": len(misses),
             "pending": len(pending),
             "profit": round(sum(float(row.get("profit") or 0) for row in settled), 2),
             "returned": round(sum(float(row.get("returned") or 0) for row in settled), 2),
-            "staked": round(sum(float(row.get("recommended_stake") or 0) for row in items), 2),
+            "staked": round(sum(float(row.get("recommended_stake") or 0) for row in unique_items), 2),
         },
-        "items": items,
+        "items": unique_items,
         "note": "已完場會用投注留痕對照賽果及最終派彩；組合贏票未有 final dividend 時會保持待派彩。",
     }
+
+
+def latest_logical_settlement_items(items: list[object]) -> list[dict[str, object]]:
+    latest: dict[tuple[str, str, str, str, str], dict[str, object]] = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        key = (
+            str(item.get("race_id") or ""),
+            str(item.get("market") or ""),
+            str(item.get("horse_id") or ""),
+            str(item.get("risk_profile") or ""),
+            str(item.get("model_path") or ""),
+        )
+        current = latest.get(key)
+        if current is None or str(item.get("created_at") or "") >= str(current.get("created_at") or ""):
+            latest[key] = item
+    return sorted(latest.values(), key=lambda row: str(row.get("created_at") or ""), reverse=True)
 
 
 def api_results(

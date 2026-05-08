@@ -1,4 +1,4 @@
-from racing_model.betting import build_betting_decisions
+from racing_model.betting import build_betting_decisions, market_label
 from racing_model.pool_rules import POOL_RULES, required_expected_value
 
 
@@ -229,6 +229,39 @@ def test_pool_choice_prefers_higher_ev_upgrade_pool_when_available() -> None:
     assert trio["best_cost_adjusted_expected_value"] > qpl["best_cost_adjusted_expected_value"]
     assert pool_choice["summary"]["best_market"] in {"TRIO", "QPL"}
     assert any("位置Q" in item["title"] for item in pool_choice["recommendations"])
+
+
+def test_pool_choice_uses_readable_win_place_labels_and_actionable_count() -> None:
+    predictions = [
+        {
+            "horse_id": "H001",
+            "horse_no": 1,
+            "display_name": "測試馬",
+            "win_probability": 0.5,
+            "latest_win_odds": 4.0,
+            "latest_win_odds_source": "hkjc_graphql",
+            "top3_probability": 0.7,
+            "place_odds": 2.2,
+            "place_odds_source": "hkjc_graphql",
+        }
+    ]
+
+    result = build_betting_decisions(
+        predictions,
+        "scheduled",
+        bankroll=10000,
+        risk_profile="standard",
+        include_exotics=False,
+    )
+    win = next(row for row in result["pool_choice"]["markets"] if row["market"] == "WIN")
+    place = next(row for row in result["pool_choice"]["markets"] if row["market"] == "PLACE")
+
+    assert market_label("WIN") == "獨贏"
+    assert market_label("PLACE") == "位置"
+    assert win["market_label"] == "獨贏"
+    assert place["market_label"] == "位置"
+    assert win["actionable_count"] == 1
+    assert place["actionable_count"] == 1
 
 
 def test_bet_slip_engine_ranks_tickets_and_builds_strategy_options() -> None:

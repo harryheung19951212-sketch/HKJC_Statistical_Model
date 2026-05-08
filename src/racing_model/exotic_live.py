@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import gzip
 import random
 import sqlite3
 import ssl
@@ -13,29 +14,9 @@ from urllib.request import Request, urlopen
 
 from .exotic_dividends import upsert_exotic_dividends
 from .live import parse_hkjc_race_id
-from .odds import flatten_json, parse_odds_value
+from .odds import HORSE_ODDS_QUERY, browser_compatible_user_agent, flatten_json, mqtt_reason_success, parse_odds_value
 from .storage import race_status
 
-
-EXOTIC_GRAPHQL_QUERY = """
-query racing($date: String, $venueCode: String, $oddsTypes: [OddsType], $raceNo: Int) {
-  raceMeetings(date: $date, venueCode: $venueCode) {
-    pmPools(oddsTypes: $oddsTypes, raceNo: $raceNo) {
-      id
-      status
-      sellStatus
-      oddsType
-      lastUpdateTime
-      oddsNodes {
-        combString
-        oddsValue
-        hotFavourite
-        oddsDropValue
-      }
-    }
-  }
-}
-"""
 
 GRAPHQL_TO_INTERNAL_MARKET = {
     "QIN": "QIN",
@@ -82,7 +63,7 @@ class HKJCGraphQLExoticDividendProvider:
         for batch in EXOTIC_GRAPHQL_BATCHES:
             payload = {
                 "operationName": "racing",
-                "query": EXOTIC_GRAPHQL_QUERY,
+                "query": HORSE_ODDS_QUERY,
                 "variables": {
                     "date": ref.race_date.replace("/", "-"),
                     "venueCode": ref.venue,
@@ -95,13 +76,18 @@ class HKJCGraphQLExoticDividendProvider:
                 data=json.dumps(payload).encode("utf-8"),
                 headers={
                     "Content-Type": "application/json",
-                    "User-Agent": self.user_agent,
-                    "Accept": "application/json",
+                    "User-Agent": browser_compatible_user_agent(self.user_agent),
+                    "Accept": "application/json, text/plain, */*",
+                    "Origin": "https://bet.hkjc.com",
+                    "Referer": f"https://bet.hkjc.com/ch/racing/wp/{ref.race_date.replace('/', '-')}/{ref.venue}/{ref.race_no}",
                 },
             )
             try:
                 with urlopen(request, timeout=10) as response:
-                    data = json.loads(response.read().decode("utf-8", errors="replace"))
+                    raw_bytes = response.read()
+                    if raw_bytes.startswith(b"\x1f\x8b"):
+                        raw_bytes = gzip.decompress(raw_bytes)
+                    data = json.loads(raw_bytes.decode("utf-8", errors="replace"))
             except (OSError, URLError, TimeoutError, json.JSONDecodeError) as exc:
                 errors.append(f"{','.join(batch)}: {exc}")
                 continue
@@ -164,7 +150,7 @@ class HKJCMQTTExoticDividendProvider:
 
         def on_connect(client, userdata, flags, reason_code, properties=None):
             nonlocal connected
-            if str(reason_code) == "Success" or int(reason_code) == 0:
+            if mqtt_reason_success(reason_code):
                 connected = True
             client.subscribe([(topic, 0) for topic in [*topics, reply_topic]])
             props = Properties(PacketTypes.PUBLISH)

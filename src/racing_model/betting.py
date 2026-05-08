@@ -572,7 +572,7 @@ def pool_choice_market_row(
     actionable = [
         row
         for row in sources
-        if float(row.get("recommended_stake") or 0.0) > 0 or str(row.get("action") or "") == "?澆?"
+        if float(row.get("recommended_stake") or 0.0) > 0 or str(row.get("action") or "") == "有值博"
     ]
     probability = safe_float(best_source.get("probability"))
     dividend = safe_float(best_source.get("odds")) or safe_float(best_source.get("dividend"))
@@ -956,9 +956,9 @@ def bet_slip_notes(
 
 def market_label(market: str) -> str:
     if market == "WIN":
-        return "?刻?"
+        return "獨贏"
     if market == "PLACE":
-        return "雿蔭"
+        return "位置"
     return str(EXOTIC_PRODUCTS.get(market, {}).get("label") or market)
 
 
