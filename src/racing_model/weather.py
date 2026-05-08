@@ -10,6 +10,7 @@ from .storage import fetch_all
 
 
 HKO_CURRENT_URL = "https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=rhrread&lang=tc"
+HKO_FORECAST_URL = "https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=fnd&lang=tc"
 HKO_DAILY_URL = "https://data.weather.gov.hk/weatherAPI/opendata/opendata.php?dataType=RYES&date={date}&lang=tc&rformat=json"
 HKT = timezone(timedelta(hours=8))
 
@@ -25,27 +26,74 @@ def race_weather(conn, race_id: str) -> dict[str, object]:
     ref = parse_hkjc_race_id(race_id)
     venue = ref.venue if ref else venue_from_track(str(race.get("track", "")))
     cache_key = f"{race_date}:{venue}"
-    ttl = 600 if race_date == datetime.now(HKT).date().isoformat() else 43200
+    today = datetime.now(HKT).date()
+    race_day = parse_weather_date(race_date)
+    ttl = 600 if race_day == today else 43200
     cached = _CACHE.get(cache_key)
     if cached and time.time() - cached[0] < ttl:
         return cached[1]
 
     try:
-        payload = (
-            fetch_current_weather(race_date, venue)
-            if race_date == datetime.now(HKT).date().isoformat()
-            else fetch_daily_weather(race_date, venue)
-        )
+        if race_day == today:
+            try:
+                payload = fetch_current_weather(race_date, venue)
+            except Exception as exc:
+                payload = fetch_forecast_weather(race_date, venue, fallback_reason=str(exc))
+        elif race_day and race_day > today:
+            payload = fetch_forecast_weather(race_date, venue)
+        else:
+            payload = fetch_daily_weather(race_date, venue)
     except Exception as exc:
         payload = {
             "status": "error",
             "date": race_date,
             "venue": venue,
             "source": "香港天文台",
-            "message": f"天氣資料暫時未能載入：{exc}",
+            "message": f"天氣預測暫時未能載入，先睇住模型預測：{exc}",
         }
     _CACHE[cache_key] = (time.time(), payload)
     return payload
+
+
+def fetch_forecast_weather(race_date: str, venue: str, fallback_reason: str = "") -> dict[str, object]:
+    date_token = race_date.replace("-", "")
+    data = fetch_json(HKO_FORECAST_URL)
+    forecasts = data.get("weatherForecast") or []
+    if not isinstance(forecasts, list):
+        forecasts = []
+    forecast = next((row for row in forecasts if str(row.get("forecastDate") or "") == date_token), None)
+    if not isinstance(forecast, dict):
+        raise ValueError(f"HKO forecast does not include {race_date}")
+    min_temp = nested_value(forecast.get("forecastMintemp"))
+    max_temp = nested_value(forecast.get("forecastMaxtemp"))
+    min_humidity = nested_value(forecast.get("forecastMinrh"))
+    max_humidity = nested_value(forecast.get("forecastMaxrh"))
+    weather = str(forecast.get("forecastWeather") or "")
+    wind = str(forecast.get("forecastWind") or "")
+    psr = str(forecast.get("PSR") or "")
+    summary = format_forecast_summary(venue_label(venue), min_temp, max_temp, min_humidity, max_humidity, weather, psr)
+    message = "賽日前顯示天文台預測；到當日會自動改用即時天氣。"
+    if fallback_reason:
+        message = f"即時天氣暫時未能載入，先顯示天文台預測：{fallback_reason}"
+    return {
+        "status": "ok",
+        "mode": "forecast",
+        "date": normalize_date_token(date_token),
+        "venue": venue,
+        "station": venue_label(venue),
+        "source": "香港天文台九天天氣預報",
+        "source_url": HKO_FORECAST_URL,
+        "summary": summary,
+        "forecast_weather": weather,
+        "forecast_wind": wind,
+        "rain_probability": psr,
+        "min_temp_c": min_temp,
+        "max_temp_c": max_temp,
+        "min_humidity_percent": min_humidity,
+        "max_humidity_percent": max_humidity,
+        "update_time": data.get("updateTime"),
+        "message": message,
+    }
 
 
 def fetch_daily_weather(race_date: str, venue: str) -> dict[str, object]:
@@ -108,7 +156,21 @@ def fetch_current_weather(race_date: str, venue: str) -> dict[str, object]:
 
 def fetch_json(url: str) -> dict[str, object]:
     with urlopen(url, timeout=15) as response:
-        return json.loads(response.read().decode("utf-8", errors="replace"))
+        body = response.read().decode("utf-8", errors="replace").strip()
+    try:
+        return json.loads(body)
+    except json.JSONDecodeError as exc:
+        snippet = body[:120] if body else "<empty response>"
+        raise ValueError(f"HKO returned non-JSON response: {snippet}") from exc
+
+
+def parse_weather_date(value: str):
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(value, fmt).date()
+        except ValueError:
+            continue
+    return None
 
 
 def daily_station_prefix(venue: str) -> str:
@@ -139,6 +201,12 @@ def parse_float(value: object) -> float | None:
         return None
 
 
+def nested_value(value: object) -> float | None:
+    if isinstance(value, dict):
+        return parse_float(value.get("value"))
+    return parse_float(value)
+
+
 def normalize_date_token(value: str) -> str:
     if len(value) == 8 and value.isdigit():
         return f"{value[:4]}-{value[4:6]}-{value[6:]}"
@@ -160,6 +228,27 @@ def format_daily_summary(
         parts.append(f"濕度 {min_humidity:.0f}-{max_humidity:.0f}%")
     if rainfall not in {None, ""}:
         parts.append(f"雨量 {rainfall}")
+    return "｜".join(parts)
+
+
+def format_forecast_summary(
+    station: str,
+    min_temp: float | None,
+    max_temp: float | None,
+    min_humidity: float | None,
+    max_humidity: float | None,
+    weather: str,
+    psr: str,
+) -> str:
+    parts = [station]
+    if min_temp is not None and max_temp is not None:
+        parts.append(f"{min_temp:.0f}-{max_temp:.0f}°C")
+    if min_humidity is not None and max_humidity is not None:
+        parts.append(f"濕度 {min_humidity:.0f}-{max_humidity:.0f}%")
+    if psr:
+        parts.append(f"降雨概率 {psr}")
+    if weather:
+        parts.append(weather)
     return "｜".join(parts)
 
 

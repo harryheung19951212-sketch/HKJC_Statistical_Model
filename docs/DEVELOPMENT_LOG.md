@@ -2,6 +2,27 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-08 - Weather Forecast Fallback Before Race Day
+
+Goal:
+
+- Avoid the weather panel failing with raw JSON parse errors when HKO historical daily weather is unavailable for future race dates.
+- Show forecast weather before race day, then switch back to current weather on the race day.
+
+Changes:
+
+- Added HKO nine-day forecast support via `dataType=fnd`.
+- Future race dates now use forecast weather instead of historical daily observations.
+- Same-day weather still tries the current observation feed first, then falls back to the same-day forecast if the current feed returns an empty/non-JSON response.
+- Wrapped non-JSON HKO responses with a clearer error message, so the UI no longer shows `Expecting value: line 1 column 1`.
+
+Verification:
+
+- `python -m compileall -q src tests`
+- `python -m pytest tests\test_weather.py -q`
+- Live forecast check for `2026-05-09` Sha Tin via HKO `fnd`
+- `python -m pytest -q`
+
 ## 2026-05-08 - Align Betting Minimums And Coverage Header
 
 Goal:
