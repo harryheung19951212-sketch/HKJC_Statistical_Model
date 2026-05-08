@@ -97,6 +97,7 @@ def test_browser_refresh_preserves_page_and_tab_state() -> None:
     assert "settlementFilter" in js
     assert "data-settlement-filter" in js
     assert "settlement-market-filter" in js
+    assert 'settlementFilterButton("execution"' not in js
     assert ".settlement-filters" in css
     assert "settings.kelly_label" in js
     assert "promotion-scorecard-summary" in html

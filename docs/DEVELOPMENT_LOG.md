@@ -2,6 +2,26 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-09 - Settlement Requires Executed Tickets
+
+Goal:
+
+- Keep payout reconciliation limited to tickets that were actually simulated as bought.
+- Remove the confusing and invalid `未入飛` concept from the payout reconciliation view.
+
+Changes:
+
+- `betting_settlement_payload` now filters out every row whose `execution_status` is not `confirmed`.
+- Settlement summary reports ignored unexecuted suggestions internally, but they are not shown as tickets and do not contribute to stake, pending count, or P/L.
+- Removed the settlement `已入飛 / 未入飛` filter group because settlement now only contains executed tickets.
+- Updated coverage item 34 to state that settlement replay only uses confirmed execution rows.
+
+Verification:
+
+- `python -m pytest tests\test_betting_settlement.py tests\test_fast_betting_refresh.py tests\test_ui_localization.py -q`
+- `python -m compileall -q src tests`
+- `node --check src\racing_model\web\app.js`
+
 ## 2026-05-09 - Settlement Display Filters
 
 Goal:

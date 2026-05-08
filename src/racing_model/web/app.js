@@ -18,7 +18,7 @@ let bettingRefreshQueued = false;
 let currentOddsHistory = [];
 let currentMarketFlow = null;
 let activeRaceTab = savedUiValue("activeRaceTab", "overview");
-let settlementFilter = savedUiValue("settlementFilter", { status: "all", execution: "all", market: "all" });
+let settlementFilter = savedUiValue("settlementFilter", { status: "all", market: "all" });
 let currentBettingData = null;
 const predictionSort = { key: "rank", direction: "asc" };
 const UI_STATE_KEY = "hkjc-racing-ui-state";
@@ -773,12 +773,6 @@ function renderSettlementFilters(items, filteredItems) {
         ${settlementFilterButton("status", "hit", "中")}
         ${settlementFilterButton("status", "miss", "唔中")}
       </div>
-      <div class="filter-group">
-        <span>入飛</span>
-        ${settlementFilterButton("execution", "all", "全部")}
-        ${settlementFilterButton("execution", "confirmed", "已入飛")}
-        ${settlementFilterButton("execution", "suggested", "未入飛")}
-      </div>
       <label class="filter-group market-filter">
         <span>彩池</span>
         <select id="settlement-market-filter" class="filter-select">
@@ -801,8 +795,6 @@ function filteredSettlementItems(items) {
   return items.filter((row) => {
     const status = settlementStatus(row).className;
     if (settlementFilter.status !== "all" && settlementFilter.status !== status) return false;
-    const execution = row.execution_status === "confirmed" ? "confirmed" : "suggested";
-    if (settlementFilter.execution !== "all" && settlementFilter.execution !== execution) return false;
     if (settlementFilter.market !== "all" && settlementFilter.market !== row.market) return false;
     return true;
   });
@@ -844,7 +836,7 @@ function renderSettlementCard(row) {
       <div class="settlement-metrics">
         <label>結果 <b>${status.label}</b></label>
         <label>注碼 <b>${formatMoney(row.recommended_stake)}</b></label>
-        <label>現時估算 <b>${row.execution_status === "confirmed" ? `${formatNum(row.execution_odds, 2)} / ${formatMoney(row.execution_stake)}` : "未入飛"}</b></label>
+        <label>現時估算 <b>${formatNum(row.execution_odds, 2)} / ${formatMoney(row.execution_stake)}</b></label>
         <label>派彩 <b>${formatMoney(row.returned)}</b></label>
         <label>盈虧 <b class="${evClass(row.profit)}">${formatMoney(row.profit)}</b></label>
         <label>最後賠率 <b>${formatNum(row.final_odds, 2)}</b></label>
@@ -864,7 +856,7 @@ function settlementStatus(row) {
 function handleSettlementFilterClick(event) {
   const reset = event.target.closest("[data-settlement-filter-reset]");
   if (reset) {
-    settlementFilter = { status: "all", execution: "all", market: "all" };
+    settlementFilter = { status: "all", market: "all" };
     saveUiState({ settlementFilter });
     if (currentBettingData) renderBetting(currentBettingData);
     return;

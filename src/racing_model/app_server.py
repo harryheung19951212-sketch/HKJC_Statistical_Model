@@ -1215,7 +1215,8 @@ def placed_betting_summary(ledger: dict[str, object]) -> dict[str, object]:
 
 def betting_settlement_payload(ledger: dict[str, object]) -> dict[str, object]:
     items = list(ledger.get("items", [])) if isinstance(ledger, dict) else []
-    unique_items = latest_logical_settlement_items(items)
+    executed_items = [row for row in items if isinstance(row, dict) and row.get("execution_status") == "confirmed"]
+    unique_items = latest_logical_settlement_items(executed_items)
     settled = [row for row in unique_items if row.get("reconciliation_status") == "reconciled"]
     hits = [row for row in settled if int(row.get("outcome_win") or 0) == 1]
     misses = [row for row in settled if int(row.get("outcome_win") or 0) == 0]
@@ -1223,7 +1224,8 @@ def betting_settlement_payload(ledger: dict[str, object]) -> dict[str, object]:
     return {
         "summary": {
             "tickets": len(unique_items),
-            "raw_tickets": len(items),
+            "raw_tickets": len(executed_items),
+            "ignored_unexecuted": max(len(items) - len(executed_items), 0),
             "settled": len(settled),
             "hit": len(hits),
             "miss": len(misses),

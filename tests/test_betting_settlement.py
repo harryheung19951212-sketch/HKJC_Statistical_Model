@@ -50,6 +50,21 @@ def test_betting_settlement_payload_dedupes_across_risk_profiles() -> None:
     assert settlement["items"][0]["risk_profile"] == "aggressive"
 
 
+def test_betting_settlement_payload_ignores_unexecuted_suggestions() -> None:
+    confirmed = item("QPL", "位置Q", "2 + 7", None, 40, None, status="pending")
+    suggested = item("WIN", "獨贏", "測試馬", None, 50, None, status="pending")
+    suggested["execution_status"] = "suggested"
+    suggested["execution_stake"] = None
+    ledger = {"items": [confirmed, suggested]}
+
+    settlement = betting_settlement_payload(ledger)
+
+    assert settlement["summary"]["tickets"] == 1
+    assert settlement["summary"]["raw_tickets"] == 1
+    assert settlement["summary"]["ignored_unexecuted"] == 1
+    assert settlement["items"][0]["market"] == "QPL"
+
+
 def item(
     market: str,
     market_label: str,
@@ -71,6 +86,8 @@ def item(
         "horse_id": horse_name,
         "horse_name": horse_name,
         "recommended_stake": stake,
+        "execution_status": "confirmed",
+        "execution_stake": stake,
         "returned": stake + profit if profit is not None else None,
         "profit": profit,
         "outcome_win": outcome,

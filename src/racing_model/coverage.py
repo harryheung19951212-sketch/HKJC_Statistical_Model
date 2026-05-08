@@ -598,7 +598,7 @@ def coverage_items() -> list[dict[str, Any]]:
             STATUS_PARTIAL,
             ["投注建議", "賠率 ticks", "最終賠率", "bet ledger"],
             ["src/racing_model/betting_ledger.py", "src/racing_model/storage.py"],
-            "betting_recommendations 已儲存建議時賠率，並支援 UI/API 確認下注時賠率、下注時注碼及 execution CLV。",
+            "betting_recommendations 已儲存建議時賠率，並支援 UI/API 確認下注時賠率、下注時注碼及 execution CLV；派彩對數只納入已確認入飛的 execution rows，未入飛建議不會進入 settlement replay。",
             "仍未有自動下注、下注單號、取消/部分成交、以及組合彩池完整執行審計。",
             "加入取消/部分成交狀態、下注單號，並把 execution ROI 納入 promotion gate。",
             ["建議時賠率", "下注時賠率", "最後賠率", "30 秒更新仍可能滑價"],
