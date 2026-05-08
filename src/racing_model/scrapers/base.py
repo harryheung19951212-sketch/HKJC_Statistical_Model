@@ -27,6 +27,9 @@ class PoliteHttpClient:
         self._last_request_at = 0.0
 
     def fetch(self, url: str) -> FetchResult:
+        return self.fetch_with_encoding(url, "utf-8")
+
+    def fetch_with_encoding(self, url: str, encoding: str) -> FetchResult:
         elapsed = time.monotonic() - self._last_request_at
         if elapsed < self.delay_seconds:
             time.sleep(self.delay_seconds - elapsed)
@@ -37,7 +40,7 @@ class PoliteHttpClient:
         result = FetchResult(
             url=url,
             fetched_at=datetime.now(timezone.utc).isoformat(),
-            body=raw.decode("utf-8", errors="replace"),
+            body=raw.decode(encoding, errors="replace"),
         )
         self.save_raw(result)
         return result

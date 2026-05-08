@@ -3,6 +3,7 @@ from racing_model.scrapers.hkjc import (
     merge_runner_localization,
     parse_chinese_racecard_runners,
     parse_chinese_result_runners,
+    parse_declaration_runners,
     parse_final_exotic_dividends,
     parse_horse_profile_last_six_runs,
     parse_racecard_runners,
@@ -72,6 +73,26 @@ def test_parse_hkjc_tokenized_racecard_rows() -> None:
             "gear": "B/TT",
         }
     ]
+
+
+def test_parse_chinese_declaration_rows_with_body_weight() -> None:
+    html = """
+    <script>
+    Rec = new Array(2)
+    Rec[0] = new Array ("1","","(Null)","L245","全能勇士","126","LKW","呂健威","3","936","(Null)","PZ","潘頓","3","g","Saxon Warrior","One Last Look","L245","","鍾安良","XB1","0","","936","","PPG","(Null)","(Null)","","(Null)")
+    Rec[1] = new Array ("2","12/4/1/4/8/6","(Null)","J488","北地烈馬","135","YCT","葉楚航","5","1118","52","KHM","何澤堯","7","g","Sire","Dam","J488","","馬主","TT","1000","+1","+8","","PP","0","","1126","1118")
+    </script>
+    """
+
+    rows = parse_declaration_runners(html, "HK20260509-ST-01")
+
+    assert rows[0]["horse_id"] == "L245"
+    assert rows[0]["horse_name_zh"] == "全能勇士"
+    assert rows[0]["body_weight_lbs"] == 936.0
+    assert rows[0]["jockey_zh"] == "潘頓"
+    assert rows[1]["horse_id"] == "J488"
+    assert rows[1]["body_weight_lbs"] == 1126.0
+    assert rows[1]["last_six_runs"] == "12/4/1/4/8/6"
 
 
 def test_parse_horse_profile_last_six_runs_from_three_season_record() -> None:

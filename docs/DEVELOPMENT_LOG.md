@@ -2,6 +2,27 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-08 - HKJC Declaration Body Weights
+
+Goal:
+
+- Use HKJC's official all-race declaration page as the primary same-day body-weight source.
+- Stop relying only on racecard/results parsers or historical fallback when current declaration weights are already public.
+
+Changes:
+
+- Added CP950-aware fetching for legacy HKJC pages.
+- Added `declaration_all.asp?RaceDate=...&RaceNo=...` support and a parser for the JavaScript `Rec[...]` declaration rows.
+- Declaration parsing now extracts horse number, brand number, Chinese horse/jockey/trainer names, draw, carried weight, declared/race-day body weight, age, sex, gear, and last-six-runs where provided.
+- Race-day loading and runner-completion flows now merge declaration rows into runner records, using race-day weight first and declared weight as fallback.
+
+Verification:
+
+- Live parser check against `https://www.hkjc.com/chinese/racing/declaration_all.asp?RaceNo=1`: 10 runners parsed for `HK20260509-ST-01`, including L245 body weight 936.
+- `python -m compileall -q src tests`
+- `node --check src\racing_model\web\app.js`
+- `python -m pytest -q`
+
 ## 2026-05-08 - Ledger Stake Refresh And Full Ticket Display
 
 Goal:

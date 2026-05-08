@@ -36,6 +36,9 @@ class HKJCSource:
     def fetch_chinese_racecard_page(self, race_date: str, venue: str, race_no: int) -> FetchResult:
         return self.client.fetch(self.racecard_url(race_date, venue, race_no, language="Chinese"))
 
+    def fetch_declaration_page(self, race_date: str, venue: str, race_no: int) -> FetchResult:
+        return self.client.fetch_with_encoding(self.declaration_url(race_date, venue, race_no), "cp950")
+
     def fetch_results_page(self, race_date: str, venue: str, race_no: int) -> FetchResult:
         return self.client.fetch(self.results_url(race_date, venue, race_no))
 
@@ -52,6 +55,12 @@ class HKJCSource:
         return (
             f"{self.base_url}/racing/information/{language}/Racing/RaceCard.aspx"
             f"?RaceDate={race_date}&Racecourse={venue}&RaceNo={race_no}"
+        )
+
+    def declaration_url(self, race_date: str, venue: str, race_no: int) -> str:
+        return (
+            "https://www.hkjc.com/chinese/racing/declaration_all.asp"
+            f"?RaceDate={race_date}&RaceNo={race_no}"
         )
 
     def results_url(self, race_date: str, venue: str, race_no: int, language: str = "English") -> str:
@@ -84,6 +93,16 @@ class HKJCSource:
             zh_rows = parse_chinese_racecard_runners(html_lines(chinese_html), race["race_id"])
             runners = merge_runner_localization(runners, zh_rows)
         return {"races": [race], "runners": runners}
+
+    def parse_declaration(
+        self,
+        html: str,
+        race_date: str,
+        venue: str,
+        race_no: int,
+    ) -> dict[str, list[dict[str, Any]]]:
+        race_id = make_race_id(race_date, venue, race_no)
+        return {"runners": parse_declaration_runners(html, race_id)}
 
     def parse_results(
         self,
@@ -370,6 +389,70 @@ def parse_chinese_racecard_runners(lines: list[str], race_id: str) -> list[dict[
     return dedupe_by_key(rows + parse_chinese_racecard_runner_tokens(candidate_lines[table_start:], race_id), "horse_id")
 
 
+def parse_declaration_runners(html: str, race_id: str) -> list[dict[str, Any]]:
+    rows = []
+    for match in re.finditer(r"Rec\[\d+\]\s*=\s*new Array\s*\((.*)\)\s*$", html, flags=re.M):
+        values = js_array_values(match.group(1))
+        if len(values) < 10:
+            continue
+        horse_id = clean_null(value_at(values, 17)) or clean_null(value_at(values, 3))
+        if not horse_id:
+            continue
+        body_weight = body_weight_from_text(clean_null(value_at(values, 28)) or clean_null(value_at(values, 9)))
+        rows.append(
+            {
+                "race_id": race_id,
+                "horse_no": optional_int(value_at(values, 0)),
+                "horse_id": horse_id,
+                "horse_name": clean_null(value_at(values, 4)) or horse_id,
+                "last_six_runs": clean_null(value_at(values, 1)) or "",
+                "horse_name_zh": clean_null(value_at(values, 4)) or "",
+                "jockey": clean_null(value_at(values, 12)) or "unknown",
+                "jockey_zh": clean_null(value_at(values, 12)) or "",
+                "trainer": clean_null(value_at(values, 7)) or "unknown",
+                "trainer_zh": clean_null(value_at(values, 7)) or "",
+                "draw": optional_int(value_at(values, 13)) or 0,
+                "weight_lbs": optional_float(value_at(values, 5)) or 0.0,
+                "body_weight_lbs": body_weight,
+                "official_rating": optional_float(value_at(values, 10)) or 0.0,
+                "age": optional_int(value_at(values, 8)) or 0,
+                "sex": (clean_null(value_at(values, 14)) or "").upper(),
+                "running_style": "unknown",
+                "gear": clean_null(value_at(values, 20)) or "",
+            }
+        )
+    return dedupe_by_key(rows, "horse_id")
+
+
+def js_array_values(body: str) -> list[str]:
+    return next(csv.reader([body], quotechar='"', skipinitialspace=True))
+
+
+def value_at(values: list[str], index: int) -> str:
+    return values[index] if index < len(values) else ""
+
+
+def clean_null(value: object) -> str:
+    text = str(value or "").strip()
+    if text in {"", "(Null)", "null", "None", "-"}:
+        return ""
+    return text
+
+
+def optional_int(value: object) -> int | None:
+    text = clean_null(value)
+    if not text or not re.fullmatch(r"\d+", text):
+        return None
+    return int(text)
+
+
+def optional_float(value: object) -> float | None:
+    text = clean_null(value)
+    if not text or not looks_like_decimal(text):
+        return None
+    return float(text)
+
+
 def parse_racecard_brand_windows(tokens: list[str], race_id: str) -> list[dict[str, Any]]:
     rows = []
     for index in range(3, len(tokens) - 8):
@@ -565,7 +648,20 @@ def merge_runner_localization(
     for runner in runners:
         zh = zh_by_id.get(runner["horse_id"], {})
         updated = dict(runner)
-        for key in ("horse_no", "last_six_runs", "horse_name_zh", "jockey_zh", "trainer_zh"):
+        for key in (
+            "horse_no",
+            "last_six_runs",
+            "horse_name_zh",
+            "jockey_zh",
+            "trainer_zh",
+            "body_weight_lbs",
+            "draw",
+            "weight_lbs",
+            "official_rating",
+            "age",
+            "sex",
+            "gear",
+        ):
             if zh.get(key) not in {None, ""}:
                 updated[key] = zh[key]
         merged.append(updated)

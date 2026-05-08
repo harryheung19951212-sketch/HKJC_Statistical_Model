@@ -9,7 +9,7 @@ from .features import build_training_races
 from .live import load_hkjc_race_day, parse_hkjc_race_id
 from .model import RankingModel
 from .scrapers.base import PoliteHttpClient
-from .scrapers.hkjc import HKJCSource
+from .scrapers.hkjc import HKJCSource, merge_runner_localization
 from .storage import fetch_all, refresh_race_statuses
 from .walk_forward import run_walk_forward_versions
 
@@ -232,6 +232,14 @@ def load_racecard_for_completion(
     else:
         chinese_body = source.fetch_chinese_racecard_page(race_date, venue, race_no).body
     parsed = source.parse_racecard(english_body, race_date, venue, race_no, chinese_body)
+    if parsed.get("runners"):
+        try:
+            declaration = source.fetch_declaration_page(race_date, venue, race_no)
+            declaration_rows = source.parse_declaration(declaration.body, race_date, venue, race_no).get("runners", [])
+            if declaration_rows:
+                parsed["runners"] = merge_runner_localization(parsed["runners"], declaration_rows)  # type: ignore[index]
+        except Exception:
+            pass
     if parsed.get("runners"):
         return parsed
     result_body = source.fetch_results_page(race_date, venue, race_no).body
