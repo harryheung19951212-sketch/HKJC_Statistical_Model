@@ -195,6 +195,13 @@ def test_ledger_records_pool_choice_and_flags_stale_execution_price(tmp_path: Pa
         payload["tickets"][0]["required_dividend"] = 3.8
         payload["tickets"][0]["cost_adjusted_expected_value"] = 0.55
         payload["tickets"][0]["minimum_ticket_cost"] = 10
+        payload["tickets"][0]["slip_strategy"] = "standard"
+        payload["tickets"][0]["slip_rank"] = 1
+        payload["tickets"][0]["slip_priority_score"] = 55.5
+        payload["tickets"][0]["risk_tier"] = "standard"
+        payload["tickets"][0]["portfolio_role"] = "value"
+        payload["tickets"][0]["expected_profit"] = 28.0
+        payload["tickets"][0]["hit_probability"] = 0.4
         payload["pool_choice"] = {
             "markets": [
                 {
@@ -223,6 +230,13 @@ def test_ledger_records_pool_choice_and_flags_stale_execution_price(tmp_path: Pa
     assert item["pool_choice_rank"] == 1
     assert item["pool_choice_verdict"] == "actionable"
     assert item["required_dividend"] == 3.8
+    assert item["slip_strategy"] == "standard"
+    assert item["slip_rank"] == 1
+    assert item["slip_priority_score"] == 55.5
+    assert item["risk_tier"] == "standard"
+    assert item["portfolio_role"] == "value"
+    assert item["expected_profit"] == 28.0
+    assert item["hit_probability"] == 0.4
     assert item["execution_value_status"] == "stale_price"
     assert item["execution_expected_value_at_bet"] == 0.28
     assert item["execution_edge_at_bet"] > 0

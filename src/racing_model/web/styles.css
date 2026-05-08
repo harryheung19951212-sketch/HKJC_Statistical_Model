@@ -984,6 +984,7 @@ h2 {
 
 .mini-action:hover { background: #12596c; }
 
+.bet-slip-section,
 .exotic-section,
 .settlement-section {
   grid-column: 1 / -1;
@@ -992,6 +993,97 @@ h2 {
   border-top: 1px solid var(--line);
   padding-top: 12px;
   min-width: 0;
+}
+
+.bet-slip-section {
+  border-top: 0;
+  padding: 12px;
+  border: 1px solid #cddfea;
+  border-radius: 6px;
+  background: #f7fbfd;
+}
+
+.bet-slip-summary {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.bet-slip-summary div,
+.slip-strategy,
+.slip-ticket {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  padding: 10px;
+  min-width: 0;
+}
+
+.bet-slip-summary label,
+.slip-ticket-metrics label {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.bet-slip-summary b,
+.slip-ticket-metrics b {
+  display: block;
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+}
+
+.bet-slip-strategies,
+.bet-slip-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.slip-strategy {
+  background: #fbfcfd;
+}
+
+.slip-strategy.current {
+  border-color: #9ed8c7;
+  background: #f5fbf8;
+}
+
+.slip-strategy span,
+.slip-strategy small,
+.slip-ticket span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.slip-strategy strong,
+.slip-ticket strong {
+  display: block;
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+
+.slip-ticket {
+  display: grid;
+  gap: 8px;
+}
+
+.slip-ticket.leverage {
+  border-color: #e0c07d;
+  background: #fffaf0;
+}
+
+.slip-ticket.core {
+  border-color: #9ed8c7;
+  background: #f5fbf8;
+}
+
+.slip-ticket-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
 }
 
 .exotic-head {
@@ -1998,6 +2090,12 @@ td:nth-child(4), th:nth-child(4) {
   .analytics-panel .stat-list {
     grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   }
+
+  .bet-slip-summary,
+  .bet-slip-strategies,
+  .bet-slip-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 980px) {
@@ -2035,6 +2133,11 @@ td:nth-child(4), th:nth-child(4) {
   .runner-detail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .odds-history-grid { grid-template-columns: 1fr; }
   .betting-summary { grid-template-columns: repeat(2, 1fr); }
+  .bet-slip-summary,
+  .bet-slip-strategies,
+  .bet-slip-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   .ticket {
     grid-template-columns: 1fr;
   }
@@ -2059,6 +2162,10 @@ td:nth-child(4), th:nth-child(4) {
   .runner-detail,
   .coverage-summary,
   .betting-summary,
+  .bet-slip-summary,
+  .bet-slip-strategies,
+  .bet-slip-list,
+  .slip-ticket-metrics,
   .ticket-metrics {
     grid-template-columns: 1fr;
   }

@@ -113,6 +113,7 @@ def build_betting_decisions(
     )
     tickets = [decision for decision in [*decisions, *exotic_decisions] if decision["recommended_stake"] > 0]
     pool_choice = build_pool_choice_scorecard([*decisions, *exotic_decisions], exotic_candidates, tickets)
+    bet_slip = build_bet_slip(tickets, pool_choice, exposure_report, bankroll, profile, race_status)
     return {
         "race_status": race_status,
         "bankroll": bankroll,
@@ -138,6 +139,7 @@ def build_betting_decisions(
         "exotic_decisions": exotic_decisions,
         "exotic_candidates": exotic_candidates,
         "pool_choice": pool_choice,
+        "bet_slip": bet_slip,
         "upgrade_paths": build_upgrade_paths(exotic_candidates),
         "exotics_deferred": not include_exotics,
     }
@@ -730,6 +732,226 @@ def pool_choice_recommendations(rows: list[dict[str, Any]], best: dict[str, Any]
             }
         )
     return recommendations[:4]
+
+
+def build_bet_slip(
+    tickets: list[dict[str, Any]],
+    pool_choice: dict[str, Any],
+    exposure_report: dict[str, Any],
+    bankroll: float,
+    profile: RiskProfile,
+    race_status: str,
+) -> dict[str, Any]:
+    pool_context = {
+        str(row.get("market")): row
+        for row in (pool_choice.get("markets") or [])
+        if isinstance(row, dict)
+    }
+    annotated = []
+    for ticket in tickets:
+        market = str(ticket.get("market") or "")
+        probability = safe_float(ticket.get("probability")) or 0.0
+        expected_value = safe_float(ticket.get("expected_value")) or 0.0
+        adjusted_ev = safe_float(ticket.get("cost_adjusted_expected_value"))
+        stake = safe_float(ticket.get("recommended_stake")) or 0.0
+        minimum_cost = safe_float(ticket.get("minimum_ticket_cost")) or 0.0
+        risk_tier = slip_risk_tier(market, probability)
+        role = slip_portfolio_role(market, probability, adjusted_ev)
+        score = slip_priority_score(ticket, pool_context.get(market), risk_tier)
+        expected_profit = stake * expected_value
+        ticket["slip_strategy"] = profile.name
+        ticket["slip_priority_score"] = round(score, 4)
+        ticket["risk_tier"] = risk_tier
+        ticket["portfolio_role"] = role
+        ticket["expected_profit"] = round(expected_profit, 2)
+        ticket["hit_probability"] = round(probability, 6)
+        ticket["minimum_ticket_cost"] = minimum_cost
+        annotated.append(ticket)
+
+    ranked = sorted(annotated, key=lambda row: float(row.get("slip_priority_score") or -999.0), reverse=True)
+    for rank, ticket in enumerate(ranked, start=1):
+        ticket["slip_rank"] = rank
+
+    total_stake = sum(safe_float(row.get("recommended_stake")) or 0.0 for row in ranked)
+    expected_profit = sum(safe_float(row.get("expected_profit")) or 0.0 for row in ranked)
+    max_race_stake = bankroll * profile.max_race_fraction
+    tier_stakes = {
+        tier: round(sum(safe_float(row.get("recommended_stake")) or 0.0 for row in ranked if row.get("risk_tier") == tier), 2)
+        for tier in ["conservative", "standard", "aggressive"]
+    }
+    at_least_one = portfolio_hit_probability(ranked)
+    status = slip_status(race_status, ranked)
+    strategies = build_slip_strategies(ranked, bankroll, profile)
+    return {
+        "summary": {
+            "status": status,
+            "ticket_count": len(ranked),
+            "total_stake": round(total_stake, 2),
+            "max_race_stake": round(max_race_stake, 2),
+            "stake_usage": round(total_stake / max_race_stake, 4) if max_race_stake else None,
+            "expected_profit": round(expected_profit, 2),
+            "expected_roi": round(expected_profit / total_stake, 6) if total_stake else None,
+            "at_least_one_hit_probability": at_least_one,
+            "risk_profile": profile.name,
+            "recommended_strategy": profile.name,
+            "core_ticket_count": sum(1 for row in ranked if row.get("portfolio_role") == "core"),
+            "leverage_ticket_count": sum(1 for row in ranked if row.get("portfolio_role") == "leverage"),
+            "conservative_stake": tier_stakes["conservative"],
+            "standard_stake": tier_stakes["standard"],
+            "aggressive_stake": tier_stakes["aggressive"],
+            "exposure_adjusted": bool((exposure_report.get("adjusted_tickets") or [])),
+        },
+        "tickets": [slip_ticket_payload(row) for row in ranked],
+        "strategies": strategies,
+        "notes": bet_slip_notes(ranked, pool_choice, exposure_report),
+    }
+
+
+def slip_risk_tier(market: str, probability: float) -> str:
+    if market in {"PLACE", "QPL"} or probability >= 0.45:
+        return "conservative"
+    if market in {"WIN", "QIN", "FCT"} or probability >= 0.16:
+        return "standard"
+    return "aggressive"
+
+
+def slip_portfolio_role(market: str, probability: float, adjusted_ev: float | None) -> str:
+    if market in {"PLACE", "QPL"} and probability >= 0.35:
+        return "core"
+    if market in {"TRIO", "TCE", "FIRST4", "QUARTET"}:
+        return "leverage"
+    if adjusted_ev is not None and adjusted_ev > 0.25:
+        return "value"
+    return "support"
+
+
+def slip_priority_score(ticket: dict[str, Any], pool_context: dict[str, Any] | None, risk_tier: str) -> float:
+    probability = safe_float(ticket.get("probability")) or 0.0
+    adjusted_ev = safe_float(ticket.get("cost_adjusted_expected_value"))
+    edge = safe_float(ticket.get("edge")) or 0.0
+    stake = safe_float(ticket.get("recommended_stake")) or 0.0
+    pool_score = safe_float((pool_context or {}).get("choice_score")) or 0.0
+    role_bonus = {"conservative": 4.0, "standard": 2.0, "aggressive": -1.0}.get(risk_tier, 0.0)
+    ev_component = (adjusted_ev if adjusted_ev is not None else -0.2) * 80.0
+    return ev_component + probability * 18.0 + edge * 40.0 + min(stake, 200.0) * 0.02 + pool_score * 0.12 + role_bonus
+
+
+def portfolio_hit_probability(tickets: list[dict[str, Any]]) -> float | None:
+    if not tickets:
+        return None
+    miss_probability = 1.0
+    for ticket in tickets[:8]:
+        probability = min(max(safe_float(ticket.get("probability")) or 0.0, 0.0), 0.95)
+        miss_probability *= 1.0 - probability
+    return round(1.0 - miss_probability, 6)
+
+
+def slip_status(race_status: str, tickets: list[dict[str, Any]]) -> str:
+    if race_status == "resulted":
+        return "review_only"
+    if race_status == "live":
+        return "locked_live"
+    if tickets:
+        return "actionable"
+    return "no_edge"
+
+
+def build_slip_strategies(
+    tickets: list[dict[str, Any]],
+    bankroll: float,
+    profile: RiskProfile,
+) -> list[dict[str, Any]]:
+    specs = [
+        ("conservative", "保守", {"conservative"}, 0.65),
+        ("standard", "標準", {"conservative", "standard"}, 1.0),
+        ("aggressive", "進取", {"conservative", "standard", "aggressive"}, 1.25),
+    ]
+    rows = []
+    max_stake = bankroll * profile.max_race_fraction
+    for key, label, tiers, multiplier in specs:
+        selected = [row for row in tickets if row.get("risk_tier") in tiers]
+        raw_stake = sum(safe_float(row.get("recommended_stake")) or 0.0 for row in selected) * multiplier
+        scale = min(1.0, max_stake / raw_stake) if raw_stake > 0 and max_stake > 0 else 1.0
+        stake = raw_stake * scale
+        expected_profit = sum((safe_float(row.get("expected_profit")) or 0.0) * multiplier * scale for row in selected)
+        rows.append(
+            {
+                "strategy": key,
+                "label": label,
+                "ticket_count": len(selected),
+                "stake": round(stake, 2),
+                "expected_profit": round(expected_profit, 2),
+                "expected_roi": round(expected_profit / stake, 6) if stake else None,
+                "hit_probability": portfolio_hit_probability(selected),
+                "stake_multiplier": multiplier,
+                "is_current": key == profile.name,
+                "message": strategy_message(key, selected),
+            }
+        )
+    return rows
+
+
+def strategy_message(strategy: str, tickets: list[dict[str, Any]]) -> str:
+    if not tickets:
+        return "未有合資格投注票。"
+    if strategy == "conservative":
+        return "集中高命中率及較低波動玩法。"
+    if strategy == "aggressive":
+        return "保留槓桿彩池，但必須接受較大回撤。"
+    return "平衡命中率、EV、注碼及彩池槓桿。"
+
+
+def slip_ticket_payload(ticket: dict[str, Any]) -> dict[str, Any]:
+    keys = [
+        "recommendation_id",
+        "slip_rank",
+        "slip_priority_score",
+        "slip_strategy",
+        "risk_tier",
+        "portfolio_role",
+        "market",
+        "market_label",
+        "horse_id",
+        "horse_no",
+        "horse_name",
+        "horse_numbers",
+        "horse_names",
+        "probability",
+        "hit_probability",
+        "odds",
+        "required_dividend",
+        "expected_value",
+        "cost_adjusted_expected_value",
+        "expected_profit",
+        "recommended_stake",
+        "minimum_ticket_cost",
+        "combination_count",
+        "action",
+        "reason",
+        "exposure_action",
+        "exposure_reason",
+    ]
+    return {key: ticket.get(key) for key in keys if key in ticket}
+
+
+def bet_slip_notes(
+    tickets: list[dict[str, Any]],
+    pool_choice: dict[str, Any],
+    exposure_report: dict[str, Any],
+) -> list[dict[str, str]]:
+    notes: list[dict[str, str]] = []
+    if not tickets:
+        notes.append({"level": "data", "title": "不下注", "body": "現時未有投注票同時通過 EV、成本、賠率來源及風險 gate。"})
+        return notes
+    best_market = (pool_choice.get("summary") or {}).get("best_market_label")
+    if best_market:
+        notes.append({"level": "focus", "title": "主攻彩池", "body": f"彩池選擇模型暫時偏向 {best_market}，下注單會優先排序同類高分票。"})
+    leverage = [row for row in tickets if row.get("portfolio_role") == "leverage"]
+    if leverage:
+        notes.append({"level": "upgrade", "title": "槓桿票", "body": "已將單T/三連彩/四連環類高派彩票標成槓桿角色，注碼受單場風險上限約束。"})
+    if exposure_report.get("adjusted_tickets"):
+        notes.append({"level": "risk", "title": "已降相關曝險", "body": "有重複馬匹、彩池或組合曝險過高，系統已先降注再輸出下注單。"})
+    return notes[:4]
 
 
 def market_label(market: str) -> str:

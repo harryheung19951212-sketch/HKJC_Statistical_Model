@@ -180,6 +180,13 @@ CREATE TABLE IF NOT EXISTS betting_recommendations (
   pool_choice_score REAL,
   pool_choice_rank INTEGER,
   pool_choice_verdict TEXT NOT NULL DEFAULT '',
+  slip_strategy TEXT NOT NULL DEFAULT '',
+  slip_rank INTEGER,
+  slip_priority_score REAL,
+  risk_tier TEXT NOT NULL DEFAULT '',
+  portfolio_role TEXT NOT NULL DEFAULT '',
+  expected_profit REAL,
+  hit_probability REAL,
   recommended_stake REAL NOT NULL DEFAULT 0,
   race_status_at_recommendation TEXT NOT NULL DEFAULT '',
   action TEXT NOT NULL DEFAULT '',
@@ -332,6 +339,13 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
     ensure_column(conn, "betting_recommendations", "pool_choice_score", "REAL")
     ensure_column(conn, "betting_recommendations", "pool_choice_rank", "INTEGER")
     ensure_column(conn, "betting_recommendations", "pool_choice_verdict", "TEXT NOT NULL DEFAULT ''")
+    ensure_column(conn, "betting_recommendations", "slip_strategy", "TEXT NOT NULL DEFAULT ''")
+    ensure_column(conn, "betting_recommendations", "slip_rank", "INTEGER")
+    ensure_column(conn, "betting_recommendations", "slip_priority_score", "REAL")
+    ensure_column(conn, "betting_recommendations", "risk_tier", "TEXT NOT NULL DEFAULT ''")
+    ensure_column(conn, "betting_recommendations", "portfolio_role", "TEXT NOT NULL DEFAULT ''")
+    ensure_column(conn, "betting_recommendations", "expected_profit", "REAL")
+    ensure_column(conn, "betting_recommendations", "hit_probability", "REAL")
     ensure_column(conn, "betting_recommendations", "execution_value_status", "TEXT NOT NULL DEFAULT ''")
     ensure_column(conn, "betting_recommendations", "execution_value_message", "TEXT NOT NULL DEFAULT ''")
     ensure_column(conn, "betting_recommendations", "execution_edge_at_bet", "REAL")
@@ -425,6 +439,13 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
           pool_choice_score REAL,
           pool_choice_rank INTEGER,
           pool_choice_verdict TEXT NOT NULL DEFAULT '',
+          slip_strategy TEXT NOT NULL DEFAULT '',
+          slip_rank INTEGER,
+          slip_priority_score REAL,
+          risk_tier TEXT NOT NULL DEFAULT '',
+          portfolio_role TEXT NOT NULL DEFAULT '',
+          expected_profit REAL,
+          hit_probability REAL,
           recommended_stake REAL NOT NULL DEFAULT 0,
           race_status_at_recommendation TEXT NOT NULL DEFAULT '',
           action TEXT NOT NULL DEFAULT '',

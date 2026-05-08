@@ -2,6 +2,27 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-08 - Bet Slip Execution Optimizer
+
+Goal:
+
+- Turn value tickets into a practical race-level bet slip, so the system recommends a coherent set of bets instead of isolated good-looking tickets.
+
+Changes:
+
+- Added a `bet_slip` payload to `/api/betting` with race-level stake usage, expected profit, expected ROI, estimated at-least-one-hit probability, strategy options, ticket ranking, and execution notes.
+- Every active ticket now receives slip rank, priority score, strategy, risk tier, portfolio role, hit probability, and expected profit.
+- Betting ledger schema and recording now persist the bet-slip metadata for future replay and AI iteration.
+- Added UI section `下注單引擎` above individual tickets, showing conservative/standard/aggressive plans and the ordered bet slip.
+- Added tests proving bet-slip ranking/strategy output and ledger persistence.
+
+Verification:
+
+- `python -m pytest tests\test_betting.py tests\test_betting_ledger.py`
+- `python -m pytest`
+- `node --check src\racing_model\web\app.js`
+- `python -m compileall -q src dashboard tests`
+
 ## 2026-05-08 - Execution Value Ledger Gate
 
 Goal:

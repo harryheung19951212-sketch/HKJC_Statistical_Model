@@ -231,6 +231,55 @@ def test_pool_choice_prefers_higher_ev_upgrade_pool_when_available() -> None:
     assert any("位置Q" in item["title"] for item in pool_choice["recommendations"])
 
 
+def test_bet_slip_engine_ranks_tickets_and_builds_strategy_options() -> None:
+    predictions = [
+        {
+            "horse_id": f"H00{index}",
+            "horse_no": index,
+            "display_name": f"Runner {index}",
+            "win_probability": probability,
+            "latest_win_odds": 4.0 + index,
+            "latest_win_odds_source": "hkjc_mqtt",
+            "top3_probability": min(probability * 3, 0.9),
+            "place_odds": 1.6 + index * 0.05,
+            "place_odds_source": "hkjc_mqtt",
+        }
+        for index, probability in enumerate([0.34, 0.24, 0.18, 0.12, 0.07, 0.05], start=1)
+    ]
+    dividends = {
+        ("QPL", "1+2"): {
+            "dividend": 16.0,
+            "dividend_status": "probable",
+            "source": "manual_test",
+        },
+        ("TRIO", "1+2+3"): {
+            "dividend": 80.0,
+            "dividend_status": "probable",
+            "source": "manual_test",
+        },
+    }
+
+    result = build_betting_decisions(
+        predictions,
+        "scheduled",
+        bankroll=10000,
+        risk_profile="standard",
+        exotic_dividends=dividends,
+    )
+
+    slip = result["bet_slip"]
+    assert slip["summary"]["status"] == "actionable"
+    assert slip["summary"]["ticket_count"] == len(result["tickets"])
+    assert slip["summary"]["expected_profit"] > 0
+    assert slip["summary"]["at_least_one_hit_probability"] > 0
+    assert {row["strategy"] for row in slip["strategies"]} == {"conservative", "standard", "aggressive"}
+    assert next(row for row in slip["strategies"] if row["strategy"] == "standard")["is_current"] is True
+    assert [row["slip_rank"] for row in slip["tickets"]] == list(range(1, len(slip["tickets"]) + 1))
+    assert all(row["portfolio_role"] for row in slip["tickets"])
+    assert all("slip_rank" in ticket for ticket in result["tickets"])
+    assert any(row["portfolio_role"] == "leverage" for row in slip["tickets"])
+
+
 def test_correlated_exposure_reduces_shared_horse_and_leg_stakes() -> None:
     predictions = [
         {

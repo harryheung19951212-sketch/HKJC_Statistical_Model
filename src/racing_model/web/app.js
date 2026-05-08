@@ -484,6 +484,7 @@ function renderBetting(data, options = {}) {
   `;
   const tickets = data.tickets || [];
   const settlementHtml = renderBettingSettlement(data.settlement || {});
+  const betSlipHtml = renderBetSlip(data.bet_slip || {});
   const poolChoiceHtml = renderPoolChoice(data.pool_choice || {});
   const exposureHtml = renderExposureReport(data.exposure_report || {});
   const exoticHtml = renderExoticSection(data.exotic_candidates || [], data.upgrade_paths || []);
@@ -495,6 +496,7 @@ function renderBetting(data, options = {}) {
       : "未有符合風險條件嘅下注建議";
     box.innerHTML = `
       ${settlementHtml}
+      ${betSlipHtml}
       <div class="betting-empty">${emptyMessage}</div>
       ${top.map(renderDecisionCard).join("")}
       ${deferredHtml}
@@ -504,7 +506,102 @@ function renderBetting(data, options = {}) {
     `;
     return;
   }
-  box.innerHTML = `${settlementHtml}${tickets.slice(0, 8).map(renderDecisionCard).join("")}${deferredHtml}${poolChoiceHtml}${exposureHtml}${exoticHtml}`;
+  box.innerHTML = `${settlementHtml}${betSlipHtml}${tickets.slice(0, 8).map(renderDecisionCard).join("")}${deferredHtml}${poolChoiceHtml}${exposureHtml}${exoticHtml}`;
+}
+
+function renderBetSlip(betSlip) {
+  const summary = betSlip.summary || {};
+  const tickets = betSlip.tickets || [];
+  const strategies = betSlip.strategies || [];
+  const notes = betSlip.notes || [];
+  if (!tickets.length && !notes.length) return "";
+  return `
+    <section class="bet-slip-section">
+      <div class="exotic-head">
+        <strong>下注單引擎</strong>
+        <span>${betSlipStatus(summary.status)}｜${summary.ticket_count || 0} 張票｜總注 ${formatMoney(summary.total_stake)}｜預期 ${formatMoney(summary.expected_profit)}</span>
+      </div>
+      <div class="bet-slip-summary">
+        <div><label>預期ROI</label><b class="${evClass(summary.expected_roi)}">${summary.expected_roi === null || summary.expected_roi === undefined ? "-" : formatPct(summary.expected_roi)}</b></div>
+        <div><label>至少中一票</label><b>${summary.at_least_one_hit_probability === null || summary.at_least_one_hit_probability === undefined ? "-" : formatPct(summary.at_least_one_hit_probability)}</b></div>
+        <div><label>場注使用</label><b>${summary.stake_usage === null || summary.stake_usage === undefined ? "-" : formatPct(summary.stake_usage)}</b></div>
+        <div><label>核心票</label><b>${summary.core_ticket_count || 0}</b></div>
+        <div><label>槓桿票</label><b>${summary.leverage_ticket_count || 0}</b></div>
+        <div><label>曝險調整</label><b>${summary.exposure_adjusted ? "有" : "無"}</b></div>
+      </div>
+      <div class="bet-slip-strategies">
+        ${strategies.map(renderSlipStrategy).join("")}
+      </div>
+      <div class="bet-slip-list">
+        ${tickets.slice(0, 6).map(renderSlipTicket).join("")}
+      </div>
+      <div class="upgrade-list">
+        ${notes.map((item) => `
+          <div class="upgrade-card ${item.level || ""}">
+            <span>${item.level || "info"}</span>
+            <strong>${item.title || "-"}</strong>
+            <small>${item.body || ""}</small>
+          </div>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderSlipStrategy(row) {
+  return `
+    <div class="slip-strategy ${row.is_current ? "current" : ""}">
+      <span>${row.is_current ? "目前" : "方案"}</span>
+      <strong>${row.label || row.strategy}</strong>
+      <small>${row.ticket_count || 0}票｜${formatMoney(row.stake)}｜EV ${formatMoney(row.expected_profit)}｜中一票 ${row.hit_probability === null || row.hit_probability === undefined ? "-" : formatPct(row.hit_probability)}</small>
+      <small>${row.message || ""}</small>
+    </div>
+  `;
+}
+
+function renderSlipTicket(row) {
+  return `
+    <div class="slip-ticket ${row.portfolio_role || ""}">
+      <div>
+        <span>#${row.slip_rank || "-"} ${riskTierLabel(row.risk_tier)}｜${portfolioRoleLabel(row.portfolio_role)}</span>
+        <strong>${row.market_label || row.market}｜${row.horse_no || ""} ${row.horse_name || row.horse_id}</strong>
+      </div>
+      <div class="slip-ticket-metrics">
+        <label>注碼 <b>${formatMoney(row.recommended_stake)}</b></label>
+        <label>機率 <b>${formatPct(row.hit_probability ?? row.probability)}</b></label>
+        <label>賠率 <b>${formatNum(row.odds, 2)}</b></label>
+        <label>所需 <b>${formatNum(row.required_dividend, 2)}</b></label>
+        <label>成本EV <b class="${evClass(row.cost_adjusted_expected_value)}">${formatSigned(row.cost_adjusted_expected_value, 3)}</b></label>
+        <label>預期盈虧 <b class="${evClass(row.expected_profit)}">${formatMoney(row.expected_profit)}</b></label>
+      </div>
+    </div>
+  `;
+}
+
+function betSlipStatus(status) {
+  return {
+    actionable: "可落注",
+    no_edge: "不下注",
+    review_only: "只供回測",
+    locked_live: "賽事進行中鎖定",
+  }[status] || status || "-";
+}
+
+function riskTierLabel(value) {
+  return {
+    conservative: "保守",
+    standard: "標準",
+    aggressive: "進取",
+  }[value] || value || "-";
+}
+
+function portfolioRoleLabel(value) {
+  return {
+    core: "核心",
+    support: "輔助",
+    value: "高EV",
+    leverage: "槓桿",
+  }[value] || value || "-";
 }
 
 function renderDecisionCard(row) {
