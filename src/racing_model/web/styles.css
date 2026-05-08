@@ -1196,6 +1196,30 @@ table {
   font-size: 12px;
 }
 
+.sort-button {
+  width: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 800;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+.sort-button.active {
+  color: var(--blue);
+}
+
+.sort-indicator {
+  display: inline-block;
+  width: 12px;
+  margin-left: 3px;
+  font-size: 9px;
+  color: var(--blue);
+}
+
 .results-table .winner {
   background: #f7fbf7;
 }

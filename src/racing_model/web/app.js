@@ -14,6 +14,7 @@ let currentView = "race";
 const viewDataLoaded = { coverage: false, analytics: false };
 let raceRefreshInFlight = false;
 let currentOddsHistory = [];
+const predictionSort = { key: "rank", direction: "asc" };
 
 const text = {
   scheduled: "\u672a\u958b\u8dd1",
@@ -606,14 +607,73 @@ function localClass(value) {
   return textValue || "-";
 }
 
+function setupPredictionSorting() {
+  document.querySelectorAll(".prediction-table .sort-button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const key = button.dataset.sortKey || "rank";
+      if (predictionSort.key === key) {
+        predictionSort.direction = predictionSort.direction === "asc" ? "desc" : "asc";
+      } else {
+        predictionSort.key = key;
+        predictionSort.direction = defaultPredictionSortDirection(key);
+      }
+      renderPredictions(currentPredictions);
+    });
+  });
+  updatePredictionSortHeaders();
+}
+
+function defaultPredictionSortDirection(key) {
+  return ["win", "place", "value"].includes(key) ? "desc" : "asc";
+}
+
+function updatePredictionSortHeaders() {
+  document.querySelectorAll(".prediction-table .sort-button").forEach((button) => {
+    const active = button.dataset.sortKey === predictionSort.key;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-sort", active ? (predictionSort.direction === "asc" ? "ascending" : "descending") : "none");
+    const indicator = button.querySelector(".sort-indicator");
+    if (indicator) indicator.textContent = active ? (predictionSort.direction === "asc" ? "▲" : "▼") : "";
+  });
+}
+
+function sortedPredictions(predictions) {
+  const rows = predictions.map((row, index) => ({ ...row, model_rank: index + 1 }));
+  const direction = predictionSort.direction === "asc" ? 1 : -1;
+  return rows.sort((left, right) => comparePredictionRows(left, right, predictionSort.key) * direction);
+}
+
+function comparePredictionRows(left, right, key) {
+  const leftValue = predictionSortValue(left, key);
+  const rightValue = predictionSortValue(right, key);
+  if (typeof leftValue === "number" && typeof rightValue === "number") {
+    if (leftValue !== rightValue) return leftValue - rightValue;
+    return Number(left.model_rank || 0) - Number(right.model_rank || 0);
+  }
+  const textCompare = String(leftValue || "").localeCompare(String(rightValue || ""), "zh-Hant", { numeric: true });
+  return textCompare || Number(left.model_rank || 0) - Number(right.model_rank || 0);
+}
+
+function predictionSortValue(row, key) {
+  if (key === "rank") return Number(row.model_rank || 0);
+  if (key === "horse") return Number.isFinite(Number(row.horse_no)) ? Number(row.horse_no) : localizedHorse(row);
+  if (key === "draw") return Number.isFinite(Number(row.draw)) ? Number(row.draw) : 999;
+  if (key === "connections") return `${localizedJockey(row)} ${localizedTrainer(row)}`;
+  if (key === "win") return Number(row.win_probability || 0);
+  if (key === "place") return Number(row.top3_probability || 0);
+  if (key === "value") return Number(row.value_gap ?? row.expected_value ?? 0);
+  return Number(row.model_rank || 0);
+}
+
 function renderPredictions(predictions) {
   const body = $("prediction-body");
   body.innerHTML = "";
-  predictions.forEach((row, index) => {
+  updatePredictionSortHeaders();
+  sortedPredictions(predictions).forEach((row) => {
     const tr = document.createElement("tr");
     tr.className = `clickable ${row.horse_id === selectedHorseId ? "selected" : ""}`;
     tr.innerHTML = `
-      <td>${index + 1}</td>
+      <td>${row.model_rank}</td>
       <td><strong>${row.horse_no || "-"} ${localizedHorse(row)}</strong><br><span>${row.horse_id}</span></td>
       <td>${row.draw || "-"}</td>
       <td>${localizedJockey(row)}<br><span>${localizedTrainer(row)}</span></td>
@@ -1764,6 +1824,7 @@ function watchBackfillJob(jobId) {
 }
 
 async function boot() {
+  setupPredictionSorting();
   document.querySelectorAll(".page-nav").forEach((button) => {
     button.addEventListener("click", () => {
       switchAppView(button.dataset.view || "race");

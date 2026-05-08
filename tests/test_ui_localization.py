@@ -88,16 +88,22 @@ def test_race_page_prioritizes_prediction_betting_and_collapsible_diagnostics() 
     assert 'aria-label="單匹賠率走勢圖"' in html
     assert '<div class="panel odds-panel">' not in html
     assert '<table class="prediction-table">' in html
-    assert "<th>人馬配搭</th>" in html
-    assert "<th>市場價值</th>" in html
+    assert ">人馬配搭<span" in html
+    assert ">市場價值<span" in html
     assert "<th>獨贏市場</th>" not in html
+    assert 'data-sort-key="rank"' in html
+    assert 'data-sort-key="value"' in html
     assert "grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);" in css
     assert ".prediction-table {\n  min-width: 0;" in css
+    assert ".sort-button.active" in css
     assert ".predictions-panel {\n  grid-column: 1;\n  grid-row: 1;" in css
     assert ".detail-panel {\n  grid-column: 2;\n  grid-row: 1;" in css
     assert "align-items: stretch;" in css
     assert "function renderRaceSituationCharts" in js
     assert "function renderSelectedHorseOddsChart" in js
+    assert 'const predictionSort = { key: "rank", direction: "asc" }' in js
+    assert "function sortedPredictions" in js
+    assert "setupPredictionSorting();" in js
     assert "row.horse_id === selectedHorseId" in js
 
 
