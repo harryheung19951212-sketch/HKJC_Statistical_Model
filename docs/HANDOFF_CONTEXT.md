@@ -34,6 +34,8 @@ Last updated: 2026-05-07
 - 每次完成功能、修正或刪改功能後，要 push 到 repo，並說明改了甚麼。
 - 完成後要即時部署到 server。
 - 每次功能、修正或刪減都要更新 `docs/DEVELOPMENT_LOG.md`。
+- 每次開發都要同步更新「方程式覆蓋率 / 盲點報告」：若有模型、特徵、投注、校準、資料或 UI 行為改動，必須更新 `src/racing_model/coverage.py` 對應 36 項指標的 current support / limitations / next steps，並在 `docs/DEVELOPMENT_LOG.md` 寫清楚覆蓋率或盲點有何變化。
+- 每次驗收都要至少檢查 `/api/coverage` 或 `tests/test_coverage.py`，確保使用者可以直接看到最新進度與剩餘盲點。
 
 不要 commit：
 

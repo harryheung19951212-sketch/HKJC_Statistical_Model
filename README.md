@@ -194,7 +194,8 @@ Expected columns:
 ## Next Development Steps
 
 1. Use `/api/coverage` as the 36-factor equation progress map; do not treat the old 32-item roadmap as current.
-2. Add horse/pool/combination correlated-exposure controls before increasing exotic stakes.
-3. Validate live HKJC probable-dividend availability on real race days and add final exotic dividend settlement.
-4. Turn calibration, drawdown, CLV, and walk-forward promotion gates into hard blockers for model replacement.
-5. Add pool-size/tote-depth storage so exotic EV can be calibrated against liquidity.
+2. Every feature, fix, deletion, model change, data change, betting logic change, or UI behavior change must update the relevant `src/racing_model/coverage.py` item and the blind-spot notes in `docs/DEVELOPMENT_LOG.md`.
+3. Add horse/pool/combination correlated-exposure controls before increasing exotic stakes.
+4. Validate live HKJC probable-dividend availability on real race days and add final exotic dividend settlement.
+5. Turn calibration, drawdown, CLV, and walk-forward promotion gates into hard blockers for model replacement.
+6. Add pool-size/tote-depth storage so exotic EV can be calibrated against liquidity.

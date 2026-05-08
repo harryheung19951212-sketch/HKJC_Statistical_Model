@@ -2,6 +2,22 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-09 - Coverage Reporting Discipline
+
+Goal:
+
+- Make equation progress visible after every development step by requiring the 36-factor coverage / blind-spot report to be updated alongside the development log.
+
+Changes:
+
+- Updated `docs/HANDOFF_CONTEXT.md` with a hard rule: every feature, fix, deletion, model/data/betting/UI behavior change must update the relevant `src/racing_model/coverage.py` item and blind-spot notes.
+- Updated `README.md` so `/api/coverage` remains the canonical progress map and every future change must keep it current.
+- This is a process/documentation change only; no model score changed.
+
+Verification:
+
+- `python -m pytest tests\test_coverage.py -q`
+
 ## 2026-05-09 - Walk Forward Experiment Manifest
 
 Goal:
