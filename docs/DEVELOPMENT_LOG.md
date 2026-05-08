@@ -610,3 +610,24 @@ Verification:
 - `python -m compileall -q src dashboard tests`
 - `node --check src/racing_model/web/app.js`
 - `python -m pytest tests`
+
+## 2026-05-08 - Fast Race Screen Betting Refresh
+
+Goal:
+
+- Show useful race and betting information immediately instead of making the page wait for heavy HKJC exotic dividend refreshes.
+- Keep every odds-dependent block inside the live betting recommendation area refreshed on the 30-second cycle.
+
+Implementation:
+
+- Added a fast betting preview to `/api/race-dashboard`; it reuses the already-computed predictions and returns WIN/PLACE decisions immediately while complex exotic tickets continue loading in the background.
+- Changed missing exotic-dividend handling in `/api/betting` from synchronous HKJC fetch to a per-race background refresh job, so opening a race page does not block on three HKJC exotic pool requests.
+- Added an `exotic_refresh` payload so the UI can state when official combination odds are syncing in the background.
+- Added frontend protection against overlapping betting refreshes; if a 30-second refresh arrives while betting is still updating, the next update is queued and applied afterward.
+- The existing 30-second race refresh now refreshes the fast betting preview from latest WIN/PLA odds and then replaces it with the full betting engine output once ready.
+
+Verification:
+
+- `python -m compileall -q src dashboard tests`
+- `node --check src/racing_model/web/app.js`
+- `python -m pytest tests`

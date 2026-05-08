@@ -13,6 +13,8 @@ let activeWatchRaceId = null;
 let currentView = "race";
 const viewDataLoaded = { coverage: false, analytics: false };
 let raceRefreshInFlight = false;
+let bettingRefreshInFlight = false;
+let bettingRefreshQueued = false;
 let currentOddsHistory = [];
 let currentMarketFlow = null;
 const predictionSort = { key: "rank", direction: "asc" };
@@ -322,6 +324,12 @@ async function refreshSelectedRace(options = {}) {
 }
 
 async function refreshFullBetting(raceKey) {
+  if (bettingRefreshInFlight) {
+    bettingRefreshQueued = true;
+    return;
+  }
+  bettingRefreshInFlight = true;
+  bettingRefreshQueued = false;
   const expectedRaceId = selectedRaceId;
   try {
     const betting = await api(`/api/betting?race_id=${raceKey}&bankroll=${encodeURIComponent(bettingBankroll())}&risk=${encodeURIComponent(bettingRisk())}&include_exotics=1`);
@@ -332,6 +340,12 @@ async function refreshFullBetting(raceKey) {
   } catch (error) {
     if (selectedRaceId === expectedRaceId) {
       $("system-status").textContent = `投注方法計算未完成：${error.message}`;
+    }
+  } finally {
+    bettingRefreshInFlight = false;
+    if (bettingRefreshQueued && selectedRaceId === expectedRaceId) {
+      bettingRefreshQueued = false;
+      refreshFullBetting(encodeURIComponent(selectedRaceId));
     }
   }
 }
@@ -477,6 +491,8 @@ function renderBetting(data, options = {}) {
   const settings = data.risk_settings || {};
   const gate = data.calibration_gate || {};
   const poolCount = Object.keys(data.pool_rules || {}).length;
+  const exoticRefresh = data.exotic_refresh || {};
+  const statusLabel = data.fast_preview ? `${localStatus(data.race_status)} / 快速預覽` : localStatus(data.race_status);
   summary.innerHTML = `
     <div><label>本場上限</label><strong>${formatMoney(data.max_race_stake)}</strong></div>
     <div><label>建議總注</label><strong>${formatMoney(data.total_recommended_stake)}</strong></div>
@@ -484,7 +500,7 @@ function renderBetting(data, options = {}) {
     <div><label>校準 Gate</label><strong>${gate.label || "-"} / ${formatPct(gate.stake_factor ?? 1)}</strong></div>
     <div><label>\u5f69\u6c60\u6210\u672c\u6a21\u578b</label><strong>${poolCount || "-"} \u500b</strong></div>
     <div><label>期望值門檻</label><strong>${formatPct(settings.min_expected_value)}</strong></div>
-    <div><label>狀態</label><strong>${localStatus(data.race_status)}</strong></div>
+    <div><label>狀態</label><strong>${statusLabel}</strong></div>
   `;
   const tickets = data.tickets || [];
   const settlementHtml = renderBettingSettlement(data.settlement || {});
@@ -492,7 +508,11 @@ function renderBetting(data, options = {}) {
   const poolChoiceHtml = renderPoolChoice(data.pool_choice || {});
   const exposureHtml = renderExposureReport(data.exposure_report || {});
   const exoticHtml = renderExoticSection(data.exotic_candidates || [], data.upgrade_paths || []);
-  const deferredHtml = data.exotics_deferred ? `<div class="betting-empty">複式及全投注方法建議計算中...</div>` : "";
+  const deferredHtml = data.exotics_deferred
+    ? `<div class="betting-empty">複式及全投注方法建議計算中...</div>`
+    : exoticRefresh.status === "queued"
+      ? `<div class="betting-empty">官方組合賠率背景同步中，先顯示已快取賠率。</div>`
+      : "";
   if (!tickets.length) {
     const top = (data.decisions || []).slice(0, 4);
     const emptyMessage = (data.settlement || {}).items?.length

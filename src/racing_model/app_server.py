@@ -81,6 +81,8 @@ class AppState:
         self.active_race_external_clock = False
         self.active_race_ttl_seconds = max(90, odds_interval_seconds * 3)
         self.active_race_lock = threading.Lock()
+        self.exotic_refreshing_races: set[str] = set()
+        self.exotic_refresh_lock = threading.Lock()
         self.policy_cache: dict[str, object] = {"expires_at": 0.0, "policy": None, "refreshing": False}
         self.policy_lock = threading.Lock()
         self.calibration_cache: dict[str, object] = {"expires_at": 0.0, "gate": None}
@@ -187,6 +189,26 @@ class AppState:
             except Exception:
                 pass
             self.stop_event.wait(self.odds_interval_seconds)
+
+    def start_exotic_refresh_job(self, race_id: str) -> bool:
+        with self.exotic_refresh_lock:
+            if race_id in self.exotic_refreshing_races:
+                return False
+            self.exotic_refreshing_races.add(race_id)
+
+        def worker() -> None:
+            try:
+                with connect(self.settings.db_path) as conn:
+                    if race_lifecycle_status(conn, race_id) == "scheduled":
+                        refresh_exotic_dividends(conn, race_id, build_exotic_dividend_provider(self.settings))
+            except Exception:
+                pass
+            finally:
+                with self.exotic_refresh_lock:
+                    self.exotic_refreshing_races.discard(race_id)
+
+        threading.Thread(target=worker, daemon=True).start()
+        return True
 
     def start_race_day_job(self, race_date: str, venue: str, race_count: int) -> dict[str, object]:
         job_id = uuid.uuid4().hex
@@ -910,7 +932,13 @@ def api_race_dashboard(conn, state: AppState, race_id: str, bankroll: float, ris
         "lifecycle": api_lifecycle(conn, state),
         "races": api_races(conn),
         "predictions": prediction_payload,
-        "betting": {"deferred": True},
+        "betting": api_fast_betting_preview(
+            conn,
+            race_id,
+            bankroll,
+            risk,
+            prediction_payload.get("predictions", []),
+        ),
         "betting_ledger": {"deferred": True, "summary": {}, "items": []},
         "odds_feed": {"deferred": True},
         "market_flow": {"deferred": True},
@@ -919,6 +947,31 @@ def api_race_dashboard(conn, state: AppState, race_id: str, bankroll: float, ris
         "results": {"deferred": True, "results": []},
         "weather": {"deferred": True},
     }
+
+
+def api_fast_betting_preview(
+    conn,
+    race_id: str,
+    bankroll: float,
+    risk: str,
+    predictions: list[dict[str, object]],
+) -> dict[str, object]:
+    race_rows = fetch_all(conn, "SELECT * FROM races WHERE race_id = ?", (race_id,))
+    if not race_rows:
+        return {"race": None, "tickets": [], "decisions": [], "fast_preview": True, "exotics_deferred": True}
+    payload = build_betting_decisions(
+        predictions,
+        race_lifecycle_status(conn, race_id),
+        bankroll=bankroll,
+        risk_profile=risk,
+        exotic_dividends={},
+        include_exotics=False,
+        calibration_gate=None,
+    )
+    payload["race"] = dict(race_rows[0])
+    payload["fast_preview"] = True
+    payload["settlement"] = {"summary": {}, "items": []}
+    return payload
 
 
 def api_analytics_dashboard(conn, state: AppState, include_coverage: bool = False) -> dict[str, object]:
@@ -972,11 +1025,9 @@ def api_betting(
     status = race_lifecycle_status(conn, race_id)
     exotic_lookup = load_exotic_dividend_lookup(conn, race_id)
     if include_exotics and status == "scheduled" and not exotic_lookup:
-        try:
-            refresh_exotic_dividends(conn, race_id, build_exotic_dividend_provider(get_settings()))
-            exotic_lookup = load_exotic_dividend_lookup(conn, race_id)
-        except Exception:
-            exotic_lookup = {}
+        queued = state.start_exotic_refresh_job(race_id) if state is not None else False
+    else:
+        queued = False
     payload = build_betting_decisions(
         predictions,
         status,
@@ -989,6 +1040,10 @@ def api_betting(
     race = dict(race_rows[0])
     payload["race"] = race
     payload["prediction_policy"] = policy or {}
+    payload["exotic_refresh"] = {
+        "status": "queued" if queued else "cached" if exotic_lookup else "not_available",
+        "cached_dividends": len(exotic_lookup),
+    }
     if model_path is not None:
         payload["ledger"] = record_betting_payload(conn, race, payload, model_path)
     if status == "resulted":
