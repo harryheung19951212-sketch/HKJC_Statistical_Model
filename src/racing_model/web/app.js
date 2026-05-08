@@ -930,6 +930,7 @@ function renderExoticCard(row) {
         <span>投注結構｜${row.structure_label || "不做膽腳"}</span>
         <strong>${row.structure || "-"}</strong>
         <small>${row.structure_reason || ""}</small>
+        <small>${row.pace_note || ""}</small>
       </div>
       <div class="exotic-metrics">
         <label>中獎率 <b>${formatPct(row.probability)}</b></label>
@@ -940,6 +941,8 @@ function renderExoticCard(row) {
         <label>建議注碼 <b>${formatMoney(row.recommended_stake)}</b></label>
         <label>每組約 <b>${formatMoney(row.per_combination_stake)}</b></label>
         <label>組合數 <b>${row.combination_count || 1}</b></label>
+        <label>節奏吻合 <b>${row.pace_fit_score === null || row.pace_fit_score === undefined ? "-" : formatPct(row.pace_fit_score)}</b></label>
+        <label>節奏風險 <b>${row.pace_risk_score === null || row.pace_risk_score === undefined ? "-" : formatPct(row.pace_risk_score)}</b></label>
         <label>最低票 <b>${formatMoney(row.minimum_ticket_cost)}</b></label>
         <label>曝險 <b>${row.exposure_action || "保留"}</b></label>
         <label>期望值 <b class="${evClass(row.expected_value)}">${row.expected_value === null || row.expected_value === undefined ? "-" : Number(row.expected_value).toFixed(3)}</b></label>

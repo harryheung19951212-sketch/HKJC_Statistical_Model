@@ -2,6 +2,29 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-08 - Race Pace Simulation MVP
+
+Goal:
+
+- Start item 27 of the 36-item model roadmap: simulate race pace, projected position, and traffic risk before wiring deeper replay calibration.
+- Surface the pace signal in predictions and exotic betting candidates without changing the core probability model yet.
+
+Changes:
+
+- Added `src/racing_model/pace.py` with a deterministic pace map for early-speed score, projected position, pace role, traffic risk, wide risk, finishing kick, and pace advantage.
+- Prediction payloads now include pace fields and a race-level `pace_map`.
+- Betting payloads now annotate WIN/PLACE decisions and exotic candidates with pace notes, pace fit, ordered-combination fit, risk score, and race shape.
+- The betting UI now shows pace notes plus `節奏吻合` / `節奏風險` for exotic candidates.
+- Updated the coverage report so item 27 `賽事節奏模擬` is now partial instead of missing.
+
+Verification:
+
+- `python -m compileall -q src tests`
+- `node --check src\racing_model\web\app.js`
+- `python -m pytest tests\test_pace_simulation.py tests\test_betting.py tests\test_coverage.py tests\test_ui_localization.py -q`
+- `python -m pytest -q`
+- Local API check on `http://127.0.0.1:8766/`: `/api/predictions` returned `pace_map`; `/api/betting` returned exotic `pace_note` and `pace_fit_score`.
+
 ## 2026-05-08 - Weather Forecast Fallback Before Race Day
 
 Goal:

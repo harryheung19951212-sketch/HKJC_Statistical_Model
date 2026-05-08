@@ -44,6 +44,8 @@ def test_betting_decision_uses_fractional_kelly_and_race_cap() -> None:
     assert all("recommended_stake" in candidate for candidate in result["exotic_candidates"])
     assert all(candidate["minimum_ticket_cost"] > 0 for candidate in result["exotic_candidates"])
     assert all(candidate["structure_label"] for candidate in result["exotic_candidates"])
+    assert all("pace_note" in candidate for candidate in result["exotic_candidates"])
+    assert result["pace_map"]["race_shape"]["runner_count"] == len(predictions)
     assert "banker_leg_suggestions" not in result
 
 
@@ -222,6 +224,7 @@ def test_ordered_exotic_box_counts_all_permutation_tickets() -> None:
     assert tce["structure_label"] == "複式"
     assert tce["combination_count"] == 6
     assert tce["bankers"] == []
+    assert tce["pace_order_fit"] is not None
 
 
 def test_pool_choice_prefers_higher_ev_upgrade_pool_when_available() -> None:

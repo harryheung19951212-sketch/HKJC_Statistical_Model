@@ -88,6 +88,8 @@ def test_browser_refresh_preserves_page_and_tab_state() -> None:
     assert 'savedUiValue("currentView", "race")' in js
     assert "saveUiState({ activeRaceTab })" in js
     assert "lastSixRunsLabel(row)" in js
+    assert "節奏吻合" in js
+    assert "row.pace_note" in js
     assert "grid-template-columns: repeat(4, minmax(0, 1fr));" in css
 
 

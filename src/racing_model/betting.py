@@ -14,6 +14,7 @@ from .pool_rules import (
     required_expected_value,
     round_stake_to_unit,
 )
+from .pace import annotate_predictions_with_pace, exotic_pace_payload
 
 
 LIVE_ODDS_SOURCES = {"hkjc_graphql", "hkjc_mqtt"}
@@ -57,6 +58,7 @@ def build_betting_decisions(
 ) -> dict[str, Any]:
     profile = RISK_PROFILES.get(risk_profile, RISK_PROFILES["standard"])
     bankroll = max(float(bankroll or 0), 0.0)
+    pace_map = annotate_predictions_with_pace(predictions)
     decisions = []
     for rank, prediction in enumerate(predictions, start=1):
         decisions.append(
@@ -141,6 +143,7 @@ def build_betting_decisions(
         "exotic_candidates": exotic_candidates,
         "pool_choice": pool_choice,
         "bet_slip": bet_slip,
+        "pace_map": pace_map,
         "upgrade_paths": build_upgrade_paths(exotic_candidates),
         "exotics_deferred": not include_exotics,
     }
@@ -273,6 +276,15 @@ def build_market_decision(
         "exposure_action": "保留",
         "exposure_reason": "未觸及相關曝險上限",
         "exposure_adjustment_factor": 1.0,
+        "pace_projected_position": prediction.get("pace_projected_position"),
+        "pace_role": prediction.get("pace_role"),
+        "pace_role_label": prediction.get("pace_role_label"),
+        "traffic_risk": prediction.get("traffic_risk"),
+        "traffic_risk_label": prediction.get("traffic_risk_label"),
+        "wide_risk": prediction.get("wide_risk"),
+        "wide_risk_label": prediction.get("wide_risk_label"),
+        "pace_advantage": prediction.get("pace_advantage"),
+        "pace_note": prediction.get("pace_note"),
     }
 
 
@@ -385,6 +397,7 @@ def build_exotic_candidates(
                 expected_value,
                 adjusted_ev,
             )
+            pace_payload = exotic_pace_payload(horse_ids, runner_by_id, bool(product["ordered"]))
             unit = float(pool_rule_payload(code)["min_unit"])
             product_candidates.append(
                 {
@@ -417,6 +430,7 @@ def build_exotic_candidates(
                     "action": exotic_action(race_status),
                     "reason": exotic_reason(race_status),
                     "pool_rule": pool_rule_payload(code),
+                    **pace_payload,
                     **structure,
                 }
             )
@@ -503,6 +517,12 @@ def build_exotic_decisions(
                 "exposure_adjustment_factor": 1.0,
                 "break_even_dividend": candidate.get("break_even_dividend"),
                 "combination_key": candidate.get("combination_key"),
+                "pace_fit_score": candidate.get("pace_fit_score"),
+                "pace_order_fit": candidate.get("pace_order_fit"),
+                "pace_risk_score": candidate.get("pace_risk_score"),
+                "pace_note": candidate.get("pace_note"),
+                "pace_shape": candidate.get("pace_shape"),
+                "pace_shape_label": candidate.get("pace_shape_label"),
             }
         )
     return decisions

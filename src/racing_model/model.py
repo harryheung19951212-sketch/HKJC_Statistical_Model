@@ -130,6 +130,7 @@ class RankingModel:
                     "last_six_runs": runner.last_six_runs,
                     "horse_name_zh": runner.horse_name_zh,
                     "display_name": runner.horse_name_zh or runner.horse_name,
+                    "running_style": runner.running_style,
                     "jockey": runner.jockey,
                     "jockey_zh": runner.jockey_zh,
                     "display_jockey": runner.jockey_zh or runner.jockey,

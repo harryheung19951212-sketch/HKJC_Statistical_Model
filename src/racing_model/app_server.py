@@ -53,6 +53,7 @@ from .odds import (
     odds_history,
     refresh_odds,
 )
+from .pace import annotate_predictions_with_pace
 from .pool_replay import pool_replay_report
 from .storage import (
     connect,
@@ -1074,7 +1075,13 @@ def api_predictions(
     if not race_rows:
         return {"race": None, "predictions": []}
     adaptive = adaptive_predict_race(conn, model, race_id, policy)
-    return {"race": dict(race_rows[0]), "predictions": adaptive["predictions"], "policy": adaptive["policy"]}
+    pace_map = annotate_predictions_with_pace(adaptive["predictions"])
+    return {
+        "race": dict(race_rows[0]),
+        "predictions": adaptive["predictions"],
+        "policy": adaptive["policy"],
+        "pace_map": pace_map,
+    }
 
 
 def api_betting(
@@ -1118,6 +1125,7 @@ def api_betting(
             policy = policy or adaptive.get("policy", {})
             if state is not None:
                 state.cache_race_predictions(race_id, predictions, policy or {})
+    pace_map = annotate_predictions_with_pace(predictions)
     status = race_lifecycle_status(conn, race_id)
     exotic_refresh_status = "not_requested"
     exotic_refresh_error = ""
@@ -1145,6 +1153,7 @@ def api_betting(
     race = dict(race_rows[0])
     payload["race"] = race
     payload["prediction_policy"] = policy or {}
+    payload["pace_map"] = pace_map
     payload["exotic_refresh"] = {
         "status": exotic_refresh_status if exotic_refresh_status != "not_requested" else "queued" if queued else "cached" if exotic_lookup else "not_available",
         "cached_dividends": len(exotic_lookup),
