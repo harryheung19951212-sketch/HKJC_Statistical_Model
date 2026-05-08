@@ -432,21 +432,43 @@ h2 {
   overflow: hidden;
 }
 
-.predictions-panel { grid-row: span 2; }
+.predictions-panel { grid-row: auto; }
 
-.detail-panel,
-.odds-panel {
-  grid-column: 2;
-}
-
+.predictions-panel,
 .betting-panel,
 .feed-panel,
 .comparison-panel,
+.situation-panel,
+.detail-panel,
 .history-panel,
 .results-panel,
 .coverage-panel,
 .analytics-panel {
   grid-column: 1 / -1;
+}
+
+.fold-panel {
+  display: block;
+}
+
+.fold-panel > summary.panel-head {
+  cursor: pointer;
+  list-style: none;
+}
+
+.fold-panel > summary.panel-head::-webkit-details-marker {
+  display: none;
+}
+
+.fold-panel > summary.panel-head h3::before {
+  content: "▸";
+  display: inline-block;
+  width: 18px;
+  color: var(--muted);
+}
+
+.fold-panel[open] > summary.panel-head h3::before {
+  content: "▾";
 }
 
 .betting-head {
@@ -596,6 +618,108 @@ h2 {
 
 .comparison-table tr.comparison-swing {
   background: #f7faff;
+}
+
+.race-situation {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.situation-chart {
+  min-width: 0;
+  display: grid;
+  gap: 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px;
+  background: #fbfcfd;
+}
+
+.situation-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.situation-head strong {
+  font-size: 14px;
+}
+
+.situation-head span {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.situation-bar {
+  display: grid;
+  grid-template-columns: minmax(92px, 1fr) minmax(90px, 1.2fr) 58px;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.situation-bar span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.situation-bar div {
+  height: 8px;
+  border-radius: 999px;
+  background: #e3e8ef;
+  overflow: hidden;
+}
+
+.situation-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #1f5d9b;
+}
+
+.situation-bar.positive i,
+.situation-bar.prob i {
+  background: var(--green);
+}
+
+.situation-bar.negative i {
+  background: var(--red);
+}
+
+.situation-bar b {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.situation-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.situation-metrics div {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px;
+  background: #fff;
+}
+
+.situation-metrics label {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.situation-metrics b {
+  display: block;
+  margin-top: 3px;
+  overflow-wrap: anywhere;
 }
 
 .betting-tickets {
@@ -1111,15 +1235,20 @@ td:nth-child(4), th:nth-child(4) {
 
 .runner-detail {
   padding: 14px 16px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 16px;
 }
 
 .runner-title {
+  grid-column: 1 / -1;
   margin: 0 0 8px;
   font-size: 18px;
   font-weight: 800;
 }
 
 .runner-subtitle {
+  grid-column: 1 / -1;
   margin: 0 0 12px;
   color: var(--muted);
   font-size: 13px;
@@ -1127,6 +1256,7 @@ td:nth-child(4), th:nth-child(4) {
 }
 
 .factor-list {
+  grid-column: 1 / -1;
   display: grid;
   gap: 8px;
   margin-top: 12px;
@@ -1594,6 +1724,8 @@ td:nth-child(4), th:nth-child(4) {
   .quality-grid { grid-template-columns: repeat(2, 1fr); }
   .feed-cards { grid-template-columns: repeat(2, 1fr); }
   .comparison-cards { grid-template-columns: repeat(2, 1fr); }
+  .race-situation { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .runner-detail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .odds-history-grid { grid-template-columns: 1fr; }
   .betting-summary { grid-template-columns: repeat(2, 1fr); }
   .ticket {
@@ -1613,6 +1745,8 @@ td:nth-child(4), th:nth-child(4) {
   .quality-grid,
   .feed-cards,
   .comparison-cards,
+  .race-situation,
+  .runner-detail,
   .coverage-summary,
   .betting-summary,
   .ticket-metrics {

@@ -13,6 +13,7 @@ let activeWatchRaceId = null;
 let currentView = "race";
 const viewDataLoaded = { coverage: false, analytics: false };
 let raceRefreshInFlight = false;
+let currentOddsHistory = [];
 
 const text = {
   scheduled: "\u672a\u958b\u8dd1",
@@ -244,7 +245,6 @@ function renderRaceHeader() {
   $("odds-count").textContent = `${race.odds_ticks || 0} / ${race.exotic_dividends || 0}`;
   $("last-refresh").textContent = race.last_odds_refresh_at || "-";
   $("feed-status").textContent = race.notes ? `賠率來源：${race.notes}` : "";
-  $("feed-source").textContent = race.notes || "-";
   const isResulted = race.status === "resulted";
   $("mark-live").disabled = isResulted;
   $("mark-scheduled").disabled = isResulted;
@@ -291,6 +291,7 @@ async function refreshSelectedRace(options = {}) {
     }
     renderPredictions(currentPredictions);
     renderRunnerDetail(currentPredictions.find((row) => row.horse_id === selectedHorseId));
+    renderRaceSituationCharts(currentPredictions);
     renderPredictionPolicy(payload.policy || {});
     renderBetting(dashboard.betting || {}, { preserveDeferred: preservePanels });
     refreshFullBetting(raceKey);
@@ -632,9 +633,83 @@ function renderPredictions(predictions) {
       selectedHorseId = row.horse_id;
       renderPredictions(currentPredictions);
       renderRunnerDetail(row);
+      renderRaceSituationCharts(currentPredictions);
     });
     body.appendChild(tr);
   });
+}
+
+function renderRaceSituationCharts(predictions) {
+  const box = $("race-situation");
+  if (!box) return;
+  if (!predictions.length) {
+    box.innerHTML = `<p class="runner-subtitle">未有足夠預測資料</p>`;
+    return;
+  }
+  const topModel = predictions.slice(0, 6);
+  const valueRows = predictions
+    .slice()
+    .sort((a, b) => Number(b.value_gap || -999) - Number(a.value_gap || -999))
+    .slice(0, 6);
+  const flowRows = predictions
+    .filter((row) => Number.isFinite(Number(row.odds_delta_30s)) || Number.isFinite(Number(row.odds_delta_2m)))
+    .sort((a, b) => Math.abs(Number(b.odds_delta_30s || b.odds_delta_2m || 0)) - Math.abs(Number(a.odds_delta_30s || a.odds_delta_2m || 0)))
+    .slice(0, 6);
+  const selected = predictions.find((row) => row.horse_id === selectedHorseId) || predictions[0];
+  box.innerHTML = `
+    <div class="situation-chart">
+      <div class="situation-head">
+        <strong>模型勝率前列</strong>
+        <span>Top 6</span>
+      </div>
+      ${topModel.map((row) => renderSituationBar(localizedHorse(row), row.win_probability, formatPct(row.win_probability), "prob")).join("")}
+    </div>
+    <div class="situation-chart">
+      <div class="situation-head">
+        <strong>價值差排序</strong>
+        <span>模型 vs 市場</span>
+      </div>
+      ${valueRows.map((row) => renderSituationBar(`${row.horse_no || "-"} ${localizedHorse(row)}`, row.value_gap, formatPct(row.value_gap), Number(row.value_gap) >= 0 ? "positive" : "negative")).join("")}
+    </div>
+    <div class="situation-chart">
+      <div class="situation-head">
+        <strong>臨場資金流</strong>
+        <span>30秒 / 2分鐘</span>
+      </div>
+      ${flowRows.length ? flowRows.map((row) => renderFlowBar(row)).join("") : `<p class="runner-subtitle">未有足夠 live tick</p>`}
+    </div>
+    <div class="situation-chart selected-situation">
+      <div class="situation-head">
+        <strong>當前選中馬</strong>
+        <span>${selected.horse_no || "-"} ${localizedHorse(selected)}</span>
+      </div>
+      <div class="situation-metrics">
+        <div><label>勝率</label><b>${formatPct(selected.win_probability)}</b></div>
+        <div><label>入三甲</label><b>${formatPct(selected.top3_probability)}</b></div>
+        <div><label>獨贏 EV</label><b class="${evClass(selected.expected_value)}">${formatSigned(selected.expected_value, 3)}</b></div>
+        <div><label>位置 EV</label><b class="${evClass(selected.top3_expected_value)}">${formatSigned(selected.top3_expected_value, 3)}</b></div>
+        <div><label>30秒流</label><b class="${evClass(selected.odds_delta_30s)}">${formatSigned(selected.odds_delta_30s)}</b></div>
+        <div><label>檔位</label><b>${selected.draw || "-"}</b></div>
+      </div>
+    </div>
+  `;
+}
+
+function renderSituationBar(label, value, displayValue, kind) {
+  const numeric = Number(value);
+  const magnitude = Number.isFinite(numeric) ? Math.min(100, Math.max(4, Math.abs(numeric) * 100)) : 4;
+  return `
+    <div class="situation-bar ${kind}">
+      <span>${shortLabel(label, 12)}</span>
+      <div><i style="width:${magnitude.toFixed(1)}%"></i></div>
+      <b>${displayValue}</b>
+    </div>
+  `;
+}
+
+function renderFlowBar(row) {
+  const value = Number.isFinite(Number(row.odds_delta_30s)) ? Number(row.odds_delta_30s) : Number(row.odds_delta_2m || 0);
+  return renderSituationBar(`${row.horse_no || "-"} ${localizedHorse(row)}`, value, formatSigned(value), value >= 0 ? "positive" : "negative");
 }
 
 function renderResults(results, completeness = null) {
@@ -683,6 +758,7 @@ function renderRunnerDetail(row) {
   const box = $("runner-detail");
   if (!row) {
     box.innerHTML = `<p class="runner-subtitle">\u8acb\u5148\u9078\u64c7\u4e00\u5339\u99ac</p>`;
+    renderSelectedHorseOddsChart([]);
     return;
   }
   const explanation = row.explanation || { positive: [], negative: [] };
@@ -713,6 +789,7 @@ function renderRunnerDetail(row) {
       ${renderFactorSection("\u8ca0\u9762\u56e0\u7d20", explanation.negative || [], "negative")}
     </div>
   `;
+  renderSelectedHorseOddsChart(currentOddsHistory);
 }
 
 function top3SourceLabel(value) {
@@ -1457,8 +1534,9 @@ async function runGptIteration() {
 }
 
 function renderOddsHistory(rows) {
-  const latest = rows.slice(0, 12);
-  renderOddsChart(rows);
+  currentOddsHistory = rows || [];
+  const latest = currentOddsHistory.slice(0, 12);
+  renderSelectedHorseOddsChart(currentOddsHistory);
   $("odds-history").innerHTML = latest.map((row) => `
     <div class="history-row">
       <span><b>${localizedHorse(row)}</b><br>馬號 ${row.horse_no || "-"} | ${formatTimestamp(row.timestamp)}</span>
@@ -1472,7 +1550,8 @@ function renderOddsHistoryLoading(options = {}) {
     return;
   }
   $("odds-history").innerHTML = `<div class="history-row loading-placeholder"><span>歷史賠率載入中...</span><strong>-</strong></div>`;
-  $("odds-chart").innerHTML = `<text class="loading-placeholder" x="18" y="96">賠率走勢載入中...</text>`;
+  $("odds-chart").innerHTML = `<text class="loading-placeholder" x="18" y="96">單匹賠率走勢載入中...</text>`;
+  $("selected-horse-chart-summary").textContent = "載入中";
 }
 
 function formatTimestamp(value) {
@@ -1480,51 +1559,55 @@ function formatTimestamp(value) {
   return String(value).replace("T", " ").replace(/\.\d+/, "").replace(/\+00:00$/, "");
 }
 
-function renderOddsChart(rows) {
+function renderSelectedHorseOddsChart(rows) {
   const svg = $("odds-chart");
-  const byHorse = new Map();
-  const labels = new Map();
-  rows.slice().reverse().forEach((row) => {
-    if (!byHorse.has(row.horse_id)) byHorse.set(row.horse_id, []);
-    byHorse.get(row.horse_id).push(row);
-    if (!labels.has(row.horse_id)) {
-      labels.set(row.horse_id, localizedHorse(row));
-    }
-  });
-  const series = [...byHorse.entries()]
-    .map(([horseId, items]) => [horseId, items.slice(-12)])
-    .filter(([, items]) => items.length >= 2)
-    .slice(0, 5);
-  if (!series.length) {
-    svg.innerHTML = `<text x="18" y="96">\u672a\u6709\u8db3\u5920\u8ce0\u7387\u8a18\u9304</text>`;
+  const summary = $("selected-horse-chart-summary");
+  const selected = currentPredictions.find((row) => row.horse_id === selectedHorseId);
+  if (!selected) {
+    svg.innerHTML = `<text x="18" y="96">請先選擇一匹馬</text>`;
+    summary.textContent = "-";
     return;
   }
-  const values = series.flatMap(([, items]) => items.map((item) => Number(item.win_odds))).filter(Number.isFinite);
+  const items = (rows || [])
+    .filter((row) => row.horse_id === selectedHorseId && Number.isFinite(Number(row.win_odds)))
+    .slice()
+    .reverse()
+    .slice(-18);
+  if (items.length < 2) {
+    svg.innerHTML = `<text x="18" y="96">未有 ${shortLabel(localizedHorse(selected), 8)} 足夠賠率記錄</text>`;
+    summary.textContent = `${localizedHorse(selected)}｜記錄 ${items.length}`;
+    return;
+  }
+  const values = items.map((item) => Number(item.win_odds)).filter(Number.isFinite);
   const min = Math.min(...values);
   const max = Math.max(...values);
   const pad = 24;
   const width = 360;
   const height = 190;
-  const colors = ["#0f7a5b", "#1f5d9b", "#a23b2a", "#7a5b10", "#5d4e9b"];
   const y = (value) => {
     if (max === min) return height / 2;
     return height - pad - ((value - min) / (max - min)) * (height - pad * 2);
   };
-  const lineFor = (items) => items.map((item, index) => {
+  const points = items.map((item, index) => {
     const x = pad + (index / Math.max(items.length - 1, 1)) * (width - pad * 2);
     return `${x.toFixed(1)},${y(Number(item.win_odds)).toFixed(1)}`;
   }).join(" ");
+  const first = Number(items[0].win_odds);
+  const latest = Number(items[items.length - 1].win_odds);
+  const direction = latest < first ? "落飛" : latest > first ? "轉冷" : "持平";
   const grid = `
     <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${height - pad}" stroke="#d9dee7"/>
     <line x1="${pad}" y1="${height - pad}" x2="${width - pad}" y2="${height - pad}" stroke="#d9dee7"/>
     <text x="${pad}" y="16">${max.toFixed(1)}</text>
     <text x="${pad}" y="${height - 6}">${min.toFixed(1)}</text>
+    <text x="${width - 118}" y="16">${shortLabel(localizedHorse(selected), 8)}</text>
   `;
-  const lines = series.map(([horseId, items], index) => `
-    <polyline fill="none" stroke="${colors[index % colors.length]}" stroke-width="2" points="${lineFor(items)}"/>
-    <text x="${width - 78}" y="${20 + index * 15}" fill="${colors[index % colors.length]}">${shortLabel(labels.get(horseId) || horseId, 5)}</text>
-  `).join("");
-  svg.innerHTML = grid + lines;
+  const dots = items.map((item, index) => {
+    const x = pad + (index / Math.max(items.length - 1, 1)) * (width - pad * 2);
+    return `<circle cx="${x.toFixed(1)}" cy="${y(Number(item.win_odds)).toFixed(1)}" r="2.6"/>`;
+  }).join("");
+  svg.innerHTML = `${grid}<polyline fill="none" stroke="#0f7a5b" stroke-width="2.4" points="${points}"/>${dots}`;
+  summary.textContent = `${direction}｜${first.toFixed(2)} → ${latest.toFixed(2)}`;
 }
 
 function shortLabel(value, limit) {

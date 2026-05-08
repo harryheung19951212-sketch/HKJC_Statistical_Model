@@ -71,6 +71,26 @@ def test_auto_refresh_preserves_existing_race_panels() -> None:
     assert "raceRefreshInFlight" in js
 
 
+def test_race_page_prioritizes_prediction_betting_and_collapsible_diagnostics() -> None:
+    html = (ROOT / "src/racing_model/web/index.html").read_text(encoding="utf-8")
+    js = (ROOT / "src/racing_model/web/app.js").read_text(encoding="utf-8")
+
+    prediction_pos = html.index('<div class="panel predictions-panel">')
+    betting_pos = html.index('<div class="panel betting-panel">')
+    situation_pos = html.index('<div class="panel situation-panel">')
+    detail_pos = html.index('<div class="panel detail-panel">')
+    feed_pos = html.index('<details class="panel feed-panel fold-panel">')
+    comparison_pos = html.index('<details class="panel comparison-panel fold-panel">')
+
+    assert prediction_pos < betting_pos < situation_pos < detail_pos < feed_pos < comparison_pos
+    assert '<h3>馬匹詳情 / 單匹賠率走勢</h3>' in html
+    assert 'aria-label="單匹賠率走勢圖"' in html
+    assert '<div class="panel odds-panel">' not in html
+    assert "function renderRaceSituationCharts" in js
+    assert "function renderSelectedHorseOddsChart" in js
+    assert "row.horse_id === selectedHorseId" in js
+
+
 def test_predictions_and_betting_payloads_prefer_chinese_names(tmp_path: Path) -> None:
     db_path = tmp_path / "racing.db"
     init_db(db_path)

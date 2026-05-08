@@ -118,44 +118,6 @@
       </section>
 
       <section class="grid">
-        <div class="panel feed-panel">
-          <div class="panel-head">
-            <h3>賠率錄影健康</h3>
-            <span id="feed-health-summary">-</span>
-          </div>
-          <div id="feed-health" class="feed-health"></div>
-        </div>
-
-        <div class="panel comparison-panel">
-          <div class="panel-head">
-            <h3>雙軌模型對照</h3>
-            <span id="comparison-summary">-</span>
-          </div>
-          <div id="model-comparison" class="model-comparison"></div>
-        </div>
-
-        <div class="panel betting-panel">
-        <div class="panel-head betting-head">
-          <h3>即場投注建議</h3>
-          <div class="betting-controls">
-            <label>
-              本金
-              <input id="bankroll-input" type="number" value="10000" min="0" step="100">
-            </label>
-            <label>
-              風險
-              <select id="risk-profile">
-                <option value="standard">標準</option>
-                <option value="conservative">保守</option>
-                <option value="aggressive">進取</option>
-              </select>
-            </label>
-          </div>
-        </div>
-        <div id="betting-summary" class="betting-summary"></div>
-        <div id="betting-tickets" class="betting-tickets"></div>
-      </div>
-
       <div class="panel predictions-panel">
         <div class="panel-head">
           <h3>本場預測</h3>
@@ -187,19 +149,43 @@
         </div>
       </div>
 
-      <div class="panel detail-panel">
-        <div class="panel-head">
-          <h3>馬匹詳情</h3>
+      <div class="panel betting-panel">
+        <div class="panel-head betting-head">
+          <h3>即場投注建議</h3>
+          <div class="betting-controls">
+            <label>
+              本金
+              <input id="bankroll-input" type="number" value="10000" min="0" step="100">
+            </label>
+            <label>
+              風險
+              <select id="risk-profile">
+                <option value="standard">標準</option>
+                <option value="conservative">保守</option>
+                <option value="aggressive">進取</option>
+              </select>
+            </label>
+          </div>
         </div>
-        <div id="runner-detail" class="runner-detail"></div>
+        <div id="betting-summary" class="betting-summary"></div>
+        <div id="betting-tickets" class="betting-tickets"></div>
       </div>
 
-      <div class="panel odds-panel">
+      <div class="panel situation-panel">
         <div class="panel-head">
-          <h3>賠率走勢</h3>
-          <span id="feed-source">-</span>
+          <h3>本場形勢圖表</h3>
+          <span>概率 / 價值 / 資金流</span>
         </div>
-        <svg id="odds-chart" class="odds-chart" viewBox="0 0 360 190" role="img" aria-label="賠率走勢圖"></svg>
+        <div id="race-situation" class="race-situation"></div>
+      </div>
+
+      <div class="panel detail-panel">
+        <div class="panel-head">
+          <h3>馬匹詳情 / 單匹賠率走勢</h3>
+          <span id="selected-horse-chart-summary">-</span>
+        </div>
+        <div id="runner-detail" class="runner-detail"></div>
+        <svg id="odds-chart" class="odds-chart" viewBox="0 0 360 190" role="img" aria-label="單匹賠率走勢圖"></svg>
       </div>
 
       <div class="panel results-panel">
@@ -239,6 +225,22 @@
         </div>
         <div id="odds-history" class="history odds-history-grid"></div>
         </div>
+
+        <details class="panel feed-panel fold-panel">
+          <summary class="panel-head">
+            <h3>賠率錄影健康</h3>
+            <span id="feed-health-summary">-</span>
+          </summary>
+          <div id="feed-health" class="feed-health"></div>
+        </details>
+
+        <details class="panel comparison-panel fold-panel">
+          <summary class="panel-head">
+            <h3>雙軌模型對照</h3>
+            <span id="comparison-summary">-</span>
+          </summary>
+          <div id="model-comparison" class="model-comparison"></div>
+        </details>
       </section>
     </section>
 
