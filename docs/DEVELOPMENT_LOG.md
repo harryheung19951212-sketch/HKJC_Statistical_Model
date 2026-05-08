@@ -2,6 +2,31 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-08 - Market Flow Per-Runner Signal Status
+
+Goal:
+
+- Remove the repeated `tick足夠，未見大異動` wording from every market-flow runner card and make each card analytically useful.
+
+Changes:
+
+- Added per-runner `tick_status` and `signal_status`.
+- `data_status` now combines sample and signal, such as `3 ticks｜強落飛訊號`, instead of only saying the tick stream is monitorable.
+- UI now shows `樣本`, `訊號強度`, and `訊號狀態`.
+- Signal status differentiates:
+  - strong / light `落飛`;
+  - strong / light `轉冷`;
+  - narrow movement without a signal;
+  - insufficient data.
+
+Verification:
+
+- `python tests\test_market_flow.py`
+- `python tests\test_late_market_flow.py`
+- `node --check src\racing_model\web\app.js`
+- `python -m compileall -q src dashboard tests`
+- `Get-ChildItem tests -Filter 'test_*.py' | ForEach-Object { python $_.FullName }`
+
 ## 2026-05-08 - Stable Race Header Refresh
 
 Goal:

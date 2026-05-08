@@ -901,11 +901,12 @@ function renderMarketFlowCard(row) {
       </div>
       <div class="market-flow-metrics">
         <div><label>最新獨贏</label><b>${formatNum(row.latest_win_odds, 2)}</b></div>
-        <div><label>ticks</label><b>${row.tick_count || 0}</b></div>
+        <div><label>樣本</label><b>${row.tick_status || `${row.tick_count || 0} ticks`}</b></div>
         <div><label>5分鐘</label><b class="${evClass(row.odds_delta_5m)}">${formatSigned(row.odds_delta_5m)}</b></div>
         <div><label>2分鐘</label><b class="${evClass(row.odds_delta_2m)}">${formatSigned(row.odds_delta_2m)}</b></div>
         <div><label>30秒</label><b class="${evClass(row.odds_delta_30s)}">${formatSigned(row.odds_delta_30s)}</b></div>
-        <div><label>資料狀態</label><b>${row.data_status || row.data_quality || "-"}</b></div>
+        <div><label>訊號強度</label><b>${formatNum(row.signal_strength, 3)}</b></div>
+        <div><label>訊號狀態</label><b>${row.signal_status || row.data_status || row.data_quality || "-"}</b></div>
       </div>
     </div>
   `;

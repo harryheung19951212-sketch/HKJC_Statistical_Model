@@ -38,6 +38,8 @@ def market_flow_report(conn: sqlite3.Connection, race_id: str) -> dict[str, Any]
         )
         label = flow_label(flow_values, len(horse_ticks))
         signal = signal_payload(label, signal_strength)
+        tick_status_value = tick_status(len(horse_ticks))
+        signal_status_value = runner_signal_status(label, signal_strength, len(horse_ticks))
         runner_rows.append(
             {
                 "race_id": race_id,
@@ -61,8 +63,10 @@ def market_flow_report(conn: sqlite3.Connection, race_id: str) -> dict[str, Any]
                 "signal_label": signal["label"],
                 "signal_description": signal["description"],
                 "signal_action": signal["action"],
-                "data_status": runner_data_status(len(horse_ticks), signal_strength),
-                "data_quality": runner_data_quality(len(horse_ticks), signal_strength),
+                "signal_status": signal_status_value,
+                "tick_status": tick_status_value,
+                "data_status": f"{tick_status_value}｜{signal_status_value}",
+                "data_quality": runner_data_quality(len(horse_ticks), label, signal_strength),
             }
         )
 
@@ -177,21 +181,43 @@ def market_flow_verdict(runner_count: int, runners_with_ticks: int, total_ticks:
     return "stable_market"
 
 
-def runner_data_quality(tick_count: int, signal_strength: float) -> str:
-    return runner_data_status(tick_count, signal_strength)
+def runner_data_quality(tick_count: int, flow_label_value: str, signal_strength: float) -> str:
+    return f"{tick_status(tick_count)}｜{runner_signal_status(flow_label_value, signal_strength, tick_count)}"
 
 
-def runner_data_status(tick_count: int, signal_strength: float) -> str:
+def tick_status(tick_count: int) -> str:
     if tick_count == 0:
         return "無 live tick"
     if tick_count == 1:
         return "只有一口價"
+    return f"{tick_count} ticks"
+
+
+def runner_signal_status(flow_label_value: str, signal_strength: float, tick_count: int) -> str:
     if signal_strength >= 0.08:
-        return "tick足夠，有明顯異動"
-    return "tick足夠，未見大異動"
+        strength = "強"
+    elif signal_strength >= 0.025:
+        strength = "輕微"
+    else:
+        strength = ""
+    if tick_count < 2:
+        return "資料不足，未能判斷"
+    if flow_label_value == "落飛":
+        return f"{strength}落飛訊號"
+    if flow_label_value == "轉冷":
+        return f"{strength}轉冷訊號"
+    if signal_strength > 0:
+        return "窄幅波動，未成訊號"
+    return "無明顯資金方向"
 
 
 def signal_payload(flow_label_value: str, signal_strength: float) -> dict[str, str]:
+    if flow_label_value == "資料不足":
+        return {
+            "label": "資料不足｜未能判斷",
+            "description": "live tick 太少，暫時唔應該用資金流做下注理由。",
+            "action": "等資料",
+        }
     if flow_label_value == "落飛":
         return {
             "label": "落飛｜市場追捧",
