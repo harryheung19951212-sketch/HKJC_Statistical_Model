@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import gzip
 import mimetypes
 import uuid
 import threading
@@ -839,10 +840,17 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def send_json(self, payload: object) -> None:
-        body = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+        body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        accepts_gzip = "gzip" in (self.headers.get("Accept-Encoding") or "").lower()
+        encoding = "gzip" if accepts_gzip and len(body) >= 1024 else None
+        if encoding:
+            body = gzip.compress(body)
         self.send_response(200)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
+        self.send_header("Vary", "Accept-Encoding")
+        if encoding:
+            self.send_header("Content-Encoding", encoding)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)

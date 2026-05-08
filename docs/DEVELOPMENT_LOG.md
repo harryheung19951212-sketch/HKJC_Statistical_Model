@@ -645,6 +645,7 @@ Implementation:
 - Added a short-lived per-race prediction cache in `AppState`.
 - `/api/race-dashboard` now stores the predictions it already computed for the selected race.
 - `/api/betting` reuses that recent prediction snapshot within the odds-refresh window, then only falls back to full adaptive prediction when the cache is stale or missing.
+- API JSON responses now use compact encoding and gzip when the client supports it, reducing heavy dashboard/betting payload transfer time during 30-second live refreshes.
 - Added regression coverage proving that full betting refresh uses the dashboard prediction cache instead of rerunning adaptive prediction.
 
 Verification:
