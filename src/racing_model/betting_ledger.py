@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 from .betting import EXOTIC_PRODUCTS
+from .live import estimated_hkjc_post_time, hong_kong_tz, parse_hkjc_race_id
+from .pool_rules import pool_rule_payload
 from .storage import fetch_all, insert_rows
 
 
@@ -19,8 +21,9 @@ def record_betting_payload(
     payload: dict[str, Any],
     model_path: Path | str,
     source: str = "api_betting",
+    current_time: datetime | None = None,
 ) -> dict[str, Any]:
-    tickets = [ticket for ticket in payload.get("tickets", []) if float(ticket.get("recommended_stake") or 0) > 0]
+    tickets = betting_record_candidates(conn, race, payload, current_time)
     if not tickets:
         return {"recorded": 0, "tickets": 0, "message": "no_active_tickets"}
     annotate_pool_choice_context(tickets, payload)
@@ -57,6 +60,136 @@ def record_betting_payload(
     inserted = insert_rows(conn, "betting_recommendations", rows)
     conn.commit()
     return {"recorded": inserted, "tickets": len(tickets)}
+
+
+def betting_record_candidates(
+    conn: sqlite3.Connection,
+    race: dict[str, Any],
+    payload: dict[str, Any],
+    current_time: datetime | None = None,
+) -> list[dict[str, Any]]:
+    race_id = str(race.get("race_id") or "")
+    base = [
+        ticket
+        for ticket in payload.get("tickets", [])
+        if isinstance(ticket, dict) and float(ticket.get("recommended_stake") or 0) > 0
+    ]
+    if not pre_post_training_fill_active(race_id, current_time):
+        return base
+
+    confirmed = confirmed_ticket_counts(conn, race_id)
+    base_exotic = sum(1 for row in base if str(row.get("market") or "") in EXOTIC_PRODUCTS)
+    fill_needed = max(0, 5 - int(confirmed["total"]) - len(base))
+    exotic_needed = max(0, 2 - int(confirmed["exotic"]) - base_exotic)
+    if fill_needed <= 0 and exotic_needed <= 0:
+        return base
+
+    candidates = supplemental_training_candidates(payload, base)
+    selected = select_training_fill_tickets(candidates, fill_needed, exotic_needed)
+    return [*base, *selected]
+
+
+def pre_post_training_fill_active(race_id: str, current_time: datetime | None = None) -> bool:
+    ref = parse_hkjc_race_id(race_id)
+    if not ref:
+        return False
+    post_time = estimated_hkjc_post_time(ref)
+    if post_time is None:
+        return False
+    now = current_time.astimezone(hong_kong_tz()) if current_time else datetime.now(hong_kong_tz())
+    return post_time - timedelta(minutes=5) <= now < post_time
+
+
+def confirmed_ticket_counts(conn: sqlite3.Connection, race_id: str) -> dict[str, int]:
+    rows = fetch_all(
+        conn,
+        """
+        SELECT market, count(*) AS n
+        FROM betting_recommendations
+        WHERE race_id = ? AND execution_status = 'confirmed'
+        GROUP BY market
+        """,
+        (race_id,),
+    )
+    total = sum(int(row["n"] or 0) for row in rows)
+    exotic = sum(int(row["n"] or 0) for row in rows if str(row["market"] or "") in EXOTIC_PRODUCTS)
+    return {"total": total, "exotic": exotic}
+
+
+def supplemental_training_candidates(payload: dict[str, Any], existing: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen = {(str(row.get("market") or ""), str(row.get("horse_id") or "")) for row in existing}
+    rows = []
+    for section in ["decisions", "exotic_decisions", "tickets"]:
+        for item in payload.get(section, []) or []:
+            if not isinstance(item, dict):
+                continue
+            key = (str(item.get("market") or ""), str(item.get("horse_id") or ""))
+            if not key[0] or not key[1] or key in seen:
+                continue
+            seen.add(key)
+            candidate = dict(item)
+            candidate["recommended_stake"] = supplemental_training_stake(candidate)
+            candidate["execution_training_fill"] = True
+            candidate["reason"] = append_message(candidate.get("reason"), "賽前5分鐘訓練補飛。")
+            rows.append(candidate)
+    return rows
+
+
+def supplemental_training_stake(ticket: dict[str, Any]) -> float:
+    stake = optional_float(ticket.get("recommended_stake")) or 0.0
+    if stake > 0:
+        return stake
+    minimum = optional_float(ticket.get("minimum_ticket_cost"))
+    if minimum is not None and minimum > 0:
+        return minimum
+    try:
+        return float(pool_rule_payload(str(ticket.get("market") or "WIN"))["min_unit"])
+    except Exception:
+        return 10.0
+
+
+def select_training_fill_tickets(
+    candidates: list[dict[str, Any]],
+    fill_needed: int,
+    exotic_needed: int,
+) -> list[dict[str, Any]]:
+    selected: list[dict[str, Any]] = []
+    remaining = sorted(candidates, key=training_fill_score, reverse=True)
+    if exotic_needed > 0:
+        for row in list(remaining):
+            if str(row.get("market") or "") not in EXOTIC_PRODUCTS:
+                continue
+            selected.append(row)
+            remaining.remove(row)
+            if len([item for item in selected if str(item.get("market") or "") in EXOTIC_PRODUCTS]) >= exotic_needed:
+                break
+    target = max(fill_needed, exotic_needed)
+    for row in remaining:
+        if len(selected) >= target:
+            break
+        selected.append(row)
+    return selected
+
+
+def training_fill_score(ticket: dict[str, Any]) -> float:
+    probability = optional_float(ticket.get("hit_probability"))
+    if probability is None:
+        probability = optional_float(ticket.get("probability")) or 0.0
+    ev = optional_float(ticket.get("cost_adjusted_expected_value"))
+    if ev is None:
+        ev = optional_float(ticket.get("expected_value")) or -0.25
+    edge = optional_float(ticket.get("edge")) or 0.0
+    odds = optional_float(ticket.get("odds")) or 0.0
+    required = optional_float(ticket.get("required_dividend"))
+    gap = (odds - required) if odds and required else 0.0
+    source_bonus = 8.0 if str(ticket.get("odds_source") or "") in LIVE_ODDS_SOURCES else 0.0
+    action_bonus = 6.0 if str(ticket.get("action") or "") == "有值博" else 0.0
+    pool_bonus = 4.0 if str(ticket.get("pool_choice_verdict") or "") == "actionable" else 0.0
+    exotic_penalty = -2.0 if str(ticket.get("market") or "") in {"FIRST4", "QUARTET"} else 0.0
+    ev_component = min(max(ev, -0.25), 0.8) * 8.0
+    edge_component = min(max(edge, -0.1), 0.4) * 20.0
+    gap_component = min(max(gap, -5.0), 5.0) * 0.2
+    return probability * 200.0 + ev_component + edge_component + gap_component + source_bonus + action_bonus + pool_bonus + exotic_penalty
 
 
 def sync_ticket_current_pool_odds(conn: sqlite3.Connection, race_id: str, ticket: dict[str, Any]) -> None:
@@ -255,6 +388,22 @@ def recommendation_key(
 def auto_execution_payload(ticket: dict[str, Any], now: str) -> dict[str, Any]:
     stake = optional_float(ticket.get("recommended_stake")) or 0.0
     odds = optional_float(ticket.get("odds"))
+    if ticket.get("execution_training_fill"):
+        execution_value = execution_value_check(ticket, odds)
+        return {
+            "execution_status": "confirmed",
+            "executed_at": now,
+            "execution_odds": odds,
+            "execution_stake": stake,
+            "execution_source": str(ticket.get("odds_source") or "pre_post_training_fill"),
+            "execution_value_message": append_message(
+                execution_value.get("execution_value_message"),
+                "賽前5分鐘訓練補飛：confirmed 少過5條，按最接近 gate 的候選補樣本。",
+            ),
+            "execution_value_status": "pre_post_training_fill",
+            "execution_edge_at_bet": execution_value["execution_edge_at_bet"],
+            "execution_expected_value_at_bet": execution_value["execution_expected_value_at_bet"],
+        }
     approved, gate_message = execution_model_gate(ticket, odds)
     if stake <= 0 or not approved:
         return {

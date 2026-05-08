@@ -1,4 +1,5 @@
 from pathlib import Path
+from datetime import datetime, timezone, timedelta
 
 from racing_model.betting_ledger import (
     betting_ledger_report,
@@ -371,6 +372,107 @@ def test_suggested_exotic_ticket_upgrades_when_official_probable_dividend_arrive
     assert upgraded["execution_status"] == "confirmed"
     assert upgraded["execution_odds"] == 22.0
     assert upgraded["execution_stake"] == 40
+
+
+def test_pre_post_training_fill_adds_five_tickets_with_two_exotics(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    with connect(db_path) as conn:
+        race = {"race_id": "HK20990101-ST-01", "date": "2099/01/01"}
+        insert_rows(
+            conn,
+            "races",
+            [
+                {
+                    **race,
+                    "track": "Sha Tin",
+                    "course": "Turf",
+                    "distance_m": 1200,
+                    "going": "Good",
+                    "class_rating": "Class 4",
+                    "prize": 1000000,
+                }
+            ],
+        )
+        conn.commit()
+
+        payload = {
+            "race_status": "scheduled",
+            "risk_profile": "standard",
+            "bankroll": 10000,
+            "tickets": [],
+            "decisions": [
+                gate_candidate("WIN", "H001", 0.42, 4.2, "高勝率獨贏"),
+                gate_candidate("PLACE", "H002", 0.64, 1.9, "穩位馬"),
+                gate_candidate("WIN", "H003", 0.06, 80.0, "高賠低勝率"),
+                gate_candidate("PLACE", "H004", 0.55, 2.1, "穩健位置"),
+            ],
+            "exotic_decisions": [
+                gate_candidate("QPL", "1+2", 0.32, 8.0, "位置Q 1+2"),
+                gate_candidate("TRIO", "1+2+4", 0.16, 38.0, "單T 1+2+4"),
+                gate_candidate("QUARTET", "1>2>3>4", 0.01, 1000.0, "四重彩低命中"),
+            ],
+        }
+        result = record_betting_payload(
+            conn,
+            race,
+            payload,
+            "models/baseline.json",
+            current_time=datetime(2099, 1, 1, 12, 26, tzinfo=timezone(timedelta(hours=8))),
+        )
+        ledger = betting_ledger_report(conn, "HK20990101-ST-01", limit=10)
+
+    confirmed = [row for row in ledger["items"] if row["execution_status"] == "confirmed"]
+    exotic = [row for row in confirmed if row["market"] in {"QPL", "TRIO", "FCT", "TCE", "FIRST4", "QUARTET"}]
+    markets = {row["market"] for row in confirmed}
+    names = {row["horse_name"] for row in confirmed}
+    assert result["tickets"] == 5
+    assert len(confirmed) == 5
+    assert len(exotic) >= 2
+    assert {"QPL", "TRIO"}.issubset(markets)
+    assert "高賠低勝率" not in names
+    assert all(row["execution_value_status"] == "pre_post_training_fill" for row in confirmed)
+
+
+def test_training_fill_is_only_inside_last_five_minutes(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    with connect(db_path) as conn:
+        race = {"race_id": "HK20990101-ST-01", "date": "2099/01/01"}
+        insert_rows(
+            conn,
+            "races",
+            [
+                {
+                    **race,
+                    "track": "Sha Tin",
+                    "course": "Turf",
+                    "distance_m": 1200,
+                    "going": "Good",
+                    "class_rating": "Class 4",
+                    "prize": 1000000,
+                }
+            ],
+        )
+        conn.commit()
+
+        payload = {
+            "race_status": "scheduled",
+            "risk_profile": "standard",
+            "bankroll": 10000,
+            "tickets": [],
+            "decisions": [gate_candidate("WIN", "H001", 0.42, 4.2, "高勝率獨贏")],
+        }
+        result = record_betting_payload(
+            conn,
+            race,
+            payload,
+            "models/baseline.json",
+            current_time=datetime(2099, 1, 1, 12, 20, tzinfo=timezone(timedelta(hours=8))),
+        )
+
+    assert result["recorded"] == 0
+    assert result["message"] == "no_active_tickets"
 
 
 def test_confirmed_ticket_keeps_live_pool_price_until_settlement(tmp_path: Path) -> None:
@@ -826,6 +928,30 @@ def simple_win_payload(horse_id: str, horse_no: int, horse_name: str, stake: flo
                 "reason": "符合 Kelly 下注條件",
             }
         ],
+    }
+
+
+def gate_candidate(market: str, horse_id: str, probability: float, odds: float, label: str) -> dict[str, object]:
+    required = round((1.0 / probability) * 1.08, 3) if probability > 0 else None
+    return {
+        "market": market,
+        "market_label": market,
+        "horse_id": horse_id,
+        "horse_name": label,
+        "model_rank": 1,
+        "probability": probability,
+        "odds": odds,
+        "odds_source": "hkjc_mqtt",
+        "fair_odds": round(1.0 / probability, 3) if probability > 0 else None,
+        "market_probability": round(1.0 / odds, 6),
+        "edge": round(probability - (1.0 / odds), 6),
+        "expected_value": round(probability * odds - 1.0, 6),
+        "cost_adjusted_expected_value": round(max(probability * odds - 1.05, -0.2), 6),
+        "required_dividend": required,
+        "minimum_ticket_cost": 10,
+        "recommended_stake": 0,
+        "action": "觀望",
+        "reason": "接近 gate 但未正式落飛",
     }
 
 

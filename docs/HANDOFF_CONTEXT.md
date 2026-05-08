@@ -182,6 +182,7 @@ foreach ($t in $tests) {
   - 對數最終賠率 / 賽果。
   - 計 P/L、slippage、CLV 參考。
   - 派彩對數只 replay 已通過落飛模型 gate 的 `confirmed` tickets；未過 gate 的 positive-stake rows 只作 `suggested` 建議留痕。
+  - 例外：開賽前最後 5 分鐘若 confirmed 不足 5 條，會按接近 gate 程度補足到 5 條訓練飛，且至少 2 條組合飛；排序以勝率/三甲率/命中概率優先，賠率只作次要因素。
 
 ### 組合彩池 / 可能派彩
 

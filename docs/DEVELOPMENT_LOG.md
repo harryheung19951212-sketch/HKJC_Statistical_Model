@@ -2,6 +2,27 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-09 - Pre-Post Training Fill Tickets
+
+Goal:
+
+- Preserve the strict model gate in normal betting decisions, but guarantee enough pre-race execution samples for training when the race is about to start.
+- Avoid selecting high-odds/low-hit-rate tickets just because the payout is large.
+
+Changes:
+
+- Added a pre-post training-fill rule: during the final 5 minutes before estimated post time, if confirmed settlement tickets for the race are fewer than 5, the ledger fills to 5 using the closest-to-gate candidates.
+- Training fill requires at least 2 exotic-pool tickets when available.
+- Supplemental candidates are selected from WIN/PLACE decisions and exotic decisions, using a score dominated by win/top-3/hit probability; EV, edge, price gap, and official source are secondary and capped.
+- Fill tickets use minimum ticket cost when the model did not assign a stake, are marked with `execution_value_status='pre_post_training_fill'`, and remain visible as confirmed training samples for settlement replay.
+- The rule is active only inside the 5-minute pre-post window; outside that window, positive-stake rows still need the normal execution model gate.
+
+Verification:
+
+- `python -m pytest tests\test_betting_ledger.py tests\test_fast_betting_refresh.py tests\test_betting.py tests\test_betting_settlement.py tests\test_coverage.py -q`
+- `python -m compileall -q src tests`
+- `node --check src\racing_model\web\app.js`
+
 ## 2026-05-09 - Model-Gated Ticket Execution
 
 Goal:
