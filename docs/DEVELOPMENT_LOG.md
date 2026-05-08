@@ -8,14 +8,15 @@ Goal:
 
 - Make the betting header use one clear stake accounting rule.
 - Remove the confusing `新建議` header metric.
-- Prevent recommended ticket totals from ever exceeding the race stake cap after minimum-ticket and exotic-ticket sizing.
+- Make the displayed race cap follow the actual recommended/recorded stake total when that total is higher than the base risk cap.
 
 Changes:
 
-- `建議總注` now uses the payout reconciliation ticket total whenever ledger items exist; otherwise it uses the current bet slip total capped by `本場上限`.
+- `建議總注` now uses the payout reconciliation ticket total whenever ledger items exist; otherwise it uses the current bet slip total.
+- `本場上限` now displays `max(base risk cap, 建議總注)`, so a larger valid ticket total does not appear to break the shown cap.
 - Removed the `新建議` stat from the betting header.
-- Added a final race-cap enforcement pass after correlated exposure controls so minimum HK$10 tickets cannot push the final ticket list above the race cap.
-- Added regression tests for race-cap enforcement and the removed header label.
+- Added regression tests for the display-cap rule and the removed header label.
+- Removed the old whole-race stake scaling pass; correlated horse/pool/combination exposure controls still apply, but the header cap follows the final ticket total when that total is larger than the base cap.
 
 Verification:
 

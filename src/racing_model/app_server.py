@@ -1188,11 +1188,12 @@ def api_betting(
     ledger_staked = float((settlement_summary or {}).get("staked") or 0.0) if isinstance(settlement_summary, dict) else 0.0
     max_race_stake = float(payload.get("max_race_stake") or 0.0)
     current_ticket_stake = float((payload.get("bet_slip") or {}).get("summary", {}).get("total_stake") or payload.get("total_recommended_stake") or 0.0)
-    payload["display_max_race_stake"] = payload.get("max_race_stake", 0.0)
-    payload["display_total_recommended_stake"] = round(
-        ledger_staked if ledger_ticket_count > 0 else min(current_ticket_stake, max_race_stake) if max_race_stake > 0 else current_ticket_stake,
+    display_total_stake = round(
+        ledger_staked if ledger_ticket_count > 0 else current_ticket_stake,
         2,
     )
+    payload["display_total_recommended_stake"] = display_total_stake
+    payload["display_max_race_stake"] = round(max(max_race_stake, display_total_stake), 2)
     return payload
 
 

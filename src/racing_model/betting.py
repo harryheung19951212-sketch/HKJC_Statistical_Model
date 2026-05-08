@@ -99,27 +99,9 @@ def build_betting_decisions(
     max_race_stake = round(bankroll * profile.max_race_fraction, 2)
     raw_total = sum(float(item["recommended_stake"]) for item in active)
     scale = 1.0
-    if raw_total > max_race_stake > 0:
-        scale = max_race_stake / raw_total
-        for decision in active:
-            decision["recommended_stake"] = round_stake_to_unit(
-                float(decision["recommended_stake"]) * scale,
-                str(decision["market"]),
-            )
-            decision["stake_fraction"] = round(float(decision["recommended_stake"]) / bankroll, 6) if bankroll else 0.0
 
     all_decisions = [*decisions, *exotic_decisions]
     exposure_report = apply_correlated_exposure_controls(all_decisions, bankroll, profile)
-    race_cap_adjustments = enforce_race_stake_cap(all_decisions, bankroll, profile)
-    if race_cap_adjustments:
-        active_after_cap = [decision for decision in all_decisions if float(decision.get("recommended_stake") or 0.0) > 0]
-        exposure_report["after"] = exposure_snapshot(active_after_cap, exposure_report["caps"])
-        exposure_report["race_cap_adjustments"] = race_cap_adjustments
-        exposure_report["summary"] = exposure_summary(
-            exposure_report["after"],
-            exposure_report["caps"],
-            [*(exposure_report.get("adjusted_tickets") or []), *race_cap_adjustments],
-        )
     annotate_exotic_candidate_stakes(exotic_candidates, exotic_decisions)
     decisions.sort(
         key=lambda item: (
@@ -1165,64 +1147,6 @@ def apply_correlated_exposure_controls(
         "adjusted_tickets": adjusted,
         "summary": exposure_summary(after, caps, adjusted),
     }
-
-
-def enforce_race_stake_cap(
-    decisions: list[dict[str, Any]],
-    bankroll: float,
-    profile: RiskProfile,
-) -> list[dict[str, Any]]:
-    max_race_stake = round(max(float(bankroll or 0.0) * profile.max_race_fraction, 0.0), 2)
-    active = [decision for decision in decisions if float(decision.get("recommended_stake") or 0.0) > 0]
-    if not active or max_race_stake <= 0:
-        return []
-    total = round(sum(float(decision.get("recommended_stake") or 0.0) for decision in active), 2)
-    if total <= max_race_stake:
-        return []
-
-    remaining = max_race_stake
-    adjustments: list[dict[str, Any]] = []
-    for decision in sorted(active, key=race_cap_priority, reverse=True):
-        original_stake = float(decision.get("recommended_stake") or 0.0)
-        market = str(decision.get("market") or "WIN")
-        minimum = float(decision.get("minimum_ticket_cost") or pool_rule_payload(market)["min_unit"])
-        allowed = min(original_stake, remaining)
-        new_stake = round_stake_to_unit(allowed, market) if allowed >= minimum else 0.0
-        new_stake = min(new_stake, original_stake)
-        remaining = round(max(remaining - new_stake, 0.0), 2)
-        if new_stake == original_stake:
-            continue
-        decision["recommended_stake"] = new_stake
-        decision["stake_fraction"] = round(new_stake / bankroll, 6) if bankroll else 0.0
-        if new_stake <= 0:
-            decision["action"] = "觀望"
-            decision["reason"] = f"{decision.get('reason') or '符合條件'}；本場上限已用盡，暫不加入下注單"
-        else:
-            decision["reason"] = f"{decision.get('reason') or '符合條件'}；按本場上限截注"
-        adjustments.append(
-            {
-                "market": decision.get("market"),
-                "horse_id": decision.get("horse_id"),
-                "horse_name": decision.get("horse_name"),
-                "original_stake": round(original_stake, 1),
-                "adjusted_stake": round(new_stake, 1),
-                "factor": round(new_stake / original_stake, 4) if original_stake else 0.0,
-                "reason": f"本場上限 {max_race_stake:.1f}，原建議總注 {total:.1f}",
-            }
-        )
-    return adjustments
-
-
-def race_cap_priority(decision: dict[str, Any]) -> float:
-    adjusted_ev = safe_float(decision.get("cost_adjusted_expected_value"))
-    expected_value = safe_float(decision.get("expected_value")) or -1.0
-    probability = safe_float(decision.get("probability")) or 0.0
-    stake = safe_float(decision.get("recommended_stake")) or 0.0
-    return (
-        (adjusted_ev if adjusted_ev is not None else expected_value) * 100.0
-        + probability * 10.0
-        + min(stake, 300.0) * 0.01
-    )
 
 
 def exposure_snapshot(decisions: list[dict[str, Any]], caps: dict[str, float]) -> dict[str, Any]:

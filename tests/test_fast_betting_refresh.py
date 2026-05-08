@@ -196,8 +196,8 @@ def test_full_betting_summary_uses_confirmed_ledger_stake(tmp_path: Path) -> Non
     assert payload["placed_summary"]["confirmed"] > 0
     assert payload["placed_summary"]["executed_staked"] > 0
     assert payload["placed_summary"]["display_stake"] == payload["settlement"]["summary"]["staked"]
-    assert payload["display_max_race_stake"] == payload["max_race_stake"]
     assert payload["display_total_recommended_stake"] == payload["settlement"]["summary"]["staked"]
+    assert payload["display_max_race_stake"] == max(payload["max_race_stake"], payload["display_total_recommended_stake"])
 
 
 def test_live_race_odds_refresh_keeps_updating_ticks(tmp_path: Path) -> None:
