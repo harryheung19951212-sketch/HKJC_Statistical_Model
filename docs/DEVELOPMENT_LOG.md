@@ -2,6 +2,25 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-08 - Declaration Rows Override Stale Racecard Rows
+
+Goal:
+
+- Make the official HKJC declaration page authoritative for current body weights when the newer racecard page returns a mismatched race.
+
+Changes:
+
+- Added a declaration merge guard: when racecard horse IDs and `declaration_all.asp` horse IDs do not overlap, runner completion now uses the declaration rows directly.
+- Kept existing English horse names during completion when declaration rows only provide Chinese names.
+- Added regression coverage for mismatched racecard/declaration horse IDs.
+
+Verification:
+
+- `python -m pytest tests\test_hkjc_parser.py -q`
+- `python -m compileall -q src tests`
+- `node --check src\racing_model\web\app.js`
+- `python -m pytest -q`
+
 ## 2026-05-08 - HKJC Declaration Body Weights
 
 Goal:

@@ -1,5 +1,6 @@
 from racing_model.scrapers.hkjc import (
     HKJCSource,
+    merge_declaration_runners,
     merge_runner_localization,
     parse_chinese_racecard_runners,
     parse_chinese_result_runners,
@@ -93,6 +94,30 @@ def test_parse_chinese_declaration_rows_with_body_weight() -> None:
     assert rows[1]["horse_id"] == "J488"
     assert rows[1]["body_weight_lbs"] == 1126.0
     assert rows[1]["last_six_runs"] == "12/4/1/4/8/6"
+
+
+def test_declaration_rows_replace_mismatched_racecard_horse_ids() -> None:
+    racecard_rows = [
+        {
+            "race_id": "HK20260509-ST-01",
+            "horse_no": 1,
+            "horse_id": "E356",
+            "horse_name": "LUCKY WITH YOU",
+        }
+    ]
+    declaration_rows = [
+        {
+            "race_id": "HK20260509-ST-01",
+            "horse_no": 1,
+            "horse_id": "L245",
+            "horse_name_zh": "全能勇士",
+            "body_weight_lbs": 936.0,
+        }
+    ]
+
+    merged = merge_declaration_runners(racecard_rows, declaration_rows)
+
+    assert merged == declaration_rows
 
 
 def test_parse_horse_profile_last_six_runs_from_three_season_record() -> None:

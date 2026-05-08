@@ -9,7 +9,7 @@ from .features import build_training_races
 from .live import load_hkjc_race_day, parse_hkjc_race_id
 from .model import RankingModel
 from .scrapers.base import PoliteHttpClient
-from .scrapers.hkjc import HKJCSource, merge_runner_localization
+from .scrapers.hkjc import HKJCSource, merge_declaration_runners
 from .storage import fetch_all, refresh_race_statuses
 from .walk_forward import run_walk_forward_versions
 
@@ -237,7 +237,7 @@ def load_racecard_for_completion(
             declaration = source.fetch_declaration_page(race_date, venue, race_no)
             declaration_rows = source.parse_declaration(declaration.body, race_date, venue, race_no).get("runners", [])
             if declaration_rows:
-                parsed["runners"] = merge_runner_localization(parsed["runners"], declaration_rows)  # type: ignore[index]
+                parsed["runners"] = merge_declaration_runners(parsed["runners"], declaration_rows)  # type: ignore[index]
         except Exception:
             pass
     if parsed.get("runners"):
@@ -279,7 +279,12 @@ def update_runner_from_racecard(conn: sqlite3.Connection, runner: dict[str, Any]
         SET
           horse_no = COALESCE(:horse_no, horse_no),
           last_six_runs = CASE WHEN COALESCE(:last_six_runs, '') != '' THEN :last_six_runs ELSE last_six_runs END,
-          horse_name = CASE WHEN COALESCE(:horse_name, '') != '' THEN :horse_name ELSE horse_name END,
+          horse_name = CASE
+            WHEN COALESCE(:horse_name, '') != ''
+             AND COALESCE(:horse_name, '') != COALESCE(:horse_name_zh, '')
+            THEN :horse_name
+            ELSE horse_name
+          END,
           horse_name_zh = CASE WHEN COALESCE(:horse_name_zh, '') != '' THEN :horse_name_zh ELSE horse_name_zh END,
           jockey = CASE WHEN COALESCE(:jockey, '') != '' THEN :jockey ELSE jockey END,
           jockey_zh = CASE WHEN COALESCE(:jockey_zh, '') != '' THEN :jockey_zh ELSE jockey_zh END,

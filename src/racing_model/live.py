@@ -10,7 +10,7 @@ from .backtest import run_backtest
 from .exotic_dividends import upsert_exotic_dividends
 from .model import RankingModel
 from .scrapers.base import PoliteHttpClient
-from .scrapers.hkjc import HKJCSource, merge_runner_localization
+from .scrapers.hkjc import HKJCSource, merge_declaration_runners
 from .storage import freeze_final_place_snapshots, insert_rows, upsert_race_status
 
 
@@ -159,7 +159,7 @@ def load_hkjc_race_day(
                     try:
                         declaration = source.fetch_declaration_page(race_date, venue, race_no)
                         declaration_rows = source.parse_declaration(declaration.body, race_date, venue, race_no).get("runners", [])
-                        runners = merge_runner_localization(runners, declaration_rows) if declaration_rows else runners
+                        runners = merge_declaration_runners(runners, declaration_rows) if declaration_rows else runners
                     except Exception:
                         pass
                 if runners:

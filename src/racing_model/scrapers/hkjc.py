@@ -668,6 +668,21 @@ def merge_runner_localization(
     return merged
 
 
+def merge_declaration_runners(
+    runners: list[dict[str, Any]],
+    declaration_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if not declaration_rows:
+        return runners
+    if not runners:
+        return declaration_rows
+    runner_ids = {str(row.get("horse_id") or "").strip() for row in runners}
+    declaration_ids = {str(row.get("horse_id") or "").strip() for row in declaration_rows}
+    if runner_ids & declaration_ids:
+        return merge_runner_localization(runners, declaration_rows)
+    return declaration_rows
+
+
 def parse_racecard_runner_line(line: str, race_id: str) -> dict[str, Any] | None:
     pattern = re.compile(
         r"^(?P<horse_no>\d{1,2})\s+"
