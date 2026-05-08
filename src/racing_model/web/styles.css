@@ -448,6 +448,7 @@ h2 {
 .feed-panel,
 .comparison-panel,
 .situation-panel,
+.market-flow-panel,
 .history-panel,
 .results-panel,
 .coverage-panel,
@@ -728,6 +729,113 @@ h2 {
   display: block;
   margin-top: 3px;
   overflow-wrap: anywhere;
+}
+
+.market-flow-summary {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.market-flow-summary div {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  background: #fbfcfd;
+}
+
+.market-flow-summary label,
+.market-flow-metrics label {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.market-flow-summary strong,
+.market-flow-metrics b {
+  display: block;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.market-flow-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px 16px;
+}
+
+.market-flow-card {
+  min-width: 0;
+  display: grid;
+  gap: 9px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--blue);
+  border-radius: 6px;
+  padding: 10px;
+  background: #fbfcfd;
+}
+
+.market-flow-card.positive {
+  border-left-color: var(--green);
+}
+
+.market-flow-card.negative {
+  border-left-color: var(--red);
+}
+
+.market-flow-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.market-flow-title span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.market-flow-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px 10px;
+}
+
+.market-flow-insights {
+  display: grid;
+  gap: 8px;
+  padding: 0 16px 14px;
+}
+
+.market-flow-insight {
+  border-left: 3px solid var(--blue);
+  background: #f8fafc;
+  padding: 9px 10px;
+}
+
+.market-flow-insight.focus {
+  border-left-color: var(--green);
+}
+
+.market-flow-insight.risk {
+  border-left-color: var(--red);
+}
+
+.market-flow-insight p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.market-flow-empty {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .betting-tickets {
@@ -1812,6 +1920,8 @@ td:nth-child(4), th:nth-child(4) {
   .feed-cards { grid-template-columns: repeat(2, 1fr); }
   .comparison-cards { grid-template-columns: repeat(2, 1fr); }
   .race-situation { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .market-flow-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .market-flow-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .runner-detail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .odds-history-grid { grid-template-columns: 1fr; }
   .betting-summary { grid-template-columns: repeat(2, 1fr); }
@@ -1833,6 +1943,8 @@ td:nth-child(4), th:nth-child(4) {
   .feed-cards,
   .comparison-cards,
   .race-situation,
+  .market-flow-summary,
+  .market-flow-grid,
   .runner-detail,
   .coverage-summary,
   .betting-summary,

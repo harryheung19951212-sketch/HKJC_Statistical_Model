@@ -2,6 +2,27 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-08 - Late Market Flow Report Layer
+
+Goal:
+
+- Turn the existing late odds movement features into a race-level analysis layer for the betting model, covering live odds flow, tick coverage, steam/drift signals, and data-readiness warnings.
+
+Changes:
+
+- Added `market_flow_report()` and `/api/market-flow`.
+- The report excludes final/result odds from live-flow calculations so closing prices do not leak into pre-race signals.
+- Added UI panel `臨場資金流 / 賠率異動` under race situation charts.
+- The panel shows coverage rate, live tick count, source list, strongest steam/drift runners, and Chinese model-use warnings.
+- Added tests for actionable steam/drift detection and thin-sample detection.
+
+Verification:
+
+- `python tests\test_market_flow.py`
+- `python tests\test_late_market_flow.py`
+- `python -m compileall -q src dashboard tests`
+- `node --check src\racing_model\web\app.js`
+
 ## 2026-05-08 - Exotic Ledger Final Dividend Settlement Gate
 
 Goal:

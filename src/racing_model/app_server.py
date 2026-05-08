@@ -32,6 +32,7 @@ from .exotic_live import build_exotic_dividend_provider, refresh_exotic_dividend
 from .feed_health import odds_feed_health
 from .features import build_race_features
 from .live import load_hkjc_race_day, refresh_hkjc_results_if_available
+from .market_flow import market_flow_report
 from .model import RankingModel
 from .model_compare import dual_model_backtest, dual_model_comparison
 from .model_registry import model_registry_report, run_and_record_model_registry
@@ -348,6 +349,9 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
             elif path == "/api/odds-history":
                 race_id = required_query(query, "race_id")
                 self.send_json(odds_history(conn, race_id))
+            elif path == "/api/market-flow":
+                race_id = required_query(query, "race_id")
+                self.send_json(market_flow_report(conn, race_id))
             elif path == "/api/odds-feed":
                 race_id = required_query(query, "race_id")
                 self.send_json(odds_feed_health(conn, race_id, self.app_state.odds_interval_seconds))
@@ -844,6 +848,7 @@ def api_race_dashboard(conn, state: AppState, race_id: str, bankroll: float, ris
         "betting": {"deferred": True},
         "betting_ledger": {"deferred": True, "summary": {}, "items": []},
         "odds_feed": {"deferred": True},
+        "market_flow": {"deferred": True},
         "model_comparison": {"deferred": True},
         "odds_history": [],
         "results": {"deferred": True, "results": []},

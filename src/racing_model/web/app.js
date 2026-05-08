@@ -14,6 +14,7 @@ let currentView = "race";
 const viewDataLoaded = { coverage: false, analytics: false };
 let raceRefreshInFlight = false;
 let currentOddsHistory = [];
+let currentMarketFlow = null;
 const predictionSort = { key: "rank", direction: "asc" };
 
 const text = {
@@ -293,6 +294,7 @@ async function refreshSelectedRace(options = {}) {
     renderPredictions(currentPredictions);
     renderRunnerDetail(currentPredictions.find((row) => row.horse_id === selectedHorseId));
     renderRaceSituationCharts(currentPredictions);
+    renderMarketFlow(dashboard.market_flow || {}, { preserveDeferred: preservePanels });
     renderPredictionPolicy(payload.policy || {});
     renderBetting(dashboard.betting || {}, { preserveDeferred: preservePanels });
     refreshFullBetting(raceKey);
@@ -338,17 +340,19 @@ async function refreshOddsFeedPanel(raceKey) {
 async function refreshSupplementalRacePanels(raceKey) {
   const expectedRaceId = selectedRaceId;
   try {
-    const [comparison, history, results, weather] = await Promise.all([
+    const [comparison, history, results, weather, marketFlow] = await Promise.all([
       api(`/api/model-comparison?race_id=${raceKey}`),
       api(`/api/odds-history?race_id=${raceKey}`),
       api(`/api/results?race_id=${raceKey}`),
       api(`/api/weather?race_id=${raceKey}`),
+      api(`/api/market-flow?race_id=${raceKey}`),
     ]);
     if (selectedRaceId !== expectedRaceId) return;
     renderModelComparison(comparison);
     renderOddsHistory(history);
     renderResults(results.results || [], results.place_odds_completeness);
     renderWeather(weather);
+    renderMarketFlow(marketFlow);
   } catch (error) {
     if (selectedRaceId === expectedRaceId) $("system-status").textContent = `詳細資料載入未完成：${error.message}`;
   }
@@ -762,6 +766,71 @@ function renderSituationBar(label, value, displayValue, kind) {
 function renderFlowBar(row) {
   const value = Number.isFinite(Number(row.odds_delta_30s)) ? Number(row.odds_delta_30s) : Number(row.odds_delta_2m || 0);
   return renderSituationBar(`${row.horse_no || "-"} ${localizedHorse(row)}`, value, formatSigned(value), value >= 0 ? "positive" : "negative");
+}
+
+function renderMarketFlow(data, options = {}) {
+  const summaryBox = $("market-flow-summary");
+  const listBox = $("market-flow-list");
+  const insightBox = $("market-flow-insights");
+  if (!summaryBox || !listBox || !insightBox) return;
+  if (data && data.deferred) {
+    if (options.preserveDeferred && currentMarketFlow) return;
+    summaryBox.innerHTML = `<div><label>狀態</label><strong>背景載入</strong></div>`;
+    listBox.innerHTML = `<div class="market-flow-empty loading-placeholder">臨場資金流計算中...</div>`;
+    insightBox.innerHTML = "";
+    return;
+  }
+  currentMarketFlow = data || {};
+  const summary = currentMarketFlow.summary || {};
+  const rows = currentMarketFlow.runners || [];
+  $("market-flow-headline").textContent = marketFlowVerdictLabel(summary.verdict);
+  summaryBox.innerHTML = `
+    <div><label>覆蓋馬匹</label><strong>${summary.runners_with_ticks || 0}/${summary.runner_count || 0}</strong></div>
+    <div><label>覆蓋率</label><strong>${formatPct(summary.coverage_rate)}</strong></div>
+    <div><label>live ticks</label><strong>${summary.total_ticks || 0}</strong></div>
+    <div><label>落飛/轉冷</label><strong>${summary.steam_count || 0}/${summary.drift_count || 0}</strong></div>
+    <div><label>明顯訊號</label><strong>${summary.strong_signal_count || 0}</strong></div>
+    <div><label>來源</label><strong>${(summary.active_sources || []).join(", ") || "-"}</strong></div>
+  `;
+  const topRows = rows.slice(0, 8);
+  listBox.innerHTML = topRows.length ? topRows.map(renderMarketFlowCard).join("") : `<div class="market-flow-empty">未有 live 賠率 ticks</div>`;
+  const insights = currentMarketFlow.insights || [];
+  insightBox.innerHTML = insights.map((row) => `
+    <div class="market-flow-insight ${row.level || ""}">
+      <strong>${row.title || "-"}</strong>
+      <p>${row.body || ""}</p>
+    </div>
+  `).join("");
+}
+
+function renderMarketFlowCard(row) {
+  const directionClass = row.flow_label === "落飛" ? "positive" : row.flow_label === "轉冷" ? "negative" : "";
+  return `
+    <div class="market-flow-card ${directionClass}">
+      <div class="market-flow-title">
+        <strong>${row.horse_no || "-"} ${localizedHorse(row)}</strong>
+        <span>${row.flow_label || "-"}</span>
+      </div>
+      <div class="market-flow-metrics">
+        <div><label>最新獨贏</label><b>${formatNum(row.latest_win_odds, 2)}</b></div>
+        <div><label>ticks</label><b>${row.tick_count || 0}</b></div>
+        <div><label>5分鐘</label><b class="${evClass(row.odds_delta_5m)}">${formatSigned(row.odds_delta_5m)}</b></div>
+        <div><label>2分鐘</label><b class="${evClass(row.odds_delta_2m)}">${formatSigned(row.odds_delta_2m)}</b></div>
+        <div><label>30秒</label><b class="${evClass(row.odds_delta_30s)}">${formatSigned(row.odds_delta_30s)}</b></div>
+        <div><label>質素</label><b>${row.data_quality || "-"}</b></div>
+      </div>
+    </div>
+  `;
+}
+
+function marketFlowVerdictLabel(value) {
+  return {
+    missing_race: "未有賽事",
+    no_live_ticks: "未有 live ticks",
+    thin_sample: "樣本偏薄",
+    actionable_flow: "有臨場異動",
+    stable_market: "市場平穩",
+  }[value] || "-";
 }
 
 function renderResults(results, completeness = null) {
