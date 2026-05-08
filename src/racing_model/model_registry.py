@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .pool_replay import pool_replay_report
 from .storage import fetch_all, insert_rows
 from .walk_forward import run_walk_forward_versions
 
@@ -14,8 +15,16 @@ from .walk_forward import run_walk_forward_versions
 GATE_LABELS = {
     "no_data": "未有資料",
     "sample_insufficient": "樣本不足",
+    "execution_unverified": "下注時樣本不足",
+    "execution_blocked": "下注時表現未過關",
     "upgrade_candidate": "可列入升級候選",
     "hold_baseline": "保持現有基線",
+}
+
+EXECUTION_GATE_LABELS = {
+    "pass": "下注時 gate 通過",
+    "unverified": "下注時樣本不足",
+    "blocked": "下注時 ROI / 回撤未過關",
 }
 
 
@@ -35,8 +44,11 @@ def run_and_record_model_registry(
         min_expected_value=min_expected_value,
         stake=stake,
     )
+    execution = execution_gate_report(conn)
+    report["execution_gate"] = execution
     row = build_registry_row(
         report=report,
+        execution=execution,
         model_path=model_path,
         trigger=trigger,
         min_train_races=min_train_races,
@@ -75,12 +87,13 @@ def model_registry_report(conn: sqlite3.Connection, limit: int = 12) -> dict[str
         "summary": registry_summary(runs),
         "runs": runs,
         "latest_report": latest_report,
-        "clv_status": "投注決策留痕已可保存建議賠率並對照最後賠率；未累積足夠已對數建議前，CLV 只作監控，不作強制升級 gate。",
+        "clv_status": "升級 gate 已加入下注時 execution ROI / 回撤。未有足夠已確認下注樣本時，任何候選只可列為研究，不能正式替換模型。",
     }
 
 
 def build_registry_row(
     report: dict[str, Any],
+    execution: dict[str, Any],
     model_path: Path | str,
     trigger: str,
     min_train_races: int,
@@ -94,7 +107,8 @@ def build_registry_row(
     if best is None and versions:
         best = versions[0]
     baseline = next((row for row in versions if row.get("variant_id") == "baseline"), None)
-    gate = promotion_gate(summary, best, baseline)
+    stats_gate = statistical_promotion_gate(summary, best, baseline)
+    gate = apply_execution_gate(stats_gate, execution)
     best_metrics = (best or {}).get("metrics", {})
     baseline_metrics = (baseline or {}).get("metrics", {})
     return {
@@ -116,13 +130,17 @@ def build_registry_row(
         "best_value_roi": metric_or_none(best_metrics, "value_roi"),
         "best_top_pick_hit_rate": metric_or_none(best_metrics, "top_pick_hit_rate"),
         "best_max_drawdown": metric_or_none(best_metrics, "max_drawdown"),
+        "execution_confirmed": int(execution.get("confirmed", 0) or 0),
+        "execution_roi": optional_float(execution.get("execution_roi")),
+        "execution_max_drawdown": optional_float(execution.get("execution_max_drawdown")),
+        "execution_gate": str(execution.get("gate") or "unverified"),
         "promotion_gate": gate,
         "recommendation": str(summary.get("recommendation") or ""),
         "report_json": json.dumps(report, ensure_ascii=False, sort_keys=True),
     }
 
 
-def promotion_gate(summary: dict[str, Any], best: dict[str, Any] | None, baseline: dict[str, Any] | None) -> str:
+def statistical_promotion_gate(summary: dict[str, Any], best: dict[str, Any] | None, baseline: dict[str, Any] | None) -> str:
     folds = int(summary.get("folds", 0) or 0)
     if not best:
         return "no_data"
@@ -149,10 +167,53 @@ def promotion_gate(summary: dict[str, Any], best: dict[str, Any] | None, baselin
     return "hold_baseline"
 
 
+def promotion_gate(summary: dict[str, Any], best: dict[str, Any] | None, baseline: dict[str, Any] | None) -> str:
+    return statistical_promotion_gate(summary, best, baseline)
+
+
+def execution_gate_report(conn: sqlite3.Connection, min_confirmed: int = 20) -> dict[str, Any]:
+    replay = pool_replay_report(conn)
+    summary = replay.get("summary", {})
+    confirmed = int(summary.get("executed", 0) or 0)
+    execution_roi = optional_float(summary.get("execution_roi"))
+    execution_drawdown = optional_float(summary.get("execution_max_drawdown"))
+    if confirmed < min_confirmed or execution_roi is None:
+        gate = "unverified"
+        message = f"已確認下注樣本 {confirmed}/{min_confirmed}，暫時不足以批准模型替換。"
+    elif execution_roi < 0:
+        gate = "blocked"
+        message = f"下注時 ROI {execution_roi * 100:.1f}% 為負，禁止模型升級。"
+    else:
+        gate = "pass"
+        message = f"下注時 ROI {execution_roi * 100:.1f}% 通過最低執行 gate。"
+    return {
+        "gate": gate,
+        "gate_label": EXECUTION_GATE_LABELS.get(gate, gate),
+        "message": message,
+        "confirmed": confirmed,
+        "min_confirmed": min_confirmed,
+        "execution_roi": execution_roi,
+        "execution_max_drawdown": execution_drawdown,
+    }
+
+
+def apply_execution_gate(stats_gate: str, execution: dict[str, Any]) -> str:
+    if stats_gate != "upgrade_candidate":
+        return stats_gate
+    execution_gate = str(execution.get("gate") or "unverified")
+    if execution_gate == "pass":
+        return stats_gate
+    if execution_gate == "blocked":
+        return "execution_blocked"
+    return "execution_unverified"
+
+
 def public_registry_row(row: dict[str, Any]) -> dict[str, Any]:
     result = {key: value for key, value in row.items() if key != "report_json"}
     gate = str(result.get("promotion_gate") or "sample_insufficient")
     result["promotion_gate_label"] = GATE_LABELS.get(gate, gate)
+    execution_gate = str(result.get("execution_gate") or "unverified")
+    result["execution_gate_label"] = EXECUTION_GATE_LABELS.get(execution_gate, execution_gate)
     return result
 
 
@@ -172,5 +233,11 @@ def registry_summary(runs: list[dict[str, Any]]) -> dict[str, Any]:
 def metric_or_none(metrics: dict[str, Any], key: str) -> float | None:
     value = metrics.get(key)
     if value is None:
+        return None
+    return float(value)
+
+
+def optional_float(value: object) -> float | None:
+    if value is None or value == "":
         return None
     return float(value)

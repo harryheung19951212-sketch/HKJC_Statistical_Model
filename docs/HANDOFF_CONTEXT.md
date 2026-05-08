@@ -279,7 +279,13 @@ foreach ($t in $tests) {
 - execution replay 只計 `execution_status = confirmed` 且已對數的票。
 - 計算時用 `execution_stake`、`final_odds`、`outcome_win` 重算真實返還及盈虧，而不是沿用建議注碼。
 - UI「回測 / 智能迭代中心」的 pool replay 會同時顯示原本 ROI 及下注時 ROI。
-- 仍未完成：promotion gate 未正式把 execution ROI / execution drawdown 作為硬 blocker。
+- Model registry promotion gate 已正式加入 execution hard blocker：
+  - 原本 walk-forward gate 先判斷是否可成為升級候選。
+  - 如果原本可以升級，但已確認下注樣本少於 20，會變成 `execution_unverified`。
+  - 如果原本可以升級，但下注時 ROI 為負，會變成 `execution_blocked`。
+  - 只有 walk-forward gate 及 execution gate 都過關，才會保留 `upgrade_candidate`。
+- `model_registry_runs` 新增 `execution_confirmed`、`execution_roi`、`execution_max_drawdown`、`execution_gate`。
+- 仍未完成：未有真正 `promote` 指令自動替換 model JSON；現時只是 gate/report。
 
 ## 仍未完成 / 未做事項
 

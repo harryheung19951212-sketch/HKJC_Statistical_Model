@@ -142,6 +142,10 @@ CREATE TABLE IF NOT EXISTS model_registry_runs (
   best_value_roi REAL,
   best_top_pick_hit_rate REAL,
   best_max_drawdown REAL,
+  execution_confirmed INTEGER NOT NULL DEFAULT 0,
+  execution_roi REAL,
+  execution_max_drawdown REAL,
+  execution_gate TEXT NOT NULL DEFAULT 'unverified',
   promotion_gate TEXT NOT NULL DEFAULT 'sample_insufficient',
   recommendation TEXT NOT NULL DEFAULT '',
   report_json TEXT NOT NULL
@@ -312,6 +316,10 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
     ensure_column(conn, "betting_recommendations", "execution_source", "TEXT NOT NULL DEFAULT ''")
     ensure_column(conn, "betting_recommendations", "execution_slippage", "REAL")
     ensure_column(conn, "betting_recommendations", "execution_clv", "REAL")
+    ensure_column(conn, "model_registry_runs", "execution_confirmed", "INTEGER NOT NULL DEFAULT 0")
+    ensure_column(conn, "model_registry_runs", "execution_roi", "REAL")
+    ensure_column(conn, "model_registry_runs", "execution_max_drawdown", "REAL")
+    ensure_column(conn, "model_registry_runs", "execution_gate", "TEXT NOT NULL DEFAULT 'unverified'")
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS race_error_reviews (
@@ -356,6 +364,10 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
           best_value_roi REAL,
           best_top_pick_hit_rate REAL,
           best_max_drawdown REAL,
+          execution_confirmed INTEGER NOT NULL DEFAULT 0,
+          execution_roi REAL,
+          execution_max_drawdown REAL,
+          execution_gate TEXT NOT NULL DEFAULT 'unverified',
           promotion_gate TEXT NOT NULL DEFAULT 'sample_insufficient',
           recommendation TEXT NOT NULL DEFAULT '',
           report_json TEXT NOT NULL

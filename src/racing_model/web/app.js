@@ -1503,6 +1503,10 @@ function renderModelRegistry(data) {
         <div><label>Baseline Log Loss</label><b>${formatNum(run.baseline_log_loss, 3)}</b></div>
         <div><label>最佳 ROI</label><b class="${evClass(run.best_value_roi)}">${formatPct(run.best_value_roi)}</b></div>
         <div><label>最大回撤</label><b>${formatNum(run.best_max_drawdown, 1)}</b></div>
+        <div><label>下注時 Gate</label><b>${run.execution_gate_label || "-"}</b></div>
+        <div><label>確認樣本</label><b>${run.execution_confirmed || 0}</b></div>
+        <div><label>下注時 ROI</label><b class="${evClass(run.execution_roi)}">${run.execution_roi === null || run.execution_roi === undefined ? "-" : formatPct(run.execution_roi)}</b></div>
+        <div><label>下注時回撤</label><b class="${evClass(run.execution_max_drawdown)}">${run.execution_max_drawdown === null || run.execution_max_drawdown === undefined ? "-" : formatMoney(run.execution_max_drawdown)}</b></div>
       </div>
       <span class="version-verdict">${run.recommendation || "-"}</span>
     </div>

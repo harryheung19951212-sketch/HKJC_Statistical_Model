@@ -79,6 +79,7 @@ def market_replay(market: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
     returned = sum(safe_float(row.get("returned")) or 0.0 for row in reconciled)
     profit = sum(safe_float(row.get("profit")) or 0.0 for row in reconciled)
     execution = execution_replay(executed)
+    execution_drawdown = max_drawdown(executed, profit_key="execution_profit")
     expected_values = [safe_float(row.get("expected_value")) for row in rows]
     expected_values = [value for value in expected_values if value is not None]
     adjusted_values = [
@@ -158,6 +159,7 @@ def overall_summary(rows: list[dict[str, Any]], markets: list[dict[str, Any]], b
         "execution_returned": execution["returned"],
         "execution_profit": execution["profit"],
         "execution_roi": execution["roi"],
+        "execution_max_drawdown": execution_drawdown,
         "hit_rate": safe_divide(hits, len(reconciled)),
         "best_market": best["market"] if best else None,
         "best_market_label": best["market_label"] if best else None,
