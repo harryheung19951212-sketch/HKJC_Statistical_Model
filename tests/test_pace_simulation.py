@@ -55,6 +55,33 @@ def test_exotic_pace_payload_scores_order_fit() -> None:
     assert "節奏" in good_order["pace_note"]
 
 
+def test_pace_map_uses_historical_profile_signals() -> None:
+    predictions = [
+        runner("H001", 1, "unknown", 0.20) | {
+            "early_speed_profile": 0.92,
+            "pace_advantage_score": 0.18,
+            "distance_pace_fit": 0.12,
+        },
+        runner("H002", 8, "leader", 0.22) | {
+            "early_speed_profile": 0.30,
+            "traffic_risk_score": 0.45,
+            "pace_fade_score": 0.40,
+        },
+        runner("H003", 4, "closer", 0.18) | {
+            "early_speed_profile": 0.12,
+            "closing_gain_score": 0.55,
+        },
+    ]
+
+    annotate_predictions_with_pace(predictions)
+    early_profile = next(row for row in predictions if row["horse_id"] == "H001")
+    risky_leader = next(row for row in predictions if row["horse_id"] == "H002")
+
+    assert early_profile["pace_projected_position"] == 1
+    assert early_profile["pace_v2_advantage_signal"] > 0
+    assert risky_leader["traffic_risk"] >= 0.34
+
+
 def test_build_pace_map_handles_empty_predictions() -> None:
     assert build_pace_map([])["race_shape"]["shape"] == "unknown"
 

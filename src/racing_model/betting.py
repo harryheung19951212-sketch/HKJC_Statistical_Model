@@ -460,6 +460,7 @@ def build_exotic_candidates(
                 adjusted_ev,
             )
             pace_payload = exotic_pace_payload(horse_ids, runner_by_id, bool(product["ordered"]))
+            pace_adjusted_probability = probability * pace_probability_multiplier(pace_payload)
             unit = float(pool_rule_payload(code)["min_unit"])
             product_candidates.append(
                 {
@@ -477,6 +478,7 @@ def build_exotic_candidates(
                     "combination_key": combination_key,
                     "combination": format_combination(horse_ids, runner_by_id, bool(product["ordered"])),
                     "probability": round(probability, 6),
+                    "pace_adjusted_probability": round(pace_adjusted_probability, 6),
                     "break_even_dividend": round(1.0 / probability, 2),
                     "required_dividend": round(req_dividend, 2) if req_dividend else None,
                     "dividend": dividend,
@@ -496,16 +498,35 @@ def build_exotic_candidates(
                     **structure,
                 }
             )
-        product_candidates.sort(key=lambda item: float(item["probability"]), reverse=True)
+        product_candidates.sort(
+            key=lambda item: (
+                float(item.get("pace_adjusted_probability") or item["probability"]),
+                float(item.get("pace_fit_score") or 0.0),
+                -float(item.get("pace_risk_score") or 0.0),
+            ),
+            reverse=True,
+        )
         candidates.extend(product_candidates[:12])
     candidates.sort(
         key=lambda item: (
             exotic_priority(str(item["market"])),
             float(item["probability"]),
+            float(item.get("pace_fit_score") or 0.0),
         ),
         reverse=True,
     )
     return candidates
+
+
+def pace_probability_multiplier(pace_payload: dict[str, Any]) -> float:
+    fit = safe_float(pace_payload.get("pace_fit_score"))
+    risk = safe_float(pace_payload.get("pace_risk_score")) or 0.0
+    edge = safe_float(pace_payload.get("pace_edge_score")) or 0.0
+    distance_fit = safe_float(pace_payload.get("pace_distance_fit")) or 0.0
+    if fit is None:
+        return 1.0
+    multiplier = 0.92 + (fit * 0.16) + (max(edge, 0.0) * 0.08) + (max(distance_fit, 0.0) * 0.04) - (max(risk - 0.55, 0.0) * 0.12)
+    return clamp_value(multiplier, 0.82, 1.14)
 
 
 def build_exotic_decisions(
@@ -583,6 +604,8 @@ def build_exotic_decisions(
                 "pace_fit_score": candidate.get("pace_fit_score"),
                 "pace_order_fit": candidate.get("pace_order_fit"),
                 "pace_risk_score": candidate.get("pace_risk_score"),
+                "pace_edge_score": candidate.get("pace_edge_score"),
+                "pace_distance_fit": candidate.get("pace_distance_fit"),
                 "pace_note": candidate.get("pace_note"),
                 "pace_shape": candidate.get("pace_shape"),
                 "pace_shape_label": candidate.get("pace_shape_label"),
@@ -710,10 +733,14 @@ def pool_choice_item_score(row: dict[str, Any]) -> float:
     required = safe_float(row.get("required_dividend"))
     efficiency_gap = (dividend - required) if dividend is not None and required is not None else None
     stake = safe_float(row.get("recommended_stake")) or 0.0
+    pace_fit = safe_float(row.get("pace_fit_score")) or 0.0
+    pace_risk = safe_float(row.get("pace_risk_score")) or 0.0
     return (
         (adjusted_ev if adjusted_ev is not None else -0.25) * 100.0
         + probability * 8.0
         + (efficiency_gap or 0.0) * 0.15
+        + pace_fit * 2.0
+        - max(pace_risk - 0.55, 0.0) * 2.5
         + (5.0 if stake > 0 else 0.0)
     )
 

@@ -50,6 +50,10 @@ def annotate_predictions_with_pace(predictions: list[dict[str, Any]]) -> dict[st
                 "wide_risk_label": simulation["wide_risk_label"],
                 "finishing_kick": simulation["finishing_kick"],
                 "pace_advantage": simulation["pace_advantage"],
+                "pace_profile_early_speed": simulation["pace_profile_early_speed"],
+                "pace_projected_position_score": simulation["pace_projected_position_score"],
+                "pace_distance_fit": simulation["pace_distance_fit"],
+                "pace_v2_advantage_signal": simulation["pace_v2_advantage_signal"],
                 "pace_note": simulation["pace_note"],
                 "pace_shape": shape["shape"],
                 "pace_shape_label": shape["label"],
@@ -89,7 +93,16 @@ def build_pace_map(predictions: list[dict[str, Any]]) -> dict[str, Any]:
         style_score = running_style_score(style)
         probability = safe_float(row.get("top3_probability")) or safe_float(row.get("win_probability")) or 0.0
         probability_score = probability / max_probability if max_probability > 0 else 0.0
-        early_speed_score = clamp((0.58 * style_score) + (0.22 * (1.0 - draw_pct)) + (0.20 * probability_score))
+        profile_speed = safe_float(row.get("early_speed_profile"))
+        if profile_speed is None:
+            early_speed_score = clamp((0.58 * style_score) + (0.22 * (1.0 - draw_pct)) + (0.20 * probability_score))
+        else:
+            early_speed_score = clamp(
+                (0.42 * style_score)
+                + (0.34 * profile_speed)
+                + (0.14 * (1.0 - draw_pct))
+                + (0.10 * probability_score)
+            )
         prepared.append(
             {
                 "source": row,
@@ -100,6 +113,7 @@ def build_pace_map(predictions: list[dict[str, Any]]) -> dict[str, Any]:
                 "draw_pct": draw_pct,
                 "style": style,
                 "style_score": style_score,
+                "profile_speed": profile_speed,
                 "probability_score": probability_score,
                 "early_speed_score": early_speed_score,
             }
@@ -148,6 +162,10 @@ def build_pace_map(predictions: list[dict[str, Any]]) -> dict[str, Any]:
                 "wide_risk_label": risk_label(wide_risk),
                 "finishing_kick": round(finishing_kick, 4),
                 "pace_advantage": round(pace_advantage, 4),
+                "pace_profile_early_speed": round(float(item["profile_speed"] or 0.0), 4),
+                "pace_projected_position_score": round(1.0 - ((projected_position - 1) / max(runner_count - 1, 1)), 4),
+                "pace_distance_fit": round(safe_float(item["source"].get("distance_pace_fit")) or 0.0, 4),
+                "pace_v2_advantage_signal": round(safe_float(item["source"].get("pace_advantage_score")) or 0.0, 4),
                 "pace_note": pace_note(projected_position, runner_count, role, traffic_risk, wide_risk, pace_advantage),
             }
         )
@@ -185,12 +203,22 @@ def exotic_pace_payload(
     risks = [safe_float(row.get("traffic_risk")) or 0.0 for row in rows]
     wide_risks = [safe_float(row.get("wide_risk")) or 0.0 for row in rows]
     max_risk = max([*risks, *wide_risks, 0.0])
+    pace_edges = [safe_float(row.get("pace_advantage")) or 0.0 for row in rows]
+    distance_fits = [safe_float(row.get("pace_distance_fit")) or safe_float(row.get("distance_pace_fit")) or 0.0 for row in rows]
     positions = [safe_int(row.get("pace_projected_position")) for row in rows]
     positions = [position for position in positions if position is not None]
     order_fit = ordered_order_fit(positions) if ordered and len(positions) == len(rows) else None
     role_diversity = len({str(row.get("pace_role") or "") for row in rows if row.get("pace_role")}) / max(len(rows), 1)
     base_fit = max(0.0, 1.0 - max_risk)
-    pace_fit = (0.65 * (order_fit if order_fit is not None else base_fit)) + (0.35 * role_diversity)
+    edge_bonus = max(sum(pace_edges) / max(len(pace_edges), 1), -0.35)
+    distance_bonus = sum(distance_fits) / max(len(distance_fits), 1)
+    pace_fit = clamp(
+        (0.58 * (order_fit if order_fit is not None else base_fit))
+        + (0.26 * role_diversity)
+        + (0.10 * max(edge_bonus, 0.0))
+        + (0.06 * max(distance_bonus, 0.0))
+        - (0.10 * max(max_risk - 0.55, 0.0))
+    )
     shape_label = rows[0].get("pace_shape_label")
     runner_bits = [
         f"{row.get('horse_no') or '-'} {row.get('pace_role_label') or '-'}"
@@ -202,6 +230,8 @@ def exotic_pace_payload(
         "pace_fit_score": round(pace_fit, 4),
         "pace_order_fit": round(order_fit, 4) if order_fit is not None else None,
         "pace_risk_score": round(max_risk, 4),
+        "pace_edge_score": round(edge_bonus, 4),
+        "pace_distance_fit": round(distance_bonus, 4),
         "pace_note": note,
         "pace_shape": rows[0].get("pace_shape"),
         "pace_shape_label": shape_label,
@@ -249,6 +279,7 @@ def runner_traffic_risk(item: dict[str, Any], projected_position: int, runner_co
         risk += 0.12
     if str(item["style"]) in CLOSER_STYLES and runner_count >= 10:
         risk += 0.10
+    risk += (safe_float(item["source"].get("traffic_risk_score")) or 0.0) * 0.42
     return clamp(risk)
 
 
@@ -268,6 +299,8 @@ def runner_finishing_kick(item: dict[str, Any], role: str) -> float:
     style = str(item["style"])
     probability_score = float(item["probability_score"])
     base = 0.28 + (0.34 * probability_score)
+    base += (safe_float(item["source"].get("closing_gain_score")) or 0.0) * 0.20
+    base += max(safe_float(item["source"].get("hidden_ability_signal")) or 0.0, 0.0) * 0.08
     if style in CLOSER_STYLES or role == "closer":
         base += 0.24
     if role == "front":
@@ -300,6 +333,14 @@ def runner_pace_advantage(
         advantage += same_day_bias * 0.08
     elif role == "closer":
         advantage -= same_day_bias * 0.05
+    advantage += (safe_float(item["source"].get("pace_advantage_score")) or 0.0) * 0.45
+    advantage += (safe_float(item["source"].get("distance_pace_fit")) or 0.0) * 0.16
+    if shape == "fast":
+        advantage += (safe_float(item["source"].get("closing_gain_score")) or 0.0) * 0.12
+        if role == "front":
+            advantage -= (safe_float(item["source"].get("pace_fade_score")) or 0.0) * 0.14
+    if shape == "slow" and role == "closer":
+        advantage -= max(safe_float(item["source"].get("traffic_risk_score")) or 0.0, 0.0) * 0.10
     return max(-0.35, min(advantage, 0.35))
 
 

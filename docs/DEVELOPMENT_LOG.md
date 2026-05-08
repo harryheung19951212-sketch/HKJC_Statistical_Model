@@ -916,3 +916,25 @@ Verification:
 - `python -m compileall -q src dashboard tests`
 - `node --check src/racing_model/web/app.js`
 - `python -m pytest tests`
+
+## 2026-05-08 - Pace Profile And Race Shape V2
+
+Goal:
+
+- Turn the previous post-race trip attribution into pre-race pace and race-shape signals.
+- Cover indicator 8, indicator 27, and the class/rating part of indicator 11 with model-ready features and betting candidate sorting.
+
+Implementation:
+
+- Added `pace_profile.py` to analyse the last six runs for early speed, midrace move, turn position, late gain, front-run fade, traffic history, distance-pace fit, hidden ability, class change, and rating change.
+- Added race-level pace projection features for projected position, traffic risk, pace advantage, and race-shape pressure.
+- Extended the feature matrix, prediction payload, runner detail UI, prediction table, and exotic candidate cards with the new pace/class signals.
+- Upgraded `pace.py` so the betting pace map uses historical pace profiles in addition to running style, draw, market/model probability, same-day bias, and trip diagnostics.
+- Changed exotic candidate ordering and pool-choice scoring to use pace-adjusted probability, pace fit, pace edge, and pace risk.
+- Updated the 36-indicator coverage report for pace/race-shape, class-rating change, core feature coverage, and simulation blind spots.
+
+Verification:
+
+- `python -m compileall -q src dashboard tests`
+- `node --check src/racing_model/web/app.js`
+- `python -m pytest tests`

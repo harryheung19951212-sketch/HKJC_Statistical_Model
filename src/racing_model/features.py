@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from .pace_profile import build_race_pace_context, horse_pace_profile
 from .storage import fetch_all, latest_odds_by_race
 from .track_bias import same_day_track_bias, track_bias_features
 from .trip_diagnostics import horse_context_signals
@@ -31,6 +32,15 @@ FEATURE_NAMES = [
     "health_signal",
     "gear_change_signal",
     "pace_pressure",
+    "early_speed_profile",
+    "midrace_move_score",
+    "projected_position_score",
+    "traffic_risk_score",
+    "pace_advantage_score",
+    "distance_pace_fit",
+    "class_change_signal",
+    "rating_change_signal",
+    "hidden_ability_signal",
     "trip_luck_score",
     "ability_issue_score",
     "closing_gain_score",
@@ -102,6 +112,18 @@ def build_race_features(conn: sqlite3.Connection, race_id: str) -> list[RunnerFe
     all_runner_count = max(len(runners), 1)
     late_flow = late_market_flow(conn, race_id)
     track_bias = same_day_track_bias(conn, race_id)
+    pace_profiles = {
+        str(runner["horse_id"]): horse_pace_profile(
+            conn,
+            str(runner["horse_id"]),
+            str(race_row["date"]),
+            int(race_row["distance_m"]),
+            target_class_rating=str(race_row["class_rating"] or ""),
+            current_official_rating=optional_float(row_value(runner, "official_rating")),
+        )
+        for runner in runners
+    }
+    pace_contexts = build_race_pace_context(runners, pace_profiles)
 
     output: list[RunnerFeatures] = []
     for runner in runners:
@@ -126,6 +148,8 @@ def build_race_features(conn: sqlite3.Connection, race_id: str) -> list[RunnerFe
             current_body_weight_lbs=body_weight_lbs,
             current_gear=str(runner["gear"] or ""),
         )
+        pace_profile = pace_profiles.get(str(horse_id), {})
+        pace_context = pace_contexts.get(str(horse_id), {})
         feature_values = {
             "official_rating": float(runner["official_rating"] or 0),
             "weight_lbs": float(runner["weight_lbs"] or 0),
@@ -151,6 +175,15 @@ def build_race_features(conn: sqlite3.Connection, race_id: str) -> list[RunnerFe
             "health_signal": context["health_signal"],
             "gear_change_signal": context["gear_change_signal"],
             "pace_pressure": pace_pressure(runner["running_style"], runners),
+            "early_speed_profile": pace_profile.get("early_speed_profile", 0.0),
+            "midrace_move_score": pace_profile.get("midrace_move_score", 0.0),
+            "projected_position_score": pace_context.get("projected_position_score", 0.0),
+            "traffic_risk_score": pace_context.get("traffic_risk_score", 0.0),
+            "pace_advantage_score": pace_context.get("pace_advantage_score", 0.0),
+            "distance_pace_fit": pace_context.get("distance_pace_fit", pace_profile.get("distance_pace_fit", 0.0)),
+            "class_change_signal": pace_profile.get("class_change_signal", 0.0),
+            "rating_change_signal": pace_profile.get("rating_change_signal", 0.0),
+            "hidden_ability_signal": pace_profile.get("hidden_ability_signal", 0.0),
             "trip_luck_score": context["trip_luck_score"],
             "ability_issue_score": context["ability_issue_score"],
             "closing_gain_score": context["closing_gain_score"],

@@ -940,6 +940,7 @@ function renderExoticCard(row) {
       </div>
       <div class="exotic-metrics">
         <label>中獎率 <b>${formatPct(row.probability)}</b></label>
+        <label>節奏修正 <b>${row.pace_adjusted_probability === null || row.pace_adjusted_probability === undefined ? "-" : formatPct(row.pace_adjusted_probability)}</b></label>
         <label>打和派彩 <b>${formatNum(row.break_even_dividend, 2)}x</b></label>
         <label>\u6240\u9700\u6d3e\u5f69 <b>${formatNum(row.required_dividend, 2)}x</b></label>
         <label>官方/估算 <b>${formatNum(row.dividend, 2)}x</b></label>
@@ -949,6 +950,7 @@ function renderExoticCard(row) {
         <label>組合數 <b>${row.combination_count || 1}</b></label>
         <label>節奏吻合 <b>${row.pace_fit_score === null || row.pace_fit_score === undefined ? "-" : formatPct(row.pace_fit_score)}</b></label>
         <label>節奏風險 <b>${row.pace_risk_score === null || row.pace_risk_score === undefined ? "-" : formatPct(row.pace_risk_score)}</b></label>
+        <label>節奏優勢 <b>${row.pace_edge_score === null || row.pace_edge_score === undefined ? "-" : formatSigned(row.pace_edge_score, 2)}</b></label>
         <label>最低票 <b>${formatMoney(row.minimum_ticket_cost)}</b></label>
         <label>曝險 <b>${row.exposure_action || "保留"}</b></label>
         <label>期望值 <b class="${evClass(row.expected_value)}">${row.expected_value === null || row.expected_value === undefined ? "-" : Number(row.expected_value).toFixed(3)}</b></label>
@@ -1103,6 +1105,13 @@ function horseContextLabel(row) {
   return `${bodyWeight}｜${gear}｜${trip}｜${ability}`;
 }
 
+function horsePaceLabel(row) {
+  const edge = `步速 ${formatSignal(row.pace_advantage_score)}`;
+  const traffic = `塞車 ${formatSignal(row.traffic_risk_score)}`;
+  const distance = `路程 ${formatSignal(row.distance_pace_fit)}`;
+  return `${edge}｜${traffic}｜${distance}`;
+}
+
 function formatSignal(value) {
   if (value === null || value === undefined) return "-";
   return formatSigned(value, 2);
@@ -1117,7 +1126,7 @@ function renderPredictions(predictions) {
     tr.className = `clickable ${row.horse_id === selectedHorseId ? "selected" : ""}`;
     tr.innerHTML = `
       <td>${row.model_rank}</td>
-      <td><strong>${row.horse_no || "-"} ${localizedHorse(row)}</strong><br><span>${lastSixRunsLabel(row)}</span><br><span>${horseContextLabel(row)}</span><br><span>${row.horse_id}</span></td>
+      <td><strong>${row.horse_no || "-"} ${localizedHorse(row)}</strong><br><span>${lastSixRunsLabel(row)}</span><br><span>${horseContextLabel(row)}</span><br><span>${horsePaceLabel(row)}</span><br><span>${row.horse_id}</span></td>
       <td>${row.draw || "-"}</td>
       <td>${localizedJockey(row)}<br><span>${localizedTrainer(row)}</span></td>
       <td>${formatPct(row.win_probability)}<br><span>賠 ${formatNum(row.latest_win_odds, 2)}</span><br><b class="${evClass(row.expected_value)}">EV ${row.expected_value === null ? "-" : Number(row.expected_value).toFixed(3)}</b></td>
@@ -1348,6 +1357,7 @@ function renderRunnerDetail(row) {
       \u99ac\u865f ${row.horse_no || "-"} | \u6a94\u4f4d ${row.draw || "-"} | ${row.horse_id}<br>
       近6場往績：${lastSixRunsText(row)}<br>
       ${horseContextLabel(row)}<br>
+      ${horsePaceLabel(row)}<br>
       \u9a0e\u5e2b\uff1a${localizedJockey(row)} | \u7df4\u99ac\u5e2b\uff1a${localizedTrainer(row)}<br>
       \u7368\u8d0f\u52dd\u7387\uff1a${formatPct(row.win_probability)} | \u5165\u4e09\u7532\uff1a${formatPct(row.top3_probability)} | \u4f4d\u7f6e\u671f\u671b\u503c\uff1a${row.top3_expected_value === null ? "-" : Number(row.top3_expected_value).toFixed(3)}<br>
       \u4e09\u7532\u4f86\u6e90\uff1a${top3SourceLabel(row.top3_model_source)}
@@ -1368,6 +1378,11 @@ function renderRunnerDetail(row) {
     <div class="stat"><label>走位際遇/能力疑點</label><strong>${formatSignal(row.trip_luck_score)} / ${formatSignal(row.ability_issue_score)}</strong></div>
     <div class="stat"><label>後追/前領轉弱</label><strong>${formatSignal(row.closing_gain_score)} / ${formatSignal(row.pace_fade_score)}</strong></div>
     <div class="stat"><label>路程轉換/對手強弱</label><strong>${formatSignal(row.distance_stretch_signal)} / ${formatSignal(row.opponent_strength_score)}</strong></div>
+    <div class="stat"><label>起步/中段推進</label><strong>${formatSignal(row.early_speed_profile)} / ${formatSignal(row.midrace_move_score)}</strong></div>
+    <div class="stat"><label>預計位置/塞車</label><strong>${formatSignal(row.projected_position_score)} / ${formatSignal(row.traffic_risk_score)}</strong></div>
+    <div class="stat"><label>步速優勢/路程步速</label><strong>${formatSignal(row.pace_advantage_score)} / ${formatSignal(row.distance_pace_fit)}</strong></div>
+    <div class="stat"><label>升降班/評分變化</label><strong>${formatSignal(row.class_change_signal)} / ${formatSignal(row.rating_change_signal)}</strong></div>
+    <div class="stat"><label>隱藏能力</label><strong>${formatSignal(row.hidden_ability_signal)}</strong></div>
     <div class="stat"><label>同日內檔偏差</label><strong class="${evClass(row.same_day_inside_bias)}">${formatSigned(row.same_day_inside_bias)}</strong></div>
     <div class="stat"><label>同日外檔偏差</label><strong class="${evClass(row.same_day_outside_bias)}">${formatSigned(row.same_day_outside_bias)}</strong></div>
     <div class="stat"><label>同日跑法偏差</label><strong class="${evClass(row.same_day_pace_bias)}">${formatSigned(row.same_day_pace_bias)}</strong></div>
