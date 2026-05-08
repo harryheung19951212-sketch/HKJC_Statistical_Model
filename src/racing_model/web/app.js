@@ -1848,7 +1848,7 @@ async function manualRefreshOdds() {
     $("system-status").textContent = "賽事已開跑或完場，保留最後實時賠率";
   } else if (result.status === "error" || exotic.status === "error") {
     const message = [result.error, exotic.error].filter(Boolean).join(" | ");
-    $("system-status").textContent = `賠率/派彩未完整更新：${message}`;
+    $("system-status").textContent = `賠率tick / 組合派彩未完整更新：${message}`;
   } else {
     $("system-status").textContent = `已更新賠率 ${result.inserted || 0} 筆，組合派彩 ${exotic.inserted || 0} 筆`;
   }

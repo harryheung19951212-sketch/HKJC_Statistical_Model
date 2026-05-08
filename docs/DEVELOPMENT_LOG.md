@@ -2,6 +2,25 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-08 - Clarify Odds Tick And Exotic Dividend Counts
+
+Goal:
+
+- Make the race-header count clear so it is not mistaken for total betting odds or projected payout.
+
+Changes:
+
+- Renamed the top-right `賠率/派彩` metric to `賠率tick / 組合派彩`.
+- Renamed the manual refresh button to `刷新賠率tick / 組合派彩`.
+- Updated the related error status wording.
+- Widened the race-header metric boxes so the clearer label does not feel cramped.
+
+Verification:
+
+- `node --check src\racing_model\web\app.js`
+- `python -m compileall -q src dashboard tests`
+- `python tests\test_smoke.py`
+
 ## 2026-05-08 - Market Flow Per-Runner Signal Status
 
 Goal:

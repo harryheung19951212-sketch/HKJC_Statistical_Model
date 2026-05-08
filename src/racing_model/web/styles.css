@@ -403,7 +403,7 @@ h2 {
 
 .metrics {
   display: grid;
-  grid-template-columns: repeat(3, 96px);
+  grid-template-columns: repeat(3, minmax(112px, 1fr));
   gap: 10px;
 }
 
