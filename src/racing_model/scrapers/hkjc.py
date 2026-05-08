@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from .base import FetchResult, PoliteHttpClient
+from ..trip_diagnostics import running_positions_text
 
 
 COURSE_NAMES = {
@@ -108,6 +109,7 @@ class HKJCSource:
                     "trainer",
                     "draw",
                     "weight_lbs",
+                    "body_weight_lbs",
                     "running_style",
                     "win_odds",
                     "place_odds",
@@ -262,6 +264,7 @@ def result_runner_from_row(row: dict[str, Any]) -> dict[str, Any]:
         "trainer": row.get("trainer") or "unknown",
         "draw": row.get("draw") or 0,
         "weight_lbs": row.get("weight_lbs") or 0.0,
+        "body_weight_lbs": row.get("body_weight_lbs"),
         "official_rating": 0.0,
         "age": 0,
         "sex": "U",
@@ -311,6 +314,7 @@ def parse_racecard_runner_tokens(tokens: list[str], race_id: str) -> list[dict[s
             draw = int(tokens[index + 6])
             trainer = tokens[index + 7]
             rating = float(tokens[index + 9])
+            body_weight = float(tokens[index + 11]) if looks_like_decimal(tokens[index + 11]) else None
             cursor = index + 13
             if cursor < len(tokens) and looks_like_time(tokens[cursor]):
                 cursor += 1
@@ -340,6 +344,7 @@ def parse_racecard_runner_tokens(tokens: list[str], race_id: str) -> list[dict[s
                     "trainer_zh": "",
                     "draw": draw,
                     "weight_lbs": weight,
+                    "body_weight_lbs": body_weight,
                     "official_rating": rating,
                     "age": age,
                     "sex": sex,
@@ -391,6 +396,7 @@ def parse_racecard_brand_windows(tokens: list[str], race_id: str) -> list[dict[s
                     "trainer_zh": "",
                     "draw": int(tokens[trainer_index - 1]),
                     "weight_lbs": float(tokens[index + 1]),
+                    "body_weight_lbs": body_weight_from_tokens(tokens, rating_index),
                     "official_rating": float(tokens[rating_index]) if looks_like_decimal(tokens[rating_index]) else 0.0,
                     "age": infer_age_from_tokens(tokens, rating_index),
                     "sex": infer_sex_from_tokens(tokens, rating_index),
@@ -434,6 +440,24 @@ def trainer_index_after_brand(tokens: list[str], brand_index: int) -> int:
     if brand_index + 5 < len(tokens) and is_int(tokens[brand_index + 3]) and is_int(tokens[brand_index + 4]):
         return brand_index + 5
     return brand_index + 4
+
+
+def body_weight_from_tokens(tokens: list[str], start: int) -> float | None:
+    for token in tokens[start : min(start + 5, len(tokens))]:
+        value = body_weight_from_text(token)
+        if value is not None:
+            return value
+    return None
+
+
+def body_weight_from_text(value: object) -> float | None:
+    text = str(value or "").replace(",", "").strip()
+    if text == "-" or not looks_like_decimal(text):
+        return None
+    number = float(text)
+    if 500 <= number <= 1400:
+        return number
+    return None
 
 
 def infer_age_from_tokens(tokens: list[str], start: int) -> int:
@@ -580,6 +604,7 @@ def parse_racecard_runner_line(line: str, race_id: str) -> dict[str, Any] | None
         "trainer_zh": "",
         "draw": int(match.group("draw")),
         "weight_lbs": float(match.group("weight")),
+        "body_weight_lbs": body_weight_from_text(match.group("body_weight")),
         "official_rating": float(match.group("rating")),
         "age": infer_age_from_line(line),
         "sex": infer_sex_from_line(line),
@@ -621,11 +646,19 @@ def parse_result_rows(lines: list[str], race_id: str) -> list[dict[str, Any]]:
                     "race_id": race_id,
                     "horse_no": int(match.group("horse_no")),
                     "horse_id": match.group("brand"),
+                    "horse_name": normalize_horse_name(match.group("horse_name")),
+                    "jockey": strip_allowance(match.group("jockey")),
+                    "trainer": match.group("trainer").strip(),
+                    "draw": int(match.group("draw")),
+                    "weight_lbs": float(match.group("weight")),
+                    "body_weight_lbs": body_weight_from_text(match.group("body_weight")),
+                    "running_style": "unknown",
                     "finish_position": int(match.group("place")),
                     "finish_time_sec": time_to_seconds(match.group("time")),
                     "margin_lengths": margin_to_lengths(match.group("lbw")),
                     "sectional_400_sec": None,
                     "sectional_800_sec": None,
+                    "running_positions": "",
                     "comment": "",
                     "win_odds": float(match.group("odds")),
                     "place_odds": place_dividends.get(int(match.group("horse_no"))),
@@ -662,7 +695,8 @@ def parse_result_tokens(tokens: list[str], race_id: str) -> list[dict[str, Any]]
             cursor += 1
             weight_lbs = float(tokens[cursor]) if looks_like_decimal(tokens[cursor]) else 0.0
             cursor += 1
-            cursor += 1  # declared horse weight
+            body_weight = float(tokens[cursor]) if looks_like_decimal(tokens[cursor]) else None
+            cursor += 1
             draw = int(tokens[cursor]) if is_int(tokens[cursor]) else 0
             cursor += 1
             lbw = tokens[cursor]
@@ -685,12 +719,14 @@ def parse_result_tokens(tokens: list[str], race_id: str) -> list[dict[str, Any]]
                     "trainer": trainer,
                     "draw": draw,
                     "weight_lbs": weight_lbs,
+                    "body_weight_lbs": body_weight,
                     "running_style": infer_running_style_from_positions(running_positions),
                     "finish_position": place,
                     "finish_time_sec": finish_time,
                     "margin_lengths": margin_to_lengths(lbw),
                     "sectional_400_sec": None,
                     "sectional_800_sec": None,
+                    "running_positions": running_positions_text(running_positions),
                     "comment": f"{horse_name}; jockey={jockey}; trainer={trainer}",
                     "win_odds": win_odds,
                     "place_odds": None,

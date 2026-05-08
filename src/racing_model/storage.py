@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS runners (
   trainer_zh TEXT NOT NULL DEFAULT '',
   draw INTEGER NOT NULL,
   weight_lbs REAL NOT NULL,
+  body_weight_lbs REAL,
   official_rating REAL NOT NULL,
   age INTEGER NOT NULL,
   sex TEXT NOT NULL,
@@ -61,6 +62,7 @@ CREATE TABLE IF NOT EXISTS results (
   margin_lengths REAL NOT NULL,
   sectional_400_sec REAL,
   sectional_800_sec REAL,
+  running_positions TEXT NOT NULL DEFAULT '',
   comment TEXT NOT NULL DEFAULT '',
   PRIMARY KEY (race_id, horse_id)
 );
@@ -327,6 +329,8 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
     ensure_column(conn, "runners", "horse_name_zh", "TEXT NOT NULL DEFAULT ''")
     ensure_column(conn, "runners", "jockey_zh", "TEXT NOT NULL DEFAULT ''")
     ensure_column(conn, "runners", "trainer_zh", "TEXT NOT NULL DEFAULT ''")
+    ensure_column(conn, "runners", "body_weight_lbs", "REAL")
+    ensure_column(conn, "results", "running_positions", "TEXT NOT NULL DEFAULT ''")
     ensure_column(conn, "races", "race_name", "TEXT NOT NULL DEFAULT ''")
     ensure_column(conn, "betting_recommendations", "execution_status", "TEXT NOT NULL DEFAULT 'suggested'")
     ensure_column(conn, "betting_recommendations", "executed_at", "TEXT")

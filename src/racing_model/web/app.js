@@ -1095,6 +1095,19 @@ function lastSixRunsLabel(row) {
   return value === "-" ? "近6場 -" : `近6場 ${value}`;
 }
 
+function horseContextLabel(row) {
+  const bodyWeight = row.body_weight_lbs ? `體重 ${formatNum(row.body_weight_lbs, 0)}` : "體重 -";
+  const trip = `際遇 ${formatSignal(row.trip_luck_score)}`;
+  const ability = `能力疑點 ${formatSignal(row.ability_issue_score)}`;
+  const gear = row.gear ? `配備 ${row.gear}` : "配備 -";
+  return `${bodyWeight}｜${gear}｜${trip}｜${ability}`;
+}
+
+function formatSignal(value) {
+  if (value === null || value === undefined) return "-";
+  return formatSigned(value, 2);
+}
+
 function renderPredictions(predictions) {
   const body = $("prediction-body");
   body.innerHTML = "";
@@ -1104,7 +1117,7 @@ function renderPredictions(predictions) {
     tr.className = `clickable ${row.horse_id === selectedHorseId ? "selected" : ""}`;
     tr.innerHTML = `
       <td>${row.model_rank}</td>
-      <td><strong>${row.horse_no || "-"} ${localizedHorse(row)}</strong><br><span>${lastSixRunsLabel(row)}</span><br><span>${row.horse_id}</span></td>
+      <td><strong>${row.horse_no || "-"} ${localizedHorse(row)}</strong><br><span>${lastSixRunsLabel(row)}</span><br><span>${horseContextLabel(row)}</span><br><span>${row.horse_id}</span></td>
       <td>${row.draw || "-"}</td>
       <td>${localizedJockey(row)}<br><span>${localizedTrainer(row)}</span></td>
       <td>${formatPct(row.win_probability)}<br><span>賠 ${formatNum(row.latest_win_odds, 2)}</span><br><b class="${evClass(row.expected_value)}">EV ${row.expected_value === null ? "-" : Number(row.expected_value).toFixed(3)}</b></td>
@@ -1334,6 +1347,7 @@ function renderRunnerDetail(row) {
     <p class="runner-subtitle">
       \u99ac\u865f ${row.horse_no || "-"} | \u6a94\u4f4d ${row.draw || "-"} | ${row.horse_id}<br>
       近6場往績：${lastSixRunsText(row)}<br>
+      ${horseContextLabel(row)}<br>
       \u9a0e\u5e2b\uff1a${localizedJockey(row)} | \u7df4\u99ac\u5e2b\uff1a${localizedTrainer(row)}<br>
       \u7368\u8d0f\u52dd\u7387\uff1a${formatPct(row.win_probability)} | \u5165\u4e09\u7532\uff1a${formatPct(row.top3_probability)} | \u4f4d\u7f6e\u671f\u671b\u503c\uff1a${row.top3_expected_value === null ? "-" : Number(row.top3_expected_value).toFixed(3)}<br>
       \u4e09\u7532\u4f86\u6e90\uff1a${top3SourceLabel(row.top3_model_source)}
@@ -1349,6 +1363,11 @@ function renderRunnerDetail(row) {
     <div class="stat"><label>2分鐘賠率流</label><strong class="${evClass(row.odds_delta_2m)}">${formatSigned(row.odds_delta_2m)}</strong></div>
     <div class="stat"><label>30秒賠率流</label><strong class="${evClass(row.odds_delta_30s)}">${formatSigned(row.odds_delta_30s)}</strong></div>
     <div class="stat"><label>熱捧/轉冷</label><strong>${formatSigned(row.late_steam)} / ${formatSigned(row.late_drift)}</strong></div>
+    <div class="stat"><label>體重變化/趨勢</label><strong>${formatSignal(row.body_weight_change)} / ${formatSignal(row.body_weight_trend)}</strong></div>
+    <div class="stat"><label>健康/配備</label><strong>${formatSignal(row.health_signal)} / ${formatSignal(row.gear_change_signal)}</strong></div>
+    <div class="stat"><label>走位際遇/能力疑點</label><strong>${formatSignal(row.trip_luck_score)} / ${formatSignal(row.ability_issue_score)}</strong></div>
+    <div class="stat"><label>後追/前領轉弱</label><strong>${formatSignal(row.closing_gain_score)} / ${formatSignal(row.pace_fade_score)}</strong></div>
+    <div class="stat"><label>路程轉換/對手強弱</label><strong>${formatSignal(row.distance_stretch_signal)} / ${formatSignal(row.opponent_strength_score)}</strong></div>
     <div class="stat"><label>同日內檔偏差</label><strong class="${evClass(row.same_day_inside_bias)}">${formatSigned(row.same_day_inside_bias)}</strong></div>
     <div class="stat"><label>同日外檔偏差</label><strong class="${evClass(row.same_day_outside_bias)}">${formatSigned(row.same_day_outside_bias)}</strong></div>
     <div class="stat"><label>同日跑法偏差</label><strong class="${evClass(row.same_day_pace_bias)}">${formatSigned(row.same_day_pace_bias)}</strong></div>

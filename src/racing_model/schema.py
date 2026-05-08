@@ -24,6 +24,7 @@ class Runner:
     trainer: str
     draw: int
     weight_lbs: float
+    body_weight_lbs: float | None
     official_rating: float
     age: int
     sex: str
@@ -40,6 +41,7 @@ class Result:
     margin_lengths: float
     sectional_400_sec: float | None
     sectional_800_sec: float | None
+    running_positions: str
     comment: str
 
 
@@ -63,4 +65,3 @@ class OddsTick:
     win_odds: float
     place_odds: float | None
     source: str
-

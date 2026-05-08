@@ -9,11 +9,14 @@ from typing import Any
 
 from .storage import fetch_all, latest_odds_by_race
 from .track_bias import same_day_track_bias, track_bias_features
+from .trip_diagnostics import horse_context_signals
 
 
 FEATURE_NAMES = [
     "official_rating",
     "weight_lbs",
+    "body_weight_change",
+    "body_weight_trend",
     "draw_inside",
     "draw_outside",
     "age",
@@ -25,7 +28,15 @@ FEATURE_NAMES = [
     "jockey_win_rate",
     "trainer_win_rate",
     "workout_score",
+    "health_signal",
+    "gear_change_signal",
     "pace_pressure",
+    "trip_luck_score",
+    "ability_issue_score",
+    "closing_gain_score",
+    "pace_fade_score",
+    "distance_stretch_signal",
+    "opponent_strength_score",
     "market_implied",
     "odds_delta_5m",
     "odds_delta_2m",
@@ -61,6 +72,8 @@ class RunnerFeatures:
     last_six_runs: str
     horse_name_zh: str
     running_style: str
+    gear: str
+    body_weight_lbs: float | None
     jockey: str
     jockey_zh: str
     trainer: str
@@ -104,9 +117,20 @@ def build_race_features(conn: sqlite3.Connection, race_id: str) -> list[RunnerFe
             all_runner_count,
             str(runner["running_style"] or ""),
         )
+        body_weight_lbs = optional_float(row_value(runner, "body_weight_lbs"))
+        context = horse_context_signals(
+            conn,
+            str(horse_id),
+            str(race_row["date"]),
+            int(race_row["distance_m"]),
+            current_body_weight_lbs=body_weight_lbs,
+            current_gear=str(runner["gear"] or ""),
+        )
         feature_values = {
             "official_rating": float(runner["official_rating"] or 0),
             "weight_lbs": float(runner["weight_lbs"] or 0),
+            "body_weight_change": context["body_weight_change"],
+            "body_weight_trend": context["body_weight_trend"],
             "draw_inside": 1.0 if int(runner["draw"]) <= max(1, all_runner_count // 3) else 0.0,
             "draw_outside": 1.0 if int(runner["draw"]) > max(1, all_runner_count * 2 // 3) else 0.0,
             "age": float(runner["age"] or 0),
@@ -124,7 +148,15 @@ def build_race_features(conn: sqlite3.Connection, race_id: str) -> list[RunnerFe
             "jockey_win_rate": participant_win_rate(conn, "jockey", runner["jockey"], race_row["date"]),
             "trainer_win_rate": participant_win_rate(conn, "trainer", runner["trainer"], race_row["date"]),
             "workout_score": workout_score(conn, horse_id, race_row["date"]),
+            "health_signal": context["health_signal"],
+            "gear_change_signal": context["gear_change_signal"],
             "pace_pressure": pace_pressure(runner["running_style"], runners),
+            "trip_luck_score": context["trip_luck_score"],
+            "ability_issue_score": context["ability_issue_score"],
+            "closing_gain_score": context["closing_gain_score"],
+            "pace_fade_score": context["pace_fade_score"],
+            "distance_stretch_signal": context["distance_stretch_signal"],
+            "opponent_strength_score": context["opponent_strength_score"],
             "market_implied": implied_probability(latest_win_odds),
             "odds_delta_5m": late_flow.get(horse_id, {}).get("odds_delta_5m", 0.0),
             "odds_delta_2m": late_flow.get(horse_id, {}).get("odds_delta_2m", 0.0),
@@ -145,6 +177,8 @@ def build_race_features(conn: sqlite3.Connection, race_id: str) -> list[RunnerFe
                 last_six_runs=str(runner["last_six_runs"] or "") if "last_six_runs" in runner.keys() else "",
                 horse_name_zh=runner["horse_name_zh"] if "horse_name_zh" in runner.keys() else "",
                 running_style=str(runner["running_style"] or ""),
+                gear=str(runner["gear"] or ""),
+                body_weight_lbs=body_weight_lbs,
                 jockey=runner["jockey"],
                 jockey_zh=runner["jockey_zh"] if "jockey_zh" in runner.keys() else "",
                 trainer=runner["trainer"],
@@ -469,6 +503,16 @@ def implied_probability(odds: float | None) -> float:
     if not odds or odds <= 1:
         return 0.0
     return 1.0 / odds
+
+
+def row_value(row: sqlite3.Row, key: str) -> object:
+    return row[key] if key in row.keys() else None
+
+
+def optional_float(value: object) -> float | None:
+    if value in {None, ""}:
+        return None
+    return float(value)
 
 
 def late_market_flow(conn: sqlite3.Connection, race_id: str) -> dict[str, dict[str, float]]:

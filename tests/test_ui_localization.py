@@ -99,6 +99,11 @@ def test_browser_refresh_preserves_page_and_tab_state() -> None:
     assert "function renderPromotionScorecard" in js
     assert "renderPromotionScorecard(dashboard.promotion_scorecard || {})" in js
     assert "function renderPromotionSectionMetrics" in js
+    assert "function horseContextLabel" in js
+    assert "trip_luck_score" in js
+    assert "ability_issue_score" in js
+    assert "體重變化/趨勢" in js
+    assert "走位際遇/能力疑點" in js
     assert "grid-template-columns: repeat(4, minmax(0, 1fr));" in css
 
 

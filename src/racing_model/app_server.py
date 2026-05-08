@@ -1314,6 +1314,7 @@ def api_results(
           re.finish_position,
           re.finish_time_sec,
           re.margin_lengths,
+          re.running_positions,
           re.comment,
           ru.horse_no,
           ru.horse_name,
@@ -1326,6 +1327,7 @@ def api_results(
           ru.trainer_zh,
           COALESCE(NULLIF(ru.trainer_zh, ''), ru.trainer) AS display_trainer,
           ru.draw,
+          ru.body_weight_lbs,
           fo.win_odds,
           fo.place_odds AS final_place_odds
         FROM results re

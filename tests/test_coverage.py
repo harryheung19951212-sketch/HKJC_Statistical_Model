@@ -59,6 +59,9 @@ def test_coverage_report_contains_all_roadmap_groups() -> None:
     assert "src/racing_model/pace.py" in pace_item["supported_files"]
     scorecard_item = next(item for item in items if item["id"] == 18)
     assert "src/racing_model/promotion_scorecard.py" in scorecard_item["supported_files"]
+    for item_id in {2, 3, 6, 8, 21, 33}:
+        item = next(row for row in items if row["id"] == item_id)
+        assert "src/racing_model/trip_diagnostics.py" in item["supported_files"]
     assert report["summary"]["database"]["races"] > 0
     assert report["summary"]["database"]["runners"] > 0
     assert report["summary"]["coverage_score"] > 0

@@ -35,6 +35,22 @@ FEATURE_LABELS_ZH = {
 }
 
 
+FEATURE_LABELS_ZH.update(
+    {
+        "body_weight_change": "體重變化",
+        "body_weight_trend": "體重趨勢",
+        "health_signal": "健康/狀態",
+        "gear_change_signal": "配備轉變",
+        "trip_luck_score": "走位際遇",
+        "ability_issue_score": "能力疑點",
+        "closing_gain_score": "後追增益",
+        "pace_fade_score": "前領轉弱",
+        "distance_stretch_signal": "路程轉換",
+        "opponent_strength_score": "對手強弱",
+    }
+)
+
+
 @dataclass
 class RankingModel:
     feature_names: list[str]
@@ -132,6 +148,8 @@ class RankingModel:
                     "horse_name_zh": runner.horse_name_zh,
                     "display_name": runner.horse_name_zh or runner.horse_name,
                     "running_style": runner.running_style,
+                    "gear": runner.gear,
+                    "body_weight_lbs": runner.body_weight_lbs,
                     "jockey": runner.jockey,
                     "jockey_zh": runner.jockey_zh,
                     "display_jockey": runner.jockey_zh or runner.jockey,
@@ -151,6 +169,16 @@ class RankingModel:
                     "place_odds_source": place_odds_source,
                     "market_probability": market_probability,
                     "adjusted_speed_figure": runner.features.get("adjusted_speed_figure", 0.0),
+                    "body_weight_change": runner.features.get("body_weight_change", 0.0),
+                    "body_weight_trend": runner.features.get("body_weight_trend", 0.0),
+                    "gear_change_signal": runner.features.get("gear_change_signal", 0.0),
+                    "health_signal": runner.features.get("health_signal", 0.0),
+                    "trip_luck_score": runner.features.get("trip_luck_score", 0.0),
+                    "ability_issue_score": runner.features.get("ability_issue_score", 0.0),
+                    "closing_gain_score": runner.features.get("closing_gain_score", 0.0),
+                    "pace_fade_score": runner.features.get("pace_fade_score", 0.0),
+                    "distance_stretch_signal": runner.features.get("distance_stretch_signal", 0.0),
+                    "opponent_strength_score": runner.features.get("opponent_strength_score", 0.0),
                     "odds_delta_5m": runner.features.get("odds_delta_5m", 0.0),
                     "odds_delta_2m": runner.features.get("odds_delta_2m", 0.0),
                     "odds_delta_30s": runner.features.get("odds_delta_30s", 0.0),

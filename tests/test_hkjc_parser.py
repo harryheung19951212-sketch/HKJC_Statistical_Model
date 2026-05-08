@@ -64,6 +64,7 @@ def test_parse_hkjc_tokenized_racecard_rows() -> None:
             "trainer_zh": "",
             "draw": 7,
             "weight_lbs": 135.0,
+            "body_weight_lbs": 1121.0,
             "official_rating": 40.0,
             "age": 5,
             "sex": "G",
@@ -189,11 +190,15 @@ def test_parse_hkjc_tokenized_result_rows() -> None:
     assert rows[0]["horse_no"] == 9
     assert rows[0]["finish_position"] == 1
     assert rows[0]["margin_lengths"] == 0.0
+    assert rows[0]["running_positions"] == "7/7/5/1"
+    assert rows[0]["body_weight_lbs"] == 1101.0
     assert rows[0]["place_odds"] == 1.6
     assert rows[1]["horse_id"] == "K028"
     assert rows[1]["horse_no"] == 13
     assert rows[1]["finish_position"] == 2
     assert rows[1]["margin_lengths"] == 1.25
+    assert rows[1]["running_positions"] == "2/2/1/2"
+    assert rows[1]["body_weight_lbs"] == 1059.0
     assert rows[1]["place_odds"] == 8.95
 
 
@@ -256,7 +261,9 @@ def test_parse_results_builds_fallback_race_and_runners() -> None:
     assert parsed["runners"][0]["horse_name"] == "MEEPMEEP"
     assert parsed["runners"][0]["draw"] == 2
     assert parsed["runners"][0]["weight_lbs"] == 128.0
+    assert parsed["runners"][0]["body_weight_lbs"] == 1101.0
     assert parsed["results"][0]["finish_position"] == 1
+    assert parsed["results"][0]["running_positions"] == "7/7/5/1"
     assert parsed["odds_ticks"][0]["source"] == "hkjc_results_final"
 
 

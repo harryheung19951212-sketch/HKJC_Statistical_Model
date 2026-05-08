@@ -894,3 +894,25 @@ Verification:
 - `python -m compileall -q src dashboard tests`
 - `node --check src/racing_model/web/app.js`
 - `python -m pytest tests`
+
+## 2026-05-08 - Trip Attribution And Horse Context Signals
+
+Goal:
+
+- Strengthen the 36-indicator model coverage with horse-level context beyond finishing position.
+- Separate recent-form outcomes into trip/luck problems, ability concerns, closing strength, pace fade, distance-fit signals, body-weight movement, health stability, gear changes, and opponent strength.
+
+Implementation:
+
+- Added `trip_diagnostics.py` to analyse the last six runs using HKJC running positions, result comments, body weight, gear, class, prize money, and field strength.
+- Stored declared body weight on runners and along-the-run positions on results, with database migration support.
+- Extended HKJC racecard/result parsing so imported rows carry body weight and route position sequences such as `7/7/5/1`.
+- Added new model features for body-weight change/trend, health, gear changes, trip luck, ability issue, closing gain, pace fade, distance stretch suitability, and opponent strength.
+- Exposed the new signals in prediction payloads, runner detail, prediction table horse context, result API rows, and the 36-indicator coverage report.
+- Added regression tests for parser extraction, trip attribution, model payload fields, UI labels, and coverage mapping.
+
+Verification:
+
+- `python -m compileall -q src dashboard tests`
+- `node --check src/racing_model/web/app.js`
+- `python -m pytest tests`
