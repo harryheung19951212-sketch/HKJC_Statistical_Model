@@ -94,6 +94,10 @@ def test_browser_refresh_preserves_page_and_tab_state() -> None:
     assert "新建議" not in js
     assert "items.slice(0, 10).map(renderSettlementCard)" not in js
     assert "items.slice(0, 10).map((row)" not in js
+    assert "settlementFilter" in js
+    assert "data-settlement-filter" in js
+    assert "settlement-market-filter" in js
+    assert ".settlement-filters" in css
     assert "settings.kelly_label" in js
     assert "promotion-scorecard-summary" in html
     assert "promotion-scorecard-sections" in html

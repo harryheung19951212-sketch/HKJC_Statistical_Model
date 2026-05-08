@@ -1171,6 +1171,66 @@ h2 {
   gap: 8px;
 }
 
+.settlement-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fbfcfd;
+}
+
+.filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.filter-group span,
+.filter-count {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.filter-chip,
+.filter-select {
+  min-height: 32px;
+  border: 1px solid #cfd8e3;
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.filter-chip {
+  padding: 6px 10px;
+}
+
+.filter-chip.active {
+  border-color: #176f87;
+  background: #eaf6f8;
+  color: #12596c;
+}
+
+.filter-chip.reset {
+  color: var(--muted);
+}
+
+.filter-select {
+  padding: 5px 28px 5px 9px;
+}
+
+.settlement-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .exotic-card,
 .settlement-card {
   display: grid;

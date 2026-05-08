@@ -18,6 +18,8 @@ let bettingRefreshQueued = false;
 let currentOddsHistory = [];
 let currentMarketFlow = null;
 let activeRaceTab = savedUiValue("activeRaceTab", "overview");
+let settlementFilter = savedUiValue("settlementFilter", { status: "all", execution: "all", market: "all" });
+let currentBettingData = null;
 const predictionSort = { key: "rank", direction: "asc" };
 const UI_STATE_KEY = "hkjc-racing-ui-state";
 
@@ -82,6 +84,7 @@ function saveUiState(patch = {}) {
       selectedHorseId,
       currentView,
       activeRaceTab,
+      settlementFilter,
       raceFolderState,
       raceDateFolderState,
       ...patch,
@@ -532,6 +535,7 @@ function renderBetting(data, options = {}) {
     box.innerHTML = `<div class="betting-empty loading-placeholder">投注建議計算中...</div>`;
     return;
   }
+  if (data) currentBettingData = data;
   summary.classList.remove("refreshing");
   const settings = data.risk_settings || {};
   const gate = data.calibration_gate || {};
@@ -737,18 +741,96 @@ function renderBettingSettlement(settlement) {
   const summary = settlement.summary || {};
   const items = settlement.items || [];
   if (!items.length) return "";
+  const filteredItems = filteredSettlementItems(items);
+  const filters = renderSettlementFilters(items, filteredItems);
+  const empty = filteredItems.length
+    ? ""
+    : `<p class="settlement-empty">呢個篩選未有投注記錄</p>`;
   return `
     <div class="settlement-section">
       <div class="exotic-head">
         <strong>派彩對數</strong>
-        <span>中 ${summary.hit || 0}｜唔中 ${summary.miss || 0}｜待派彩 ${summary.pending || 0}｜盈虧 ${formatMoney(summary.profit)}</span>
+        <span>中 ${summary.hit || 0}｜唔中 ${summary.miss || 0}｜待派彩 ${summary.pending || 0}｜顯示 ${filteredItems.length}/${items.length}｜盈虧 ${formatMoney(summary.profit)}</span>
       </div>
+      ${filters}
       <div class="settlement-grid">
-        ${items.map(renderSettlementCard).join("")}
+        ${filteredItems.map(renderSettlementCard).join("")}
       </div>
+      ${empty}
       <small>${settlement.note || ""}</small>
     </div>
   `;
+}
+
+function renderSettlementFilters(items, filteredItems) {
+  const markets = settlementMarkets(items);
+  return `
+    <div class="settlement-filters" aria-label="派彩對數篩選">
+      <div class="filter-group">
+        <span>結果</span>
+        ${settlementFilterButton("status", "all", "全部")}
+        ${settlementFilterButton("status", "pending", "待派彩")}
+        ${settlementFilterButton("status", "hit", "中")}
+        ${settlementFilterButton("status", "miss", "唔中")}
+      </div>
+      <div class="filter-group">
+        <span>入飛</span>
+        ${settlementFilterButton("execution", "all", "全部")}
+        ${settlementFilterButton("execution", "confirmed", "已入飛")}
+        ${settlementFilterButton("execution", "suggested", "未入飛")}
+      </div>
+      <label class="filter-group market-filter">
+        <span>彩池</span>
+        <select id="settlement-market-filter" class="filter-select">
+          <option value="all"${settlementFilter.market === "all" ? " selected" : ""}>全部彩池</option>
+          ${markets.map((market) => `<option value="${market}"${settlementFilter.market === market ? " selected" : ""}>${marketLabel(market)} ${market}</option>`).join("")}
+        </select>
+      </label>
+      <button class="filter-chip reset" type="button" data-settlement-filter-reset="1">重設</button>
+      <span class="filter-count">${filteredItems.length} 張</span>
+    </div>
+  `;
+}
+
+function settlementFilterButton(group, value, label) {
+  const active = settlementFilter[group] === value ? " active" : "";
+  return `<button class="filter-chip${active}" type="button" data-settlement-filter="${group}" data-filter-value="${value}">${label}</button>`;
+}
+
+function filteredSettlementItems(items) {
+  return items.filter((row) => {
+    const status = settlementStatus(row).className;
+    if (settlementFilter.status !== "all" && settlementFilter.status !== status) return false;
+    const execution = row.execution_status === "confirmed" ? "confirmed" : "suggested";
+    if (settlementFilter.execution !== "all" && settlementFilter.execution !== execution) return false;
+    if (settlementFilter.market !== "all" && settlementFilter.market !== row.market) return false;
+    return true;
+  });
+}
+
+function settlementMarkets(items) {
+  const preferred = ["WIN", "PLACE", "QIN", "QPL", "FCT", "TRIO", "TCE", "FIRST4", "QUARTET"];
+  const unique = [...new Set(items.map((row) => row.market).filter(Boolean))];
+  return unique.sort((a, b) => {
+    const ai = preferred.indexOf(a);
+    const bi = preferred.indexOf(b);
+    if (ai !== -1 || bi !== -1) return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+    return String(a).localeCompare(String(b));
+  });
+}
+
+function marketLabel(market) {
+  return {
+    WIN: "獨贏",
+    PLACE: "位置",
+    QIN: "連贏",
+    QPL: "位置Q",
+    FCT: "二重彩",
+    TRIO: "單T",
+    TCE: "三重彩",
+    FIRST4: "四連環",
+    QUARTET: "四重彩",
+  }[market] || "";
 }
 
 function renderSettlementCard(row) {
@@ -777,6 +859,31 @@ function settlementStatus(row) {
   if (row.reconciliation_status !== "reconciled") return { label: "待派彩", className: "pending" };
   if (Number(row.outcome_win || 0) === 1) return { label: "中", className: "hit" };
   return { label: "唔中", className: "miss" };
+}
+
+function handleSettlementFilterClick(event) {
+  const reset = event.target.closest("[data-settlement-filter-reset]");
+  if (reset) {
+    settlementFilter = { status: "all", execution: "all", market: "all" };
+    saveUiState({ settlementFilter });
+    if (currentBettingData) renderBetting(currentBettingData);
+    return;
+  }
+  const button = event.target.closest("[data-settlement-filter]");
+  if (!button) return;
+  settlementFilter = {
+    ...settlementFilter,
+    [button.dataset.settlementFilter]: button.dataset.filterValue || "all",
+  };
+  saveUiState({ settlementFilter });
+  if (currentBettingData) renderBetting(currentBettingData);
+}
+
+function handleSettlementFilterChange(event) {
+  if (event.target.id !== "settlement-market-filter") return;
+  settlementFilter = { ...settlementFilter, market: event.target.value || "all" };
+  saveUiState({ settlementFilter });
+  if (currentBettingData) renderBetting(currentBettingData);
 }
 
 function renderExoticSection(candidates, upgradePaths) {
@@ -2688,6 +2795,8 @@ async function boot() {
   $("refresh-error-taxonomy").addEventListener("click", refreshErrorTaxonomy);
   $("race-day-form").addEventListener("submit", loadRaceDay);
   $("backfill-form").addEventListener("submit", loadBackfill);
+  document.addEventListener("click", handleSettlementFilterClick);
+  document.addEventListener("change", handleSettlementFilterChange);
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
       $("system-status").textContent = "畫面背景中，伺服器繼續追蹤本場";

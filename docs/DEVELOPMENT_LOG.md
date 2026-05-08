@@ -2,6 +2,25 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-09 - Settlement Display Filters
+
+Goal:
+
+- Make payout reconciliation easier to inspect after the physical-ticket dedupe by adding display filters.
+
+Changes:
+
+- Added settlement filters for result status, execution status, and betting market.
+- The settlement summary now shows both total tickets and the filtered visible count.
+- Filter choices persist in browser local storage and re-render immediately without another API call.
+- Added UI styling for the filter controls and an empty-filter message.
+
+Verification:
+
+- `python -m pytest tests\test_ui_localization.py tests\test_betting_settlement.py tests\test_fast_betting_refresh.py -q`
+- `python -m compileall -q src tests`
+- `node --check src\racing_model\web\app.js`
+
 ## 2026-05-09 - Global Logical Ticket Dedupe Hardening
 
 Goal:
