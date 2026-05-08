@@ -1521,6 +1521,18 @@ async function runModelRegistry() {
   $("system-status").textContent = `OOS 評估已保存：${(result.run || {}).promotion_gate_label || "-"}`;
 }
 
+async function promoteModel() {
+  $("system-status").textContent = "模型升級 Gate 檢查中...";
+  const result = await api("/api/model-registry/promote", { method: "POST" });
+  if (result.registry) renderModelRegistry(result.registry);
+  if (result.status === "promoted") {
+    $("system-status").textContent = `模型已升級：${result.variant_label || result.variant_id}｜訓練 ${result.trained_races || 0} 場`;
+    await refreshSelectedRace({ preservePanels: true });
+    return;
+  }
+  $("system-status").textContent = `模型未升級：${result.reason || result.promotion_gate_label || "Gate 未通過"}`;
+}
+
 function renderBettingLedger(data) {
   if (data && data.deferred) {
     $("betting-ledger-summary").innerHTML = `<div class="stat"><label>狀態</label><strong>載入中</strong></div>`;
@@ -2109,6 +2121,7 @@ async function boot() {
   $("risk-profile").addEventListener("change", refreshSelectedRace);
   $("run-gpt-iteration").addEventListener("click", runGptIteration);
   $("run-model-registry").addEventListener("click", runModelRegistry);
+  $("promote-model").addEventListener("click", promoteModel);
   $("reconcile-betting-ledger").addEventListener("click", reconcileBettingLedger);
   $("reconcile-pool-replay").addEventListener("click", reconcilePoolReplay);
   $("repair-data").addEventListener("click", repairData);

@@ -40,7 +40,7 @@ from .live import load_hkjc_race_day, refresh_hkjc_results_if_available
 from .market_flow import market_flow_report
 from .model import RankingModel
 from .model_compare import dual_model_backtest, dual_model_comparison
-from .model_registry import model_registry_report, run_and_record_model_registry
+from .model_registry import model_registry_report, promote_latest_model, run_and_record_model_registry
 from .odds import (
     backfill_final_place_odds,
     build_odds_provider,
@@ -660,6 +660,11 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
                         stake=stake,
                     )
                 )
+            elif path == "/api/model-registry/promote":
+                epochs = int(query.get("epochs", ["400"])[0])
+                result = promote_latest_model(conn, self.app_state.model_path, epochs=epochs)
+                result["registry"] = model_registry_report(conn)
+                self.send_json(result)
             elif path == "/api/betting-ledger/reconcile":
                 race_id = query.get("race_id", [None])[0]
                 result = reconcile_betting_ledger(conn, race_id=race_id)

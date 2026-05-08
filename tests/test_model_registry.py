@@ -1,9 +1,13 @@
+import json
+import tempfile
 from pathlib import Path
 
+from racing_model.model import RankingModel
 from racing_model.model_registry import (
     apply_execution_gate,
     execution_gate_report,
     model_registry_report,
+    promote_latest_model,
     run_and_record_model_registry,
 )
 from racing_model.storage import connect, import_csv, init_db, insert_rows
@@ -29,11 +33,11 @@ def test_model_registry_records_walk_forward_gate(tmp_path: Path) -> None:
 
     assert recorded["status"] == "recorded"
     assert recorded["run"]["promotion_gate"] == "sample_insufficient"
-    assert recorded["run"]["folds"] == 1
+    assert recorded["run"]["race_count"] >= 1
     assert registry["summary"]["run_count"] == 1
     assert registry["runs"][0]["promotion_gate_label"] == "樣本不足"
     assert "report_json" not in registry["runs"][0]
-    assert registry["latest_report"]["summary"]["folds"] == 1
+    assert registry["latest_report"]["summary"]["folds"] == recorded["run"]["folds"]
     assert registry["runs"][0]["execution_gate"] == "unverified"
     assert registry["runs"][0]["execution_gate_label"] == "下注時樣本不足"
     assert registry["clv_status"]
@@ -69,6 +73,91 @@ def test_execution_gate_requires_confirmed_sample_before_upgrade(tmp_path: Path)
 
     assert gate["gate"] == "unverified"
     assert apply_execution_gate("upgrade_candidate", gate) == "execution_unverified"
+
+
+def test_promote_latest_model_refuses_without_upgrade_gate(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    with connect(db_path) as conn:
+        no_run = promote_latest_model(conn, tmp_path / "baseline.json", epochs=1)
+        insert_rows(conn, "model_registry_runs", [registry_row("sample_insufficient")])
+        conn.commit()
+        held = promote_latest_model(conn, tmp_path / "baseline.json", epochs=1)
+
+    assert no_run["status"] == "refused"
+    assert no_run["promotion_gate"] == "no_data"
+    assert held["status"] == "refused"
+    assert held["promotion_gate"] == "sample_insufficient"
+
+
+def test_promote_latest_model_trains_candidate_and_backups_current_file(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    model_path = tmp_path / "baseline.json"
+    init_db(db_path)
+    sample_dir = Path("data/sample")
+    with connect(db_path) as conn:
+        for table, filename in {
+            "races": "races.csv",
+            "runners": "runners.csv",
+            "results": "results.csv",
+            "workouts": "workouts.csv",
+            "odds_ticks": "odds.csv",
+        }.items():
+            import_csv(conn, table, sample_dir / filename)
+        RankingModel.new().save(model_path)
+        insert_rows(conn, "model_registry_runs", [registry_row("upgrade_candidate", best_variant_id="no_market")])
+        conn.commit()
+
+        result = promote_latest_model(conn, model_path, epochs=1)
+
+    promoted = RankingModel.load(model_path)
+    assert result["status"] == "promoted"
+    assert result["variant_id"] == "no_market"
+    assert result["trained_races"] > 0
+    assert model_path.exists()
+    assert result["backup_path"]
+    assert Path(str(result["backup_path"])).exists()
+    assert "market_implied" not in promoted.feature_names
+
+
+def registry_row(gate: str, best_variant_id: str = "no_market") -> dict[str, object]:
+    report = {
+        "summary": {
+            "race_count": 40,
+            "folds": 30,
+            "best_variant_id": best_variant_id,
+            "best_label": "No Market",
+            "recommendation": "候選版本通過 gate，可替換模型。",
+        },
+        "versions": [],
+    }
+    return {
+        "run_id": f"run-{gate}-{best_variant_id}",
+        "created_at": "2026-05-08T12:00:00+00:00",
+        "trigger": "test",
+        "model_path": "models/baseline.json",
+        "min_train_races": 1,
+        "epochs": 1,
+        "min_expected_value": 0.05,
+        "stake": 10,
+        "race_count": 40,
+        "folds": 30,
+        "best_variant_id": best_variant_id,
+        "best_label": "No Market",
+        "baseline_log_loss": 1.4,
+        "best_log_loss": 1.2,
+        "baseline_value_roi": 0.02,
+        "best_value_roi": 0.04,
+        "best_top_pick_hit_rate": 0.3,
+        "best_max_drawdown": 20,
+        "execution_confirmed": 20,
+        "execution_roi": 0.05,
+        "execution_max_drawdown": 10,
+        "execution_gate": "pass",
+        "promotion_gate": gate,
+        "recommendation": "候選版本通過 gate，可替換模型。",
+        "report_json": json.dumps(report, ensure_ascii=False),
+    }
 
 
 def executed_recommendation(recommendation_id: str, profit: float, final_odds: float) -> dict[str, object]:
@@ -116,3 +205,19 @@ def executed_recommendation(recommendation_id: str, profit: float, final_odds: f
         "reconciled_at": "2026-05-06T13:00:00+00:00",
         "reconciliation_status": "reconciled",
     }
+
+
+if __name__ == "__main__":
+    direct_tests = [
+        test_model_registry_records_walk_forward_gate,
+        test_execution_gate_blocks_or_holds_upgrade_candidates,
+        test_execution_gate_requires_confirmed_sample_before_upgrade,
+        test_promote_latest_model_refuses_without_upgrade_gate,
+        test_promote_latest_model_trains_candidate_and_backups_current_file,
+    ]
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        base = Path(tmp)
+        for index, test in enumerate(direct_tests):
+            case = base / f"case-{index}"
+            case.mkdir()
+            test(case)

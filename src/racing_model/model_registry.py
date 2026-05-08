@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sqlite3
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .features import build_training_races
 from .pool_replay import pool_replay_report
 from .storage import fetch_all, insert_rows
-from .walk_forward import run_walk_forward_versions
+from .walk_forward import default_variants, new_model_for_variant, run_walk_forward_versions
 
 
 GATE_LABELS = {
@@ -89,6 +91,112 @@ def model_registry_report(conn: sqlite3.Connection, limit: int = 12) -> dict[str
         "latest_report": latest_report,
         "clv_status": "升級 gate 已加入下注時 execution ROI / 回撤。未有足夠已確認下注樣本時，任何候選只可列為研究，不能正式替換模型。",
     }
+
+
+def promote_latest_model(
+    conn: sqlite3.Connection,
+    model_path: Path | str,
+    epochs: int = 400,
+    backup: bool = True,
+) -> dict[str, Any]:
+    latest = latest_registry_row(conn)
+    if not latest:
+        return {
+            "status": "refused",
+            "reason": "未有已保存 out-of-sample 評估，不能替換模型。",
+            "promotion_gate": "no_data",
+            "promotion_gate_label": GATE_LABELS["no_data"],
+        }
+
+    gate = str(latest.get("promotion_gate") or "no_data")
+    if gate != "upgrade_candidate":
+        return {
+            "status": "refused",
+            "reason": f"最新 gate 是「{GATE_LABELS.get(gate, gate)}」，未批准正式替換模型。",
+            "run": public_registry_row(latest),
+            "promotion_gate": gate,
+            "promotion_gate_label": GATE_LABELS.get(gate, gate),
+        }
+
+    report = parse_report_json(latest.get("report_json"))
+    summary = report.get("summary", {}) if isinstance(report, dict) else {}
+    variant_id = str(summary.get("best_variant_id") or latest.get("best_variant_id") or "")
+    variants = {variant.variant_id: variant for variant in default_variants()}
+    variant = variants.get(variant_id)
+    if not variant:
+        return {
+            "status": "refused",
+            "reason": f"找不到候選模型版本：{variant_id or '-'}。",
+            "run": public_registry_row(latest),
+        }
+    if variant.temperature != 1.0:
+        return {
+            "status": "refused",
+            "reason": "此候選版本需要溫度校準，但現時模型檔未能保存該執行策略；先保持基線。",
+            "run": public_registry_row(latest),
+            "variant_id": variant.variant_id,
+            "variant_label": variant.label,
+        }
+
+    races = build_training_races(conn)
+    if not races:
+        return {
+            "status": "refused",
+            "reason": "未有可訓練賽果，不能輸出新模型檔。",
+            "run": public_registry_row(latest),
+            "variant_id": variant.variant_id,
+            "variant_label": variant.label,
+        }
+
+    target = Path(model_path)
+    backup_path = backup_model_file(target) if backup else None
+    model = new_model_for_variant(variant)
+    model.fit(races, epochs=epochs)
+    model.save(target)
+    return {
+        "status": "promoted",
+        "message": f"已用「{variant.label}」重訓 {len(races)} 場並替換模型檔。",
+        "model_path": str(target),
+        "backup_path": str(backup_path) if backup_path else None,
+        "trained_races": len(races),
+        "epochs": epochs,
+        "variant_id": variant.variant_id,
+        "variant_label": variant.label,
+        "feature_count": len(variant.feature_names),
+        "run": public_registry_row(latest),
+    }
+
+
+def latest_registry_row(conn: sqlite3.Connection) -> dict[str, Any] | None:
+    rows = fetch_all(
+        conn,
+        """
+        SELECT *
+        FROM model_registry_runs
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+    )
+    return dict(rows[0]) if rows else None
+
+
+def parse_report_json(value: object) -> dict[str, Any]:
+    if not value:
+        return {}
+    try:
+        loaded = json.loads(str(value))
+    except json.JSONDecodeError:
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def backup_model_file(target: Path) -> Path | None:
+    if not target.exists():
+        return None
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    backup_path = target.with_name(f"{target.stem}.backup-{timestamp}{target.suffix}")
+    shutil.copy2(target, backup_path)
+    return backup_path
 
 
 def build_registry_row(

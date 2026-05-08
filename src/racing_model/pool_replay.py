@@ -159,7 +159,7 @@ def overall_summary(rows: list[dict[str, Any]], markets: list[dict[str, Any]], b
         "execution_returned": execution["returned"],
         "execution_profit": execution["profit"],
         "execution_roi": execution["roi"],
-        "execution_max_drawdown": execution_drawdown,
+        "execution_max_drawdown": max_drawdown(executed, profit_key="execution_profit"),
         "hit_rate": safe_divide(hits, len(reconciled)),
         "best_market": best["market"] if best else None,
         "best_market_label": best["market_label"] if best else None,

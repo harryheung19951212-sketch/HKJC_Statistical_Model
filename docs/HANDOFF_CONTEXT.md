@@ -352,8 +352,9 @@ foreach ($t in $tests) {
 ### 評估 / 自我進化
 
 16. Promotion command
-   - 目前有 registry 報告，但沒有自動 promote command。
-   - 需要拒絕未通過 OOS / calibration / drawdown / CLV gate 的模型替換。
+   - 已加入 `model-registry --promote`、`/api/model-registry/promote` 及 UI 按鈕。
+   - 只有最新 registry run 是 `upgrade_candidate` 才會重訓候選版本並替換 runtime 模型檔；原模型會先備份。
+   - 仍未保存溫度校準候選的執行策略，所以該類候選會被拒絕。
 
 17. Calibration hard gate
    - 目前 calibration 是報告。
@@ -375,10 +376,10 @@ foreach ($t in $tests) {
 
 下一個 Codex 不應再先加 UI。建議集中做：
 
-1. `pool takeout + pool efficiency cost table`
-2. `final exotic dividend settlement`
-3. `exotic betting ledger reconciliation`
-4. `late market flow feature validation`
-5. `calibration hard gate for staking / model promotion`
+1. `calibration hard gate for staking / model promotion`
+2. `pool takeout + pool efficiency cost table`
+3. `final exotic dividend settlement`
+4. `exotic betting ledger reconciliation`
+5. `late market flow feature validation`
 
 每一步都要有測試，並用 walk-forward / out-of-sample / replay 證明沒有破壞模型。

@@ -25,7 +25,7 @@ from .features import build_race_features, build_training_races
 from .gpt_report import generate_report
 from .html_report import export_race_report
 from .model import RankingModel
-from .model_registry import model_registry_report, run_and_record_model_registry
+from .model_registry import model_registry_report, promote_latest_model, run_and_record_model_registry
 from .odds import backfill_final_place_odds, build_official_odds_provider
 from .scrapers.base import PoliteHttpClient
 from .scrapers.hkjc import HKJCSource, write_hkjc_csv_bundle
@@ -88,6 +88,7 @@ def main() -> None:
 
     registry_parser = sub.add_parser("model-registry")
     registry_parser.add_argument("--run", action="store_true", help="Run and persist a new out-of-sample registry entry.")
+    registry_parser.add_argument("--promote", action="store_true", help="Promote the latest gated candidate into the active model file.")
     registry_parser.add_argument("--model-path", default="models/baseline.json")
     registry_parser.add_argument("--min-train-races", type=int, default=1)
     registry_parser.add_argument("--epochs", type=int, default=80)
@@ -269,6 +270,8 @@ def main() -> None:
                     epochs=args.epochs,
                     min_expected_value=args.min_ev,
                 )
+            elif args.promote:
+                result = promote_latest_model(conn, args.model_path, epochs=args.epochs)
             else:
                 result = model_registry_report(conn)
             print(json.dumps(result, indent=2, ensure_ascii=False))
