@@ -799,6 +799,40 @@ h2 {
   font-size: 12px;
 }
 
+.market-flow-signal {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px;
+  background: #f7f9fb;
+}
+
+.market-flow-signal.positive {
+  border-color: #9ed8c7;
+  background: #f5fbf8;
+}
+
+.market-flow-signal.negative {
+  border-color: #ead0cb;
+  background: #fffafa;
+}
+
+.market-flow-signal strong,
+.market-flow-signal small {
+  display: block;
+}
+
+.market-flow-signal strong {
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.market-flow-signal small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .market-flow-metrics {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

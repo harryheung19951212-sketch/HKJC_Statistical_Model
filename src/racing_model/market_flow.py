@@ -37,6 +37,7 @@ def market_flow_report(conn: sqlite3.Connection, race_id: str) -> dict[str, Any]
             abs(float(flow_values.get("odds_delta_30s", 0.0))),
         )
         label = flow_label(flow_values, len(horse_ticks))
+        signal = signal_payload(label, signal_strength)
         runner_rows.append(
             {
                 "race_id": race_id,
@@ -57,6 +58,10 @@ def market_flow_report(conn: sqlite3.Connection, race_id: str) -> dict[str, Any]
                 "late_drift": round(float(flow_values.get("late_drift", 0.0)), 6),
                 "signal_strength": round(signal_strength, 6),
                 "flow_label": label,
+                "signal_label": signal["label"],
+                "signal_description": signal["description"],
+                "signal_action": signal["action"],
+                "data_status": runner_data_status(len(horse_ticks), signal_strength),
                 "data_quality": runner_data_quality(len(horse_ticks), signal_strength),
             }
         )
@@ -173,13 +178,43 @@ def market_flow_verdict(runner_count: int, runners_with_ticks: int, total_ticks:
 
 
 def runner_data_quality(tick_count: int, signal_strength: float) -> str:
+    return runner_data_status(tick_count, signal_strength)
+
+
+def runner_data_status(tick_count: int, signal_strength: float) -> str:
     if tick_count == 0:
         return "無 live tick"
     if tick_count == 1:
         return "只有一口價"
     if signal_strength >= 0.08:
-        return "有明顯異動"
-    return "可監控"
+        return "tick足夠，有明顯異動"
+    return "tick足夠，未見大異動"
+
+
+def signal_payload(flow_label_value: str, signal_strength: float) -> dict[str, str]:
+    if flow_label_value == "落飛":
+        return {
+            "label": "落飛｜市場追捧",
+            "description": "賠率下跌，資金正在追捧；要再檢查是否已被壓到無 edge。",
+            "action": "追捧",
+        }
+    if flow_label_value == "轉冷":
+        return {
+            "label": "轉冷｜市場降溫",
+            "description": "賠率上升，可能係市場信心下降或有負面資訊；要檢查模型盲點。",
+            "action": "降溫",
+        }
+    if signal_strength > 0:
+        return {
+            "label": "平穩｜輕微波動",
+            "description": "有細微賠率變化，但未到明顯訊號門檻。",
+            "action": "觀察",
+        }
+    return {
+        "label": "平穩｜未有明顯異動",
+        "description": "暫時未見足夠資金流方向，投注仍應以模型概率同 EV 為主。",
+        "action": "觀察",
+    }
 
 
 def flow_label(flow_values: dict[str, float], tick_count: int) -> str:

@@ -51,7 +51,10 @@ def test_market_flow_report_excludes_final_odds_and_flags_steam(tmp_path: Path) 
     assert summary["verdict"] == "actionable_flow"
     assert rows["H001"]["latest_win_odds"] == 3.5
     assert rows["H001"]["flow_label"] == "落飛"
+    assert rows["H001"]["signal_label"] == "落飛｜市場追捧"
+    assert rows["H001"]["data_status"] == "tick足夠，有明顯異動"
     assert rows["H002"]["flow_label"] == "轉冷"
+    assert rows["H002"]["signal_label"] == "轉冷｜市場降溫"
     assert math.isclose(rows["H001"]["odds_delta_5m"], math.log(5.0 / 3.5), rel_tol=0.0001)
     assert any(item["level"] == "focus" for item in report["insights"])
 
@@ -83,7 +86,8 @@ def test_market_flow_report_marks_thin_sample(tmp_path: Path) -> None:
 
     assert report["summary"]["verdict"] == "thin_sample"
     assert report["summary"]["coverage_rate"] == 0.5
-    assert report["runners"][0]["data_quality"] in {"只有一口價", "無 live tick"}
+    assert report["runners"][0]["data_status"] in {"只有一口價", "無 live tick"}
+    assert report["runners"][0]["signal_label"] in {"資料不足｜未能判斷", "平穩｜未有明顯異動"}
 
 
 def runner(race_id: str, horse_id: str, horse_no: int, name_zh: str) -> dict[str, object]:

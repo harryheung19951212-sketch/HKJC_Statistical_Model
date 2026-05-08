@@ -2,6 +2,29 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-08 - Market Flow Signal Labels
+
+Goal:
+
+- Make `臨場資金流 / 賠率異動` readable by separating market signal direction from data quality.
+
+Changes:
+
+- Added per-runner market-flow fields: `signal_label`, `signal_description`, `signal_action`, and `data_status`.
+- UI now shows a dedicated `訊號` block:
+  - `落飛｜市場追捧` for green cards;
+  - `轉冷｜市場降溫` for red cards;
+  - `平穩｜未有明顯異動` for neutral cards.
+- Replaced the ambiguous `質素：可監控` display with `資料狀態`, such as `tick足夠，有明顯異動` or `tick足夠，未見大異動`.
+
+Verification:
+
+- `python tests\test_market_flow.py`
+- `python tests\test_late_market_flow.py`
+- `node --check src\racing_model\web\app.js`
+- `python -m compileall -q src dashboard tests`
+- `Get-ChildItem tests -Filter 'test_*.py' | ForEach-Object { python $_.FullName }`
+
 ## 2026-05-08 - Candidate-Level Exotic Ticket Structure
 
 Goal:

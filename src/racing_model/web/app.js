@@ -871,16 +871,34 @@ function renderMarketFlowCard(row) {
         <strong>${row.horse_no || "-"} ${localizedHorse(row)}</strong>
         <span>${row.flow_label || "-"}</span>
       </div>
+      <div class="market-flow-signal ${directionClass || "stable"}">
+        <strong>${row.signal_label || marketFlowSignalLabel(row.flow_label)}</strong>
+        <small>${row.signal_description || marketFlowSignalDescription(row.flow_label)}</small>
+      </div>
       <div class="market-flow-metrics">
         <div><label>最新獨贏</label><b>${formatNum(row.latest_win_odds, 2)}</b></div>
         <div><label>ticks</label><b>${row.tick_count || 0}</b></div>
         <div><label>5分鐘</label><b class="${evClass(row.odds_delta_5m)}">${formatSigned(row.odds_delta_5m)}</b></div>
         <div><label>2分鐘</label><b class="${evClass(row.odds_delta_2m)}">${formatSigned(row.odds_delta_2m)}</b></div>
         <div><label>30秒</label><b class="${evClass(row.odds_delta_30s)}">${formatSigned(row.odds_delta_30s)}</b></div>
-        <div><label>質素</label><b>${row.data_quality || "-"}</b></div>
+        <div><label>資料狀態</label><b>${row.data_status || row.data_quality || "-"}</b></div>
       </div>
     </div>
   `;
+}
+
+function marketFlowSignalLabel(value) {
+  if (value === "落飛") return "落飛｜市場追捧";
+  if (value === "轉冷") return "轉冷｜市場降溫";
+  if (value === "資料不足") return "資料不足｜未能判斷";
+  return "平穩｜未有明顯異動";
+}
+
+function marketFlowSignalDescription(value) {
+  if (value === "落飛") return "賠率下跌，資金正在追捧；要再檢查是否已被壓到無 edge。";
+  if (value === "轉冷") return "賠率上升，可能係市場信心下降或有負面資訊；要檢查模型盲點。";
+  if (value === "資料不足") return "live tick 太少，暫時唔應該用資金流做下注理由。";
+  return "暫時未見足夠資金流方向，投注仍應以模型概率同 EV 為主。";
 }
 
 function marketFlowVerdictLabel(value) {
