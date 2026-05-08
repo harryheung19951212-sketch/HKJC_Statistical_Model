@@ -60,6 +60,17 @@ def test_coverage_items_expand_on_click() -> None:
     assert "<b>驗證門檻</b>" in js
 
 
+def test_auto_refresh_preserves_existing_race_panels() -> None:
+    js = (ROOT / "src/racing_model/web/app.js").read_text(encoding="utf-8")
+
+    assert "preservePanels: true" in js
+    assert "renderResultsLoading({ preserve: preservePanels })" in js
+    assert "renderOddsHistoryLoading({ preserve: preservePanels })" in js
+    assert "preserveDeferred: preservePanels" in js
+    assert "function preservePanelDuringRefresh" in js
+    assert "raceRefreshInFlight" in js
+
+
 def test_predictions_and_betting_payloads_prefer_chinese_names(tmp_path: Path) -> None:
     db_path = tmp_path / "racing.db"
     init_db(db_path)

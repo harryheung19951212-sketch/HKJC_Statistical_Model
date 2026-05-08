@@ -12,6 +12,7 @@ const raceDateFolderState = {};
 let activeWatchRaceId = null;
 let currentView = "race";
 const viewDataLoaded = { coverage: false, analytics: false };
+let raceRefreshInFlight = false;
 
 const text = {
   scheduled: "\u672a\u958b\u8dd1",
@@ -270,35 +271,41 @@ function sleepSelectedRace() {
 
 async function refreshSelectedRace(options = {}) {
   if (!selectedRaceId) return;
+  if (raceRefreshInFlight) return;
+  raceRefreshInFlight = true;
   const full = Boolean(options.full);
-  await watchSelectedRace();
-  const raceKey = encodeURIComponent(selectedRaceId);
-  const dashboard = await api(`/api/race-dashboard?race_id=${raceKey}&bankroll=${encodeURIComponent(bettingBankroll())}&risk=${encodeURIComponent(bettingRisk())}`);
-  races = dashboard.races || [];
-  renderLifecycle(dashboard.lifecycle || {});
-  renderRaceList();
-  renderRaceHeader();
-  const payload = dashboard.predictions || {};
-  currentPredictions = payload.predictions || [];
-  if (!selectedHorseId && currentPredictions.length) selectedHorseId = currentPredictions[0].horse_id;
-  if (!currentPredictions.some((row) => row.horse_id === selectedHorseId)) {
-    selectedHorseId = currentPredictions.length ? currentPredictions[0].horse_id : null;
+  const preservePanels = Boolean(options.preservePanels);
+  try {
+    await watchSelectedRace();
+    const raceKey = encodeURIComponent(selectedRaceId);
+    const dashboard = await api(`/api/race-dashboard?race_id=${raceKey}&bankroll=${encodeURIComponent(bettingBankroll())}&risk=${encodeURIComponent(bettingRisk())}`);
+    races = dashboard.races || [];
+    renderLifecycle(dashboard.lifecycle || {});
+    renderRaceList();
+    renderRaceHeader();
+    const payload = dashboard.predictions || {};
+    currentPredictions = payload.predictions || [];
+    if (!selectedHorseId && currentPredictions.length) selectedHorseId = currentPredictions[0].horse_id;
+    if (!currentPredictions.some((row) => row.horse_id === selectedHorseId)) {
+      selectedHorseId = currentPredictions.length ? currentPredictions[0].horse_id : null;
+    }
+    renderPredictions(currentPredictions);
+    renderRunnerDetail(currentPredictions.find((row) => row.horse_id === selectedHorseId));
+    renderPredictionPolicy(payload.policy || {});
+    renderBetting(dashboard.betting || {}, { preserveDeferred: preservePanels });
+    refreshFullBetting(raceKey);
+    renderBettingLedger(dashboard.betting_ledger || {});
+    renderOddsFeed(dashboard.odds_feed || {}, { preserveDeferred: preservePanels });
+    refreshOddsFeedPanel(raceKey);
+    renderModelComparison(dashboard.model_comparison || {}, { preserveDeferred: preservePanels });
+    renderOddsHistoryLoading({ preserve: preservePanels });
+    renderResultsLoading({ preserve: preservePanels });
+    renderWeather(dashboard.weather || {});
+    refreshSupplementalRacePanels(raceKey);
+    if (full) await refreshModelReports();
+  } finally {
+    raceRefreshInFlight = false;
   }
-  renderPredictions(currentPredictions);
-  renderRunnerDetail(currentPredictions.find((row) => row.horse_id === selectedHorseId));
-  renderPredictionPolicy(payload.policy || {});
-  renderBetting(dashboard.betting || {});
-  refreshFullBetting(raceKey);
-  renderBettingLedger(dashboard.betting_ledger || {});
-  renderOddsFeed(dashboard.odds_feed || {});
-  refreshOddsFeedPanel(raceKey);
-  renderModelComparison(dashboard.model_comparison || {});
-  renderOddsHistoryLoading();
-  const results = dashboard.results || {};
-  renderResultsLoading();
-  renderWeather(dashboard.weather || {});
-  refreshSupplementalRacePanels(raceKey);
-  if (full) await refreshModelReports();
 }
 
 async function refreshFullBetting(raceKey) {
@@ -401,17 +408,38 @@ function bettingRisk() {
   return $("risk-profile").value || "standard";
 }
 
-function renderBetting(data) {
+function hasStableContent(id) {
+  const box = $(id);
+  if (!box) return false;
+  const textValue = box.textContent.trim();
+  if (!textValue) return false;
+  return !box.querySelector(".loading-placeholder");
+}
+
+function preservePanelDuringRefresh(contentId, summaryId, message) {
+  if (!hasStableContent(contentId)) return false;
+  const summary = $(summaryId);
+  if (summary) summary.textContent = message;
+  return true;
+}
+
+function renderBetting(data, options = {}) {
   const summary = $("betting-summary");
   const box = $("betting-tickets");
   if (data && data.deferred) {
+    if (options.preserveDeferred && hasStableContent("betting-tickets")) {
+      summary.classList.add("refreshing");
+      return;
+    }
+    summary.classList.remove("refreshing");
     summary.innerHTML = `
       <div><label>狀態</label><strong>計算中</strong></div>
       <div><label>投注方法</label><strong>背景載入</strong></div>
     `;
-    box.innerHTML = `<div class="betting-empty">投注建議計算中...</div>`;
+    box.innerHTML = `<div class="betting-empty loading-placeholder">投注建議計算中...</div>`;
     return;
   }
+  summary.classList.remove("refreshing");
   const settings = data.risk_settings || {};
   const poolCount = Object.keys(data.pool_rules || {}).length;
   summary.innerHTML = `
@@ -643,9 +671,12 @@ function renderResults(results, completeness = null) {
   });
 }
 
-function renderResultsLoading() {
+function renderResultsLoading(options = {}) {
+  if (options.preserve && preservePanelDuringRefresh("results-body", "results-summary", "賽果更新中...")) {
+    return;
+  }
   $("results-summary").textContent = "賽果載入中...";
-  $("results-body").innerHTML = `<tr><td colspan="14" class="empty-cell">賽果載入中...</td></tr>`;
+  $("results-body").innerHTML = `<tr class="loading-placeholder"><td colspan="14" class="empty-cell">賽果載入中...</td></tr>`;
 }
 
 function renderRunnerDetail(row) {
@@ -713,12 +744,15 @@ function placeOddsSourceLabel(value) {
   return "-";
 }
 
-function renderOddsFeed(feed) {
+function renderOddsFeed(feed, options = {}) {
   const box = $("feed-health");
   const summary = $("feed-health-summary");
   if (feed && feed.deferred) {
+    if (options.preserveDeferred && preservePanelDuringRefresh("feed-health", "feed-health-summary", "賠率健康更新中...")) {
+      return;
+    }
     summary.textContent = "賠率健康載入中...";
-    box.innerHTML = `<div class="feed-empty">賠率錄影健康正在背景載入</div>`;
+    box.innerHTML = `<div class="feed-empty loading-placeholder">賠率錄影健康正在背景載入</div>`;
     return;
   }
   if (!feed || !feed.runner_count) {
@@ -760,12 +794,15 @@ function renderOddsFeed(feed) {
   `;
 }
 
-function renderModelComparison(data) {
+function renderModelComparison(data, options = {}) {
   const box = $("model-comparison");
   const summary = $("comparison-summary");
   if (data && data.deferred) {
+    if (options.preserveDeferred && preservePanelDuringRefresh("model-comparison", "comparison-summary", "雙軌模型更新中...")) {
+      return;
+    }
     summary.textContent = "載入中...";
-    box.innerHTML = `<div class="comparison-empty">雙軌模型對照載入中...</div>`;
+    box.innerHTML = `<div class="comparison-empty loading-placeholder">雙軌模型對照載入中...</div>`;
     return;
   }
   const runners = data && data.runners ? data.runners : [];
@@ -1430,9 +1467,12 @@ function renderOddsHistory(rows) {
   `).join("");
 }
 
-function renderOddsHistoryLoading() {
-  $("odds-history").innerHTML = `<div class="history-row"><span>歷史賠率載入中...</span><strong>-</strong></div>`;
-  $("odds-chart").innerHTML = `<text x="18" y="96">賠率走勢載入中...</text>`;
+function renderOddsHistoryLoading(options = {}) {
+  if (options.preserve && hasStableContent("odds-history") && hasStableContent("odds-chart")) {
+    return;
+  }
+  $("odds-history").innerHTML = `<div class="history-row loading-placeholder"><span>歷史賠率載入中...</span><strong>-</strong></div>`;
+  $("odds-chart").innerHTML = `<text class="loading-placeholder" x="18" y="96">賠率走勢載入中...</text>`;
 }
 
 function formatTimestamp(value) {
@@ -1506,7 +1546,7 @@ async function manualRefreshOdds() {
     $("system-status").textContent = `已更新賠率 ${result.inserted || 0} 筆，組合派彩 ${exotic.inserted || 0} 筆`;
   }
   countdown = intervalSeconds;
-  await refreshSelectedRace();
+  await refreshSelectedRace({ preservePanels: true });
 }
 
 async function lifecycleStep() {
@@ -1536,7 +1576,7 @@ async function markLive() {
     ? "已完場賽事不能改為開跑，最後賠率會保留作訓練材料"
     : "本場已凍結，保留最後實時賠率";
   await loadState();
-  await refreshSelectedRace();
+  await refreshSelectedRace({ preservePanels: true });
 }
 
 async function markScheduled() {
@@ -1547,7 +1587,7 @@ async function markScheduled() {
     ? "已完場賽事不能改回未開跑，避免污染賽果及最後賠率"
     : "本場已恢復未開跑刷新";
   await loadState();
-  await refreshSelectedRace();
+  await refreshSelectedRace({ preservePanels: true });
 }
 
 async function refreshResults() {
@@ -1693,7 +1733,7 @@ async function boot() {
     if (countdown <= 0) {
       countdown = intervalSeconds;
       await loadState();
-      await refreshSelectedRace({ full: false });
+      await refreshSelectedRace({ full: false, preservePanels: true });
     }
     $("countdown").textContent = countdown;
   }, 1000);
