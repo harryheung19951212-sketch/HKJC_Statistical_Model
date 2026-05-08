@@ -1484,12 +1484,36 @@ function renderModelVersions(data) {
 
 function renderModelRegistry(data) {
   const summary = data.summary || {};
+  const oosGate = data.latest_oos_gate || {};
+  const blockedSlices = (oosGate.slices || []).filter((row) => row.gate === "blocked");
   $("model-registry-summary").innerHTML = `
     <div class="stat"><label>已保存評估</label><strong>${summary.run_count || 0}</strong></div>
     <div class="stat"><label>最新 Gate</label><strong>${summary.latest_gate_label || "-"}</strong></div>
     <div class="stat"><label>升級候選</label><strong>${summary.upgrade_candidates || 0}</strong></div>
+    <div class="stat"><label>分片 OOS</label><strong>${oosGate.label || "-"}</strong></div>
   `;
-  $("model-registry-clv").textContent = data.clv_status || "";
+  $("model-registry-clv").innerHTML = `
+    <p>${data.clv_status || ""}</p>
+    ${oosGate.gate ? `
+      <div class="registry-card ${oosGate.gate === "blocked" ? "risk" : ""}">
+        <div class="version-head">
+          <strong>${oosGate.label || "-"}</strong>
+          <span>可驗分片 ${oosGate.eligible_slices || 0}｜阻擋 ${oosGate.blocked_slices || 0}</span>
+        </div>
+        <p>${oosGate.message || ""}</p>
+        ${blockedSlices.length ? `
+          <div class="version-metrics">
+            ${blockedSlices.slice(0, 4).map((row) => `
+              <div>
+                <label>${row.label || row.slice_id}</label>
+                <b>${row.reason || "退化"}｜Log Loss ${formatSigned(row.log_loss_delta, 3)}｜Brier ${formatSigned(row.brier_delta, 3)}</b>
+              </div>
+            `).join("")}
+          </div>
+        ` : ""}
+      </div>
+    ` : ""}
+  `;
   const runs = data.runs || [];
   if (!runs.length) {
     $("model-registry-runs").innerHTML = `<p class="runner-subtitle">未保存任何 out-of-sample 評估</p>`;

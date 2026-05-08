@@ -1825,6 +1825,11 @@ td:nth-child(4), th:nth-child(4) {
   background: #f5fbf8;
 }
 
+.registry-card.risk {
+  border-color: #e5a7a7;
+  background: #fff7f7;
+}
+
 .ledger-card.reconciled {
   border-color: #c8d8ee;
   background: #f7faff;

@@ -2,6 +2,27 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-08 - OOS Slice Scorecard Promotion Gate
+
+Goal:
+
+- Stop model iteration from promoting a candidate just because the overall out-of-sample score improved while an important race segment got worse.
+
+Changes:
+
+- Added a `walk_forward_oos_slice_scorecard` candidate artifact to every walk-forward/model-registry report.
+- Added per-variant OOS calibration bins and slice scorecards across track, course, distance bucket, class, field size, and market-favourite bucket.
+- Added a slice OOS hard gate that compares the candidate against baseline and blocks promotion when important slices regress in log loss, Brier score, or top-pick hit rate.
+- Added `slice_blocked` and `slice_unverified` model-registry promotion states.
+- Updated the model-registry UI to show the latest slice OOS gate, blocked slice count, and the worst blocking slices.
+- Added regression tests proving the slice gate blocks an otherwise better-looking candidate when a key segment deteriorates.
+
+Verification:
+
+- `python -m pytest tests\test_model_registry.py tests\test_smoke.py tests\test_ui_localization.py`
+- `node --check src\racing_model\web\app.js`
+- `python -m compileall -q src dashboard tests`
+
 ## 2026-05-08 - Sync Remote Latest And Fix Ledger Slippage Precision
 
 Goal:

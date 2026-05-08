@@ -80,6 +80,7 @@ def run_walk_forward_versions(
 ) -> dict[str, Any]:
     race_ids = resulted_race_ids(conn)
     variants = default_variants()
+    race_rows = race_metadata(conn)
     race_features = {race_id: build_race_features(conn, race_id) for race_id in race_ids}
     state = {variant.variant_id: new_variant_state(variant) for variant in variants}
     fold_rows = []
@@ -102,12 +103,13 @@ def run_walk_forward_versions(
             model.fit(train_races, epochs=epochs)
             predictions = predict_for_variant(model, variant, test_runners)
             metrics = evaluate_predictions(test_runners, predictions, min_expected_value, stake)
+            metrics["slice_keys"] = slice_keys_for_race(race_rows.get(test_id, {}), test_runners, predictions)
             update_variant_state(state[variant.variant_id], metrics)
             fold["versions"].append(
                 {
                     "variant_id": variant.variant_id,
                     "label": variant.label,
-                    **metrics,
+                    **public_fold_metrics(metrics),
                 }
             )
         fold_rows.append(fold)
@@ -117,6 +119,7 @@ def run_walk_forward_versions(
     baseline = next((row for row in versions if row["variant_id"] == "baseline"), None)
     best = versions[0] if versions else None
     recommendation = build_recommendation(best, baseline)
+    oos_gate = build_oos_slice_gate(best, baseline)
     return {
         "summary": {
             "race_count": len(race_ids),
@@ -125,8 +128,18 @@ def run_walk_forward_versions(
             "best_variant_id": best["variant_id"] if best else None,
             "best_label": best["label"] if best else None,
             "recommendation": recommendation,
+            "oos_slice_gate": oos_gate["gate"],
+            "oos_slice_gate_label": oos_gate["label"],
         },
         "versions": versions,
+        "oos_gate": oos_gate,
+        "candidate_artifact": {
+            "artifact_type": "walk_forward_oos_slice_scorecard",
+            "best_variant_id": best["variant_id"] if best else None,
+            "baseline_variant_id": baseline["variant_id"] if baseline else None,
+            "slice_dimensions": ["場地", "跑道", "途程", "班次", "馬匹數", "市場熱門度"],
+            "gate": oos_gate,
+        },
         "folds": fold_rows[-12:],
     }
 
@@ -144,6 +157,19 @@ def resulted_race_ids(conn: sqlite3.Connection) -> list[str]:
             """,
         )
     ]
+
+
+def race_metadata(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
+    return {
+        str(row["race_id"]): dict(row)
+        for row in fetch_all(
+            conn,
+            """
+            SELECT race_id, date, track, course, distance_m, going, class_rating
+            FROM races
+            """
+        )
+    }
 
 
 def new_model_for_variant(variant: ModelVariant) -> RankingModel:
@@ -200,10 +226,18 @@ def evaluate_predictions(
     winner_probability = max(float(winner_prediction["win_probability"]), 1e-9)
     top_pick = predictions[0]
     top_pick_finish = result_by_horse.get(str(top_pick["horse_id"]), 99)
+    top3_hit = any(result_by_horse.get(str(row["horse_id"]), 99) == 1 for row in predictions[:3])
     brier = sum(
         (float(row["win_probability"]) - (1.0 if row["horse_id"] == winner.horse_id else 0.0)) ** 2
         for row in predictions
     )
+    calibration_points = [
+        {
+            "probability": float(row["win_probability"]),
+            "outcome": 1.0 if row["horse_id"] == winner.horse_id else 0.0,
+        }
+        for row in predictions
+    ]
     value_bets = 0
     value_wins = 0
     value_returned = 0.0
@@ -223,10 +257,12 @@ def evaluate_predictions(
         "races": 1,
         "runners": len(predictions),
         "top_pick_wins": 1 if top_pick_finish == 1 else 0,
+        "top3_hits": 1 if top3_hit else 0,
         "winner_rank": predictions.index(winner_prediction) + 1,
         "winner_probability": winner_probability,
         "log_loss_total": -math.log(winner_probability),
         "brier_total": brier,
+        "calibration_points": calibration_points,
         "value_bets": value_bets,
         "value_wins": value_wins,
         "value_staked": value_staked,
@@ -245,10 +281,13 @@ def new_empty_metrics() -> dict[str, Any]:
         "races": 0,
         "runners": 0,
         "top_pick_wins": 0,
+        "top3_hits": 0,
         "winner_rank": 0,
         "winner_probability": 0.0,
         "log_loss_total": 0.0,
         "brier_total": 0.0,
+        "calibration_points": [],
+        "slice_keys": [],
         "value_bets": 0,
         "value_wins": 0,
         "value_staked": 0.0,
@@ -267,10 +306,13 @@ def new_variant_state(variant: ModelVariant) -> dict[str, Any]:
         "races": 0,
         "runners": 0,
         "top_pick_wins": 0,
+        "top3_hits": 0,
         "winner_rank_total": 0.0,
         "winner_probability_total": 0.0,
         "log_loss_total": 0.0,
         "brier_total": 0.0,
+        "calibration_bins": new_calibration_bins(),
+        "slices": {},
         "value_bets": 0,
         "value_wins": 0,
         "value_staked": 0.0,
@@ -286,6 +328,7 @@ def update_variant_state(state: dict[str, Any], metrics: dict[str, Any]) -> None
     state["races"] += int(metrics["races"])
     state["runners"] += int(metrics["runners"])
     state["top_pick_wins"] += int(metrics["top_pick_wins"])
+    state["top3_hits"] += int(metrics.get("top3_hits", 0))
     state["winner_rank_total"] += float(metrics["winner_rank"])
     state["winner_probability_total"] += float(metrics["winner_probability"])
     state["log_loss_total"] += float(metrics["log_loss_total"])
@@ -301,6 +344,14 @@ def update_variant_state(state: dict[str, Any], metrics: dict[str, Any]) -> None
         float(state["max_drawdown"]),
         float(state["peak_equity"]) - float(state["equity"]),
     )
+    for point in metrics.get("calibration_points", []):
+        add_calibration_point(
+            state["calibration_bins"],
+            float(point.get("probability", 0.0) or 0.0),
+            float(point.get("outcome", 0.0) or 0.0),
+        )
+    for slice_key in metrics.get("slice_keys", []):
+        update_slice_state(state["slices"], slice_key, metrics)
 
 
 def finalize_variant_state(state: dict[str, Any]) -> dict[str, Any]:
@@ -311,6 +362,7 @@ def finalize_variant_state(state: dict[str, Any]) -> dict[str, Any]:
         "runners": int(state["runners"]),
         "top_pick_wins": int(state["top_pick_wins"]),
         "top_pick_hit_rate": safe_div(float(state["top_pick_wins"]), races),
+        "top3_hit_rate": safe_div(float(state["top3_hits"]), races),
         "avg_winner_rank": safe_div(float(state["winner_rank_total"]), races),
         "mean_winner_probability": safe_div(float(state["winner_probability_total"]), races),
         "log_loss": safe_div(float(state["log_loss_total"]), races),
@@ -332,7 +384,301 @@ def finalize_variant_state(state: dict[str, Any]) -> dict[str, Any]:
         "feature_count": state["feature_count"],
         "temperature": state["temperature"],
         "metrics": metrics,
+        "calibration_bins": finalize_calibration_bins(state["calibration_bins"]),
+        "slice_scorecard": finalize_slice_scorecard(state["slices"]),
         "verdict": verdict,
+    }
+
+
+def public_fold_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in metrics.items()
+        if key not in {"calibration_points", "slice_keys"}
+    }
+
+
+def slice_keys_for_race(
+    race: dict[str, Any],
+    runners: list[RunnerFeatures],
+    predictions: list[dict[str, Any]],
+) -> list[dict[str, str]]:
+    track = str(race.get("track") or "unknown")
+    course = str(race.get("course") or "unknown")
+    class_rating = str(race.get("class_rating") or "unknown")
+    distance = int(race.get("distance_m") or 0)
+    field_size = len(runners)
+    market_odds = [float(runner.latest_win_odds) for runner in runners if runner.latest_win_odds]
+    favourite_odds = min(market_odds) if market_odds else None
+    return [
+        slice_key("track", "場地", track),
+        slice_key("course", "跑道", course),
+        slice_key("distance", "途程", distance_bucket(distance)),
+        slice_key("class", "班次", class_rating),
+        slice_key("field_size", "馬匹數", field_size_bucket(field_size)),
+        slice_key("market_favourite", "市場熱門度", odds_bucket(favourite_odds)),
+    ]
+
+
+def slice_key(dimension: str, dimension_label: str, value: str) -> dict[str, str]:
+    return {
+        "slice_id": f"{dimension}:{value}",
+        "dimension": dimension,
+        "dimension_label": dimension_label,
+        "value": value,
+        "label": f"{dimension_label}：{value}",
+    }
+
+
+def distance_bucket(distance: int) -> str:
+    if distance <= 0:
+        return "未知"
+    if distance <= 1200:
+        return "短途 <=1200米"
+    if distance <= 1600:
+        return "中短途 1400-1600米"
+    if distance <= 2000:
+        return "中長途 1800-2000米"
+    return "長途 >=2200米"
+
+
+def field_size_bucket(field_size: int) -> str:
+    if field_size <= 0:
+        return "未知"
+    if field_size <= 8:
+        return "細場 <=8匹"
+    if field_size <= 12:
+        return "中場 9-12匹"
+    return "大場 >=13匹"
+
+
+def odds_bucket(odds: float | None) -> str:
+    if odds is None:
+        return "無市場賠率"
+    if odds <= 3.0:
+        return "明顯熱門 <=3.0"
+    if odds <= 6.0:
+        return "中價熱門 3.1-6.0"
+    return "冷門主導 >6.0"
+
+
+def new_calibration_bins() -> list[dict[str, Any]]:
+    edges = [(0.0, 0.05), (0.05, 0.1), (0.1, 0.15), (0.15, 0.2), (0.2, 0.3), (0.3, 0.5), (0.5, 1.01)]
+    return [
+        {
+            "low": low,
+            "high": high,
+            "label": f"{int(low * 100)}-{int(min(high, 1.0) * 100)}%",
+            "count": 0,
+            "expected": 0.0,
+            "actual": 0.0,
+        }
+        for low, high in edges
+    ]
+
+
+def add_calibration_point(bins: list[dict[str, Any]], probability: float, outcome: float) -> None:
+    for item in bins:
+        if float(item["low"]) <= probability < float(item["high"]):
+            item["count"] += 1
+            item["expected"] += probability
+            item["actual"] += outcome
+            return
+
+
+def finalize_calibration_bins(bins: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows = []
+    for item in bins:
+        count = int(item["count"])
+        avg_prediction = safe_div(float(item["expected"]), count)
+        observed_rate = safe_div(float(item["actual"]), count)
+        rows.append(
+            {
+                "label": item["label"],
+                "count": count,
+                "avg_prediction": avg_prediction,
+                "observed_rate": observed_rate,
+                "gap": observed_rate - avg_prediction if count else 0.0,
+            }
+        )
+    return rows
+
+
+def update_slice_state(slices: dict[str, dict[str, Any]], slice_key: dict[str, str], metrics: dict[str, Any]) -> None:
+    row = slices.setdefault(
+        slice_key["slice_id"],
+        {
+            **slice_key,
+            "races": 0,
+            "runners": 0,
+            "top_pick_wins": 0,
+            "top3_hits": 0,
+            "winner_rank_total": 0.0,
+            "winner_probability_total": 0.0,
+            "log_loss_total": 0.0,
+            "brier_total": 0.0,
+            "value_bets": 0,
+            "value_wins": 0,
+            "value_staked": 0.0,
+            "value_returned": 0.0,
+            "value_profit": 0.0,
+        },
+    )
+    row["races"] += int(metrics["races"])
+    row["runners"] += int(metrics["runners"])
+    row["top_pick_wins"] += int(metrics["top_pick_wins"])
+    row["top3_hits"] += int(metrics.get("top3_hits", 0))
+    row["winner_rank_total"] += float(metrics["winner_rank"])
+    row["winner_probability_total"] += float(metrics["winner_probability"])
+    row["log_loss_total"] += float(metrics["log_loss_total"])
+    row["brier_total"] += float(metrics["brier_total"])
+    row["value_bets"] += int(metrics["value_bets"])
+    row["value_wins"] += int(metrics["value_wins"])
+    row["value_staked"] += float(metrics["value_staked"])
+    row["value_returned"] += float(metrics["value_returned"])
+    row["value_profit"] += float(metrics["value_profit"])
+
+
+def finalize_slice_scorecard(slices: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    rows = [finalize_slice(row) for row in slices.values()]
+    return sorted(rows, key=lambda row: (str(row["dimension"]), -int(row["races"]), str(row["value"])))
+
+
+def finalize_slice(row: dict[str, Any]) -> dict[str, Any]:
+    races = int(row["races"])
+    staked = float(row["value_staked"])
+    return {
+        "slice_id": row["slice_id"],
+        "dimension": row["dimension"],
+        "dimension_label": row["dimension_label"],
+        "value": row["value"],
+        "label": row["label"],
+        "races": races,
+        "runners": int(row["runners"]),
+        "top_pick_hit_rate": safe_div(float(row["top_pick_wins"]), races),
+        "top3_hit_rate": safe_div(float(row["top3_hits"]), races),
+        "avg_winner_rank": safe_div(float(row["winner_rank_total"]), races),
+        "mean_winner_probability": safe_div(float(row["winner_probability_total"]), races),
+        "log_loss": safe_div(float(row["log_loss_total"]), races),
+        "brier_score": safe_div(float(row["brier_total"]), races),
+        "value_bets": int(row["value_bets"]),
+        "value_hit_rate": safe_div(float(row["value_wins"]), float(row["value_bets"])),
+        "value_profit": float(row["value_profit"]),
+        "value_roi": safe_div(float(row["value_returned"]) - staked, staked),
+    }
+
+
+def build_oos_slice_gate(
+    best: dict[str, Any] | None,
+    baseline: dict[str, Any] | None,
+    min_slice_races: int = 5,
+    max_log_loss_regression: float = 0.12,
+    max_brier_regression: float = 0.05,
+    max_top_pick_regression: float = 0.12,
+) -> dict[str, Any]:
+    if not best:
+        return oos_gate_payload("no_data", "未有 OOS 分片證據", [], min_slice_races)
+    if best.get("variant_id") == "baseline":
+        return oos_gate_payload("pass", "最佳版本仍然係 Baseline，分片 gate 不需要阻擋。", [], min_slice_races)
+    if not baseline:
+        return oos_gate_payload("unverified", "未有 Baseline 分片可比較，禁止自動升級。", [], min_slice_races)
+
+    baseline_by_id = {row["slice_id"]: row for row in baseline.get("slice_scorecard", [])}
+    compared = []
+    for row in best.get("slice_scorecard", []):
+        base = baseline_by_id.get(row.get("slice_id"))
+        if not base:
+            continue
+        compared.append(compare_slice(row, base, min_slice_races, max_log_loss_regression, max_brier_regression, max_top_pick_regression))
+
+    eligible = [row for row in compared if row["gate"] != "sample_small"]
+    blocked = [row for row in eligible if row["gate"] == "blocked"]
+    if blocked:
+        message = f"{len(blocked)} 個重要分片退化，candidate 暫停升級。"
+        return oos_gate_payload("blocked", message, compared, min_slice_races)
+    if not eligible:
+        return oos_gate_payload("unverified", "分片樣本未達門檻，candidate 暫時只可觀察不可升級。", compared, min_slice_races)
+    return oos_gate_payload("pass", "主要分片未見明顯退化，可進入下一個 gate。", compared, min_slice_races)
+
+
+def compare_slice(
+    row: dict[str, Any],
+    baseline: dict[str, Any],
+    min_slice_races: int,
+    max_log_loss_regression: float,
+    max_brier_regression: float,
+    max_top_pick_regression: float,
+) -> dict[str, Any]:
+    best_races = int(row.get("races", 0) or 0)
+    baseline_races = int(baseline.get("races", 0) or 0)
+    log_loss_delta = float(row.get("log_loss", 0.0) or 0.0) - float(baseline.get("log_loss", 0.0) or 0.0)
+    brier_delta = float(row.get("brier_score", 0.0) or 0.0) - float(baseline.get("brier_score", 0.0) or 0.0)
+    top_pick_delta = float(row.get("top_pick_hit_rate", 0.0) or 0.0) - float(baseline.get("top_pick_hit_rate", 0.0) or 0.0)
+    roi_delta = float(row.get("value_roi", 0.0) or 0.0) - float(baseline.get("value_roi", 0.0) or 0.0)
+    gate = "pass"
+    reasons = []
+    if best_races < min_slice_races or baseline_races < min_slice_races:
+        gate = "sample_small"
+        reasons.append("分片樣本不足")
+    else:
+        if log_loss_delta > max_log_loss_regression:
+            reasons.append("Log Loss 退化")
+        if brier_delta > max_brier_regression:
+            reasons.append("Brier 退化")
+        if top_pick_delta < -max_top_pick_regression:
+            reasons.append("首選命中退化")
+        if reasons:
+            gate = "blocked"
+    return {
+        "slice_id": row.get("slice_id"),
+        "dimension": row.get("dimension"),
+        "dimension_label": row.get("dimension_label"),
+        "value": row.get("value"),
+        "label": row.get("label"),
+        "gate": gate,
+        "reason": "、".join(reasons) if reasons else "通過",
+        "races": best_races,
+        "baseline_races": baseline_races,
+        "log_loss": row.get("log_loss"),
+        "baseline_log_loss": baseline.get("log_loss"),
+        "log_loss_delta": log_loss_delta,
+        "brier_score": row.get("brier_score"),
+        "baseline_brier_score": baseline.get("brier_score"),
+        "brier_delta": brier_delta,
+        "top_pick_hit_rate": row.get("top_pick_hit_rate"),
+        "baseline_top_pick_hit_rate": baseline.get("top_pick_hit_rate"),
+        "top_pick_delta": top_pick_delta,
+        "value_roi": row.get("value_roi"),
+        "baseline_value_roi": baseline.get("value_roi"),
+        "roi_delta": roi_delta,
+    }
+
+
+def oos_gate_payload(gate: str, message: str, slices: list[dict[str, Any]], min_slice_races: int) -> dict[str, Any]:
+    labels = {
+        "pass": "分片 OOS 通過",
+        "blocked": "分片 OOS 阻擋",
+        "unverified": "分片 OOS 樣本不足",
+        "no_data": "未有 OOS 分片",
+    }
+    blocked = [row for row in slices if row.get("gate") == "blocked"]
+    eligible = [row for row in slices if row.get("gate") != "sample_small"]
+    return {
+        "gate": gate,
+        "label": labels.get(gate, gate),
+        "message": message,
+        "min_slice_races": min_slice_races,
+        "eligible_slices": len(eligible),
+        "blocked_slices": len(blocked),
+        "sample_small_slices": sum(1 for row in slices if row.get("gate") == "sample_small"),
+        "slices": sorted(
+            slices,
+            key=lambda row: (
+                0 if row.get("gate") == "blocked" else 1 if row.get("gate") == "pass" else 2,
+                -int(row.get("races", 0) or 0),
+                str(row.get("label") or ""),
+            ),
+        )[:24],
     }
 
 

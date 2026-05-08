@@ -9,6 +9,7 @@ from racing_model.model_registry import (
     model_registry_report,
     promote_latest_model,
     run_and_record_model_registry,
+    statistical_promotion_gate,
 )
 from racing_model.storage import connect, import_csv, init_db, insert_rows
 
@@ -41,6 +42,36 @@ def test_model_registry_records_walk_forward_gate(tmp_path: Path) -> None:
     assert registry["runs"][0]["execution_gate"] == "unverified"
     assert registry["runs"][0]["execution_gate_label"] == "下注時樣本不足"
     assert registry["clv_status"]
+    assert recorded["report"]["candidate_artifact"]["artifact_type"] == "walk_forward_oos_slice_scorecard"
+    assert recorded["report"]["oos_gate"]["gate"]
+    assert recorded["report"]["versions"][0]["slice_scorecard"]
+    assert registry["latest_oos_gate"]["gate"]
+
+
+def test_slice_oos_gate_blocks_regressed_upgrade_candidate() -> None:
+    summary = {"folds": 30}
+    baseline = version_row(
+        "baseline",
+        log_loss=1.20,
+        roi=0.02,
+        drawdown=20,
+        slice_log_loss=1.10,
+        slice_brier=0.60,
+        slice_top_pick=0.45,
+    )
+    candidate = version_row(
+        "no_market",
+        log_loss=1.10,
+        roi=0.03,
+        drawdown=18,
+        slice_log_loss=1.35,
+        slice_brier=0.72,
+        slice_top_pick=0.20,
+    )
+
+    gate = statistical_promotion_gate(summary, candidate, baseline)
+
+    assert gate == "slice_blocked"
 
 
 def test_execution_gate_blocks_or_holds_upgrade_candidates(tmp_path: Path) -> None:
@@ -182,6 +213,41 @@ def registry_row(gate: str, best_variant_id: str = "no_market") -> dict[str, obj
         "promotion_gate": gate,
         "recommendation": "候選版本通過 gate，可替換模型。",
         "report_json": json.dumps(report, ensure_ascii=False),
+    }
+
+
+def version_row(
+    variant_id: str,
+    log_loss: float,
+    roi: float,
+    drawdown: float,
+    slice_log_loss: float,
+    slice_brier: float,
+    slice_top_pick: float,
+) -> dict[str, object]:
+    return {
+        "variant_id": variant_id,
+        "label": variant_id,
+        "metrics": {
+            "log_loss": log_loss,
+            "value_roi": roi,
+            "max_drawdown": drawdown,
+            "top_pick_hit_rate": 0.35,
+        },
+        "slice_scorecard": [
+            {
+                "slice_id": "distance:短途 <=1200米",
+                "dimension": "distance",
+                "dimension_label": "途程",
+                "value": "短途 <=1200米",
+                "label": "途程：短途 <=1200米",
+                "races": 8,
+                "log_loss": slice_log_loss,
+                "brier_score": slice_brier,
+                "top_pick_hit_rate": slice_top_pick,
+                "value_roi": roi,
+            }
+        ],
     }
 
 
