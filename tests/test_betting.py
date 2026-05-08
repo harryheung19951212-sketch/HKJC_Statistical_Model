@@ -181,6 +181,54 @@ def test_exotic_dividend_turns_candidate_into_ev_ticket() -> None:
     assert qpl_candidate["stake_action"] == "有值博"
     assert qpl_candidate["structure_label"] in {"複式", "膽拖腳"}
     assert qpl_candidate["per_combination_stake"] == qpl_candidate["recommended_stake"]
+    assert result["pool_choice"]["summary"]["actionable_markets"] >= 1
+    qpl_pool = next(row for row in result["pool_choice"]["markets"] if row["market"] == "QPL")
+    assert qpl_pool["best_cost_adjusted_expected_value"] > 0
+    assert qpl_pool["takeout_rate"] > 0
+
+
+def test_pool_choice_prefers_higher_ev_upgrade_pool_when_available() -> None:
+    predictions = [
+        {
+            "horse_id": f"H00{index}",
+            "horse_no": index,
+            "display_name": f"Runner {index}",
+            "win_probability": probability,
+            "latest_win_odds": 4.0 + index,
+            "latest_win_odds_source": "hkjc_mqtt",
+            "top3_probability": min(probability * 3, 0.9),
+            "place_odds": 1.6,
+            "place_odds_source": "hkjc_mqtt",
+        }
+        for index, probability in enumerate([0.34, 0.24, 0.18, 0.12, 0.07, 0.05], start=1)
+    ]
+    dividends = {
+        ("QPL", "1+2"): {
+            "dividend": 8.0,
+            "dividend_status": "probable",
+            "source": "manual_test",
+        },
+        ("TRIO", "1+2+3"): {
+            "dividend": 80.0,
+            "dividend_status": "probable",
+            "source": "manual_test",
+        },
+    }
+
+    result = build_betting_decisions(
+        predictions,
+        "scheduled",
+        bankroll=10000,
+        risk_profile="standard",
+        exotic_dividends=dividends,
+    )
+
+    pool_choice = result["pool_choice"]
+    trio = next(row for row in pool_choice["markets"] if row["market"] == "TRIO")
+    qpl = next(row for row in pool_choice["markets"] if row["market"] == "QPL")
+    assert trio["best_cost_adjusted_expected_value"] > qpl["best_cost_adjusted_expected_value"]
+    assert pool_choice["summary"]["best_market"] in {"TRIO", "QPL"}
+    assert any("位置Q" in item["title"] for item in pool_choice["recommendations"])
 
 
 def test_correlated_exposure_reduces_shared_horse_and_leg_stakes() -> None:

@@ -2,6 +2,26 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-08 - Pool Choice Efficiency Scorecard
+
+Goal:
+
+- Compare HKJC betting pools by cost-adjusted value instead of treating each ticket in isolation, especially when a low-return QPL idea may be better expressed through TRIO/TCE with smaller stake and higher payout leverage.
+
+Changes:
+
+- Added a `pool_choice` scorecard to betting output.
+- Scores WIN, PLACE, QIN, QPL, FCT, TRIO, TCE, FIRST4, and QUARTET using probability, official/probable dividend, required dividend, takeout, ticket cost, recommended stake, and variance penalty.
+- Added pool-choice recommendations that flag when QPL value should be tested against TRIO/TCE, or when the higher-variance pool should be rejected despite attractive payout.
+- Added UI section `彩池選擇模型` above exotic candidates, showing the preferred pool, actionable pool count, positive cost-adjusted EV pool count, and top pool cards.
+- Added tests for pool-choice payload presence and QPL-to-TRIO upgrade comparison.
+
+Verification:
+
+- `python -m pytest tests\test_betting.py tests\test_ui_localization.py`
+- `node --check src\racing_model\web\app.js`
+- `python -m compileall -q src dashboard tests`
+
 ## 2026-05-08 - OOS Slice Scorecard Promotion Gate
 
 Goal:

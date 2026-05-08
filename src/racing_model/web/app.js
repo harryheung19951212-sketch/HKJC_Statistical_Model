@@ -484,6 +484,7 @@ function renderBetting(data, options = {}) {
   `;
   const tickets = data.tickets || [];
   const settlementHtml = renderBettingSettlement(data.settlement || {});
+  const poolChoiceHtml = renderPoolChoice(data.pool_choice || {});
   const exposureHtml = renderExposureReport(data.exposure_report || {});
   const exoticHtml = renderExoticSection(data.exotic_candidates || [], data.upgrade_paths || []);
   const deferredHtml = data.exotics_deferred ? `<div class="betting-empty">複式及全投注方法建議計算中...</div>` : "";
@@ -497,12 +498,13 @@ function renderBetting(data, options = {}) {
       <div class="betting-empty">${emptyMessage}</div>
       ${top.map(renderDecisionCard).join("")}
       ${deferredHtml}
+      ${poolChoiceHtml}
       ${exposureHtml}
       ${exoticHtml}
     `;
     return;
   }
-  box.innerHTML = `${settlementHtml}${tickets.slice(0, 8).map(renderDecisionCard).join("")}${deferredHtml}${exposureHtml}${exoticHtml}`;
+  box.innerHTML = `${settlementHtml}${tickets.slice(0, 8).map(renderDecisionCard).join("")}${deferredHtml}${poolChoiceHtml}${exposureHtml}${exoticHtml}`;
 }
 
 function renderDecisionCard(row) {
@@ -636,6 +638,65 @@ function renderExoticSection(candidates, upgradePaths) {
       </div>
     </div>
   `;
+}
+
+function renderPoolChoice(poolChoice) {
+  const summary = poolChoice.summary || {};
+  const markets = (poolChoice.markets || []).filter((row) => row.candidate_count || row.ticket_count).slice(0, 6);
+  const recommendations = poolChoice.recommendations || [];
+  if (!markets.length && !recommendations.length) return "";
+  return `
+    <details class="exotic-section" open>
+      <summary class="exotic-head">
+        <strong>彩池選擇模型</strong>
+        <span>優先：${summary.best_market_label || "-"}｜可落注 ${summary.actionable_markets || 0}｜正成本後EV ${summary.positive_ev_markets || 0}</span>
+      </summary>
+      <div class="upgrade-list">
+        ${recommendations.slice(0, 4).map((item) => `
+          <div class="upgrade-card ${item.level || ""}">
+            <span>${item.level || "info"}</span>
+            <strong>${item.title || "-"}</strong>
+            <small>${item.body || ""}</small>
+          </div>
+        `).join("")}
+      </div>
+      <div class="exotic-grid">
+        ${markets.map(renderPoolChoiceCard).join("")}
+      </div>
+    </details>
+  `;
+}
+
+function renderPoolChoiceCard(row) {
+  return `
+    <div class="exotic-card">
+      <div>
+        <span>${row.market_label || row.market}</span>
+        <strong>${row.best_combination || row.market}</strong>
+        <small>${poolChoiceVerdict(row.verdict)}</small>
+      </div>
+      <div class="exotic-metrics">
+        <label>選擇分 <b>${formatNum(row.choice_score, 2)}</b></label>
+        <label>中獎率 <b>${formatPct(row.best_probability)}</b></label>
+        <label>成本後EV <b class="${evClass(row.best_cost_adjusted_expected_value)}">${formatSigned(row.best_cost_adjusted_expected_value, 3)}</b></label>
+        <label>所需派彩差 <b class="${evClass(row.efficiency_gap)}">${formatSigned(row.efficiency_gap, 2)}x</b></label>
+        <label>抽水 <b>${formatPct(row.takeout_rate)}</b></label>
+        <label>建議注碼 <b>${formatMoney(row.best_recommended_stake)}</b></label>
+      </div>
+    </div>
+  `;
+}
+
+function poolChoiceVerdict(value) {
+  return {
+    actionable: "可落注",
+    watchlist: "觀察名單",
+    need_dividend: "等官方派彩",
+    no_edge_after_cost: "扣成本後無值",
+    dividend_too_short: "派彩未補償風險",
+    high_variance: "波動過高",
+    no_candidate: "未有候選",
+  }[value] || value || "-";
 }
 
 function renderExposureReport(report) {

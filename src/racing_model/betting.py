@@ -112,6 +112,7 @@ def build_betting_decisions(
         reverse=True,
     )
     tickets = [decision for decision in [*decisions, *exotic_decisions] if decision["recommended_stake"] > 0]
+    pool_choice = build_pool_choice_scorecard([*decisions, *exotic_decisions], exotic_candidates, tickets)
     return {
         "race_status": race_status,
         "bankroll": bankroll,
@@ -136,6 +137,7 @@ def build_betting_decisions(
         "decisions": decisions,
         "exotic_decisions": exotic_decisions,
         "exotic_candidates": exotic_candidates,
+        "pool_choice": pool_choice,
         "upgrade_paths": build_upgrade_paths(exotic_candidates),
         "exotics_deferred": not include_exotics,
     }
@@ -501,6 +503,248 @@ def build_exotic_decisions(
             }
         )
     return decisions
+
+
+def build_pool_choice_scorecard(
+    decisions: list[dict[str, Any]],
+    exotic_candidates: list[dict[str, Any]],
+    tickets: list[dict[str, Any]],
+) -> dict[str, Any]:
+    markets = ["WIN", "PLACE", *EXOTIC_PRODUCTS.keys()]
+    rows = []
+    for market in markets:
+        market_decisions = [row for row in decisions if str(row.get("market")) == market]
+        market_candidates = [row for row in exotic_candidates if str(row.get("market")) == market]
+        row = pool_choice_market_row(market, market_decisions, market_candidates)
+        rows.append(row)
+    ranked = sorted(rows, key=lambda row: float(row["choice_score"]), reverse=True)
+    actionable = [row for row in ranked if row["actionable_count"] > 0]
+    best = actionable[0] if actionable else ranked[0] if ranked else None
+    recommendations = pool_choice_recommendations(rows, best)
+    return {
+        "summary": {
+            "best_market": best.get("market") if best else None,
+            "best_market_label": best.get("market_label") if best else None,
+            "best_score": best.get("choice_score") if best else None,
+            "active_ticket_markets": len({str(ticket.get("market")) for ticket in tickets}),
+            "actionable_markets": len(actionable),
+            "positive_ev_markets": sum(1 for row in rows if float(row.get("best_cost_adjusted_expected_value") or -999) > 0),
+        },
+        "markets": ranked,
+        "recommendations": recommendations,
+    }
+
+
+def pool_choice_market_row(
+    market: str,
+    decisions: list[dict[str, Any]],
+    candidates: list[dict[str, Any]],
+) -> dict[str, Any]:
+    sources = [*decisions, *candidates]
+    rule = pool_rule_payload(market)
+    if not sources:
+        return {
+            "market": market,
+            "market_label": market_label(market),
+            "choice_score": -999.0,
+            "ticket_count": 0,
+            "candidate_count": 0,
+            "actionable_count": 0,
+            "takeout_rate": rule["takeout_rate"],
+            "payout_rate": rule["payout_rate"],
+            "min_unit": rule["min_unit"],
+            "best_probability": None,
+            "best_dividend": None,
+            "best_required_dividend": None,
+            "best_expected_value": None,
+            "best_cost_adjusted_expected_value": None,
+            "best_minimum_ticket_cost": rule["min_unit"],
+            "best_recommended_stake": 0.0,
+            "best_combination": "",
+            "leverage_index": 0.0,
+            "efficiency_gap": None,
+            "risk_penalty": 0.0,
+            "verdict": "no_candidate",
+        }
+    best_source = max(sources, key=pool_choice_item_score)
+    actionable = [
+        row
+        for row in sources
+        if float(row.get("recommended_stake") or 0.0) > 0 or str(row.get("action") or "") == "?澆?"
+    ]
+    probability = safe_float(best_source.get("probability"))
+    dividend = safe_float(best_source.get("odds")) or safe_float(best_source.get("dividend"))
+    required = safe_float(best_source.get("required_dividend"))
+    expected_value = safe_float(best_source.get("expected_value"))
+    adjusted_ev = safe_float(best_source.get("cost_adjusted_expected_value"))
+    minimum_cost = safe_float(best_source.get("minimum_ticket_cost")) or float(rule["min_unit"])
+    recommended_stake = safe_float(best_source.get("recommended_stake")) or 0.0
+    leverage = max((dividend or required or 1.0) - 1.0, 0.0)
+    efficiency_gap = (dividend - required) if dividend is not None and required is not None else None
+    risk_penalty = pool_choice_risk_penalty(market, probability, minimum_cost, leverage)
+    score = pool_choice_score(
+        adjusted_ev=adjusted_ev,
+        probability=probability,
+        efficiency_gap=efficiency_gap,
+        leverage=leverage,
+        takeout=float(rule["takeout_rate"]),
+        minimum_cost=minimum_cost,
+        risk_penalty=risk_penalty,
+        actionable=bool(actionable),
+    )
+    return {
+        "market": market,
+        "market_label": market_label(market),
+        "choice_score": round(score, 4),
+        "ticket_count": len(decisions),
+        "candidate_count": len(candidates),
+        "actionable_count": len(actionable),
+        "takeout_rate": rule["takeout_rate"],
+        "payout_rate": rule["payout_rate"],
+        "min_unit": rule["min_unit"],
+        "best_probability": round(probability, 6) if probability is not None else None,
+        "best_dividend": dividend,
+        "best_required_dividend": round(required, 3) if required is not None else None,
+        "best_expected_value": round(expected_value, 6) if expected_value is not None else None,
+        "best_cost_adjusted_expected_value": round(adjusted_ev, 6) if adjusted_ev is not None else None,
+        "best_minimum_ticket_cost": round(minimum_cost, 1),
+        "best_recommended_stake": round(recommended_stake, 1),
+        "best_combination": str(best_source.get("combination") or best_source.get("horse_name") or ""),
+        "leverage_index": round(leverage, 3),
+        "efficiency_gap": round(efficiency_gap, 3) if efficiency_gap is not None else None,
+        "risk_penalty": round(risk_penalty, 4),
+        "verdict": pool_choice_verdict(adjusted_ev, efficiency_gap, actionable, risk_penalty),
+    }
+
+
+def pool_choice_item_score(row: dict[str, Any]) -> float:
+    adjusted_ev = safe_float(row.get("cost_adjusted_expected_value"))
+    probability = safe_float(row.get("probability")) or 0.0
+    dividend = safe_float(row.get("odds")) or safe_float(row.get("dividend"))
+    required = safe_float(row.get("required_dividend"))
+    efficiency_gap = (dividend - required) if dividend is not None and required is not None else None
+    stake = safe_float(row.get("recommended_stake")) or 0.0
+    return (
+        (adjusted_ev if adjusted_ev is not None else -0.25) * 100.0
+        + probability * 8.0
+        + (efficiency_gap or 0.0) * 0.15
+        + (5.0 if stake > 0 else 0.0)
+    )
+
+
+def pool_choice_score(
+    adjusted_ev: float | None,
+    probability: float | None,
+    efficiency_gap: float | None,
+    leverage: float,
+    takeout: float,
+    minimum_cost: float,
+    risk_penalty: float,
+    actionable: bool,
+) -> float:
+    ev_component = (adjusted_ev if adjusted_ev is not None else -0.25) * 100.0
+    probability_component = (probability or 0.0) * 8.0
+    gap_component = (efficiency_gap or 0.0) * 0.15
+    leverage_component = min(leverage, 80.0) * 0.04
+    cost_penalty = min(max(minimum_cost - 1.0, 0.0), 30.0) * 0.08
+    action_bonus = 8.0 if actionable else 0.0
+    return ev_component + probability_component + gap_component + leverage_component + action_bonus - takeout * 12.0 - cost_penalty - risk_penalty
+
+
+def pool_choice_risk_penalty(market: str, probability: float | None, minimum_cost: float, leverage: float) -> float:
+    probability_value = probability or 0.0
+    if market in {"WIN", "PLACE"}:
+        return 0.0
+    low_hit_penalty = max(0.0, 0.08 - probability_value) * 35.0
+    cost_penalty = max(0.0, minimum_cost - 10.0) * 0.05
+    leverage_penalty = max(0.0, leverage - 120.0) * 0.02
+    return low_hit_penalty + cost_penalty + leverage_penalty
+
+
+def pool_choice_verdict(
+    adjusted_ev: float | None,
+    efficiency_gap: float | None,
+    actionable: list[dict[str, Any]] | bool,
+    risk_penalty: float,
+) -> str:
+    if adjusted_ev is None:
+        return "need_dividend"
+    if adjusted_ev <= 0:
+        return "no_edge_after_cost"
+    if efficiency_gap is not None and efficiency_gap < 0:
+        return "dividend_too_short"
+    if risk_penalty >= 2.5:
+        return "high_variance"
+    if actionable:
+        return "actionable"
+    return "watchlist"
+
+
+def pool_choice_recommendations(rows: list[dict[str, Any]], best: dict[str, Any] | None) -> list[dict[str, str]]:
+    recommendations: list[dict[str, str]] = []
+    if best and best.get("verdict") == "actionable":
+        recommendations.append(
+            {
+                "level": "focus",
+                "title": f"優先彩池：{best['market_label']}",
+                "body": f"分數 {best['choice_score']}，成本後EV {format_signed_pct(best.get('best_cost_adjusted_expected_value'))}，建議注碼 ${best.get('best_recommended_stake') or 0}。",
+            }
+        )
+    by_market = {row["market"]: row for row in rows}
+    qpl = by_market.get("QPL")
+    trio = by_market.get("TRIO")
+    tce = by_market.get("TCE")
+    if qpl and trio and qpl.get("best_probability") and trio.get("best_probability"):
+        qpl_ev = safe_float(qpl.get("best_cost_adjusted_expected_value")) or -999.0
+        trio_ev = safe_float(trio.get("best_cost_adjusted_expected_value")) or -999.0
+        if qpl_ev > 0 and trio_ev > qpl_ev and float(trio.get("choice_score") or 0.0) >= float(qpl.get("choice_score") or 0.0) - 4.0:
+            recommendations.append(
+                {
+                    "level": "upgrade",
+                    "title": "位置Q可升級檢查：單T/三重彩",
+                    "body": f"位置Q有值，但{trio['market_label']}成本後EV更高；同一組馬腳可用較小注碼追求更高派彩。",
+                }
+            )
+        elif qpl_ev > 0 and trio_ev <= 0:
+            recommendations.append(
+                {
+                    "level": "risk",
+                    "title": "保留位置Q，暫不升級",
+                    "body": "組合彩池派彩未補償三甲難度，避免為了高派彩犧牲正期望。",
+                }
+            )
+    if tce and (safe_float(tce.get("best_cost_adjusted_expected_value")) or -999.0) > 0 and float(tce.get("risk_penalty") or 0.0) < 2.5:
+        recommendations.append(
+            {
+                "level": "upgrade",
+                "title": "可研究單T精準腳法",
+                "body": "三重彩排序風險高，只在官方派彩足夠、模型排序清晰、風險扣分不高時納入候選。",
+            }
+        )
+    if not recommendations:
+        recommendations.append(
+            {
+                "level": "data",
+                "title": "彩池選擇仍需更多派彩樣本",
+                "body": "現階段先按成本後EV與風險分數排序；等 final dividends / betting ledger 增加後再用真實ROI校準。",
+            }
+        )
+    return recommendations[:4]
+
+
+def market_label(market: str) -> str:
+    if market == "WIN":
+        return "?刻?"
+    if market == "PLACE":
+        return "雿蔭"
+    return str(EXOTIC_PRODUCTS.get(market, {}).get("label") or market)
+
+
+def format_signed_pct(value: object) -> str:
+    numeric = safe_float(value)
+    if numeric is None:
+        return "-"
+    return f"{numeric * 100:+.1f}%"
 
 
 def apply_correlated_exposure_controls(
