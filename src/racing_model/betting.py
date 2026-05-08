@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from itertools import combinations, permutations
+from math import factorial
 from typing import Any
 
 from .pool_rules import (
@@ -1185,6 +1186,15 @@ def annotate_exotic_candidate_stakes(
         combination_count = max(int(candidate.get("combination_count") or 1), 1)
         candidate["per_combination_stake"] = round(float(candidate["recommended_stake"]) / combination_count, 2)
         if float(candidate["recommended_stake"]) <= 0:
+            existing_reason = str(candidate.get("structure_reason") or "").strip()
+            no_bet_reason = str(decision.get("reason") or "未達下注門檻")
+            candidate["structure_reason"] = (
+                f"{existing_reason}；{no_bet_reason}，所以建議 $0"
+                if existing_reason
+                else f"{no_bet_reason}，所以建議 $0"
+            )
+            continue
+        if float(candidate["recommended_stake"]) <= 0:
             candidate["structure_label"] = "不做膽腳"
             candidate["structure_mode"] = "none"
             candidate["bankers"] = []
@@ -1284,7 +1294,20 @@ def exotic_structure_payload(
             "combination_count": 1,
         }
 
-    separator = " > " if ordered else " + "
+    separator = " + "
+    combination_count = factorial(len(rows)) if ordered and len(rows) > 1 else 1
+    ordered_note = f"；複式會覆蓋 {combination_count} 條排序飛，只限本候選馬匹" if ordered and combination_count > 1 else ""
+    return {
+        "structure_mode": "box",
+        "structure_label": "複式",
+        "structure": f"{market_label}: {separator.join(runner_label(row) for row in rows)}",
+        "structure_reason": f"不設膽腳，不加全馬，只用本候選入面幾匹做複式{ordered_note}",
+        "banker_ids": [],
+        "bankers": [],
+        "leg_ids": [str(row.get("horse_id")) for row in rows],
+        "legs": [runner_label(row) for row in rows],
+        "combination_count": combination_count,
+    }
     return {
         "structure_mode": "box",
         "structure_label": "複式",

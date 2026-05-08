@@ -486,6 +486,7 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
                 bankroll = query_float(query, "bankroll", 10000.0)
                 risk = query.get("risk", ["standard"])[0] or "standard"
                 include_exotics = query_bool(query, "include_exotics", True)
+                refresh_exotics = query_bool(query, "refresh_exotics", False)
                 record_mode = query.get("record_mode", ["async"])[0] or "async"
                 model = self.app_state.model()
                 policy = self.app_state.prediction_policy(conn, model)
@@ -500,6 +501,7 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
                         state=self.app_state,
                         policy=policy,
                         include_exotics=include_exotics,
+                        refresh_exotics=refresh_exotics,
                         record_mode=record_mode,
                     )
                 )
@@ -1084,6 +1086,7 @@ def api_betting(
     predictions: list[dict[str, object]] | None = None,
     policy: dict[str, object] | None = None,
     include_exotics: bool = True,
+    refresh_exotics: bool = False,
     record_mode: str = "sync",
 ) -> dict[str, object]:
     race_rows = fetch_all(conn, "SELECT * FROM races WHERE race_id = ?", (race_id,))
@@ -1102,6 +1105,15 @@ def api_betting(
             if state is not None:
                 state.cache_race_predictions(race_id, predictions, policy or {})
     status = race_lifecycle_status(conn, race_id)
+    exotic_refresh_status = "not_requested"
+    exotic_refresh_error = ""
+    if include_exotics and refresh_exotics and status == "scheduled" and state is not None:
+        try:
+            refresh_exotic_dividends(conn, race_id, build_exotic_dividend_provider(state.settings))
+            exotic_refresh_status = "refreshed"
+        except Exception as exc:
+            exotic_refresh_status = "error"
+            exotic_refresh_error = str(exc)
     exotic_lookup = load_exotic_dividend_lookup(conn, race_id)
     if include_exotics and status == "scheduled" and not exotic_lookup:
         queued = state.start_exotic_refresh_job(race_id) if state is not None else False
@@ -1120,8 +1132,9 @@ def api_betting(
     payload["race"] = race
     payload["prediction_policy"] = policy or {}
     payload["exotic_refresh"] = {
-        "status": "queued" if queued else "cached" if exotic_lookup else "not_available",
+        "status": exotic_refresh_status if exotic_refresh_status != "not_requested" else "queued" if queued else "cached" if exotic_lookup else "not_available",
         "cached_dividends": len(exotic_lookup),
+        "error": exotic_refresh_error,
     }
     if model_path is not None:
         if record_mode == "async" and state is not None:

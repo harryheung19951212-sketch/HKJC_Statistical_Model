@@ -406,8 +406,8 @@ h2 {
 }
 
 .race-tabs {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
   padding: 0 0 14px;
 }
@@ -2182,6 +2182,10 @@ td:nth-child(4), th:nth-child(4) {
 }
 
 @media (max-width: 560px) {
+  .race-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .analytics-panel .stat-list,
   .quality-grid,
   .feed-cards,

@@ -127,6 +127,7 @@ class RankingModel:
                     "horse_id": runner.horse_id,
                     "horse_no": runner.horse_no,
                     "horse_name": runner.horse_name,
+                    "last_six_runs": runner.last_six_runs,
                     "horse_name_zh": runner.horse_name_zh,
                     "display_name": runner.horse_name_zh or runner.horse_name,
                     "jockey": runner.jockey,

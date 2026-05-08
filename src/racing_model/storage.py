@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS runners (
   horse_id TEXT NOT NULL,
   horse_no INTEGER,
   horse_name TEXT NOT NULL,
+  last_six_runs TEXT NOT NULL DEFAULT '',
   horse_name_zh TEXT NOT NULL DEFAULT '',
   jockey TEXT NOT NULL,
   jockey_zh TEXT NOT NULL DEFAULT '',
@@ -322,6 +323,7 @@ def init_db(db_path: Path | str) -> None:
 
 def migrate_schema(conn: sqlite3.Connection) -> None:
     ensure_column(conn, "runners", "horse_no", "INTEGER")
+    ensure_column(conn, "runners", "last_six_runs", "TEXT NOT NULL DEFAULT ''")
     ensure_column(conn, "runners", "horse_name_zh", "TEXT NOT NULL DEFAULT ''")
     ensure_column(conn, "runners", "jockey_zh", "TEXT NOT NULL DEFAULT ''")
     ensure_column(conn, "runners", "trainer_zh", "TEXT NOT NULL DEFAULT ''")

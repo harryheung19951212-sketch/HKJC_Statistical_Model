@@ -1,24 +1,25 @@
 ﻿let races = [];
-let selectedRaceId = null;
+let selectedRaceId = savedUiValue("selectedRaceId", null);
 let intervalSeconds = 30;
 let countdown = 30;
 let raceDayJobTimer = null;
 let backfillJobTimer = null;
 let currentPredictions = [];
-let selectedHorseId = null;
-let autoFollowRace = true;
-const raceFolderState = { upcoming: true, resulted: false };
-const raceDateFolderState = {};
+let selectedHorseId = savedUiValue("selectedHorseId", null);
+let autoFollowRace = false;
+const raceFolderState = savedUiValue("raceFolderState", { upcoming: true, resulted: false });
+const raceDateFolderState = savedUiValue("raceDateFolderState", {});
 let activeWatchRaceId = null;
-let currentView = "race";
+let currentView = savedUiValue("currentView", "race");
 const viewDataLoaded = { coverage: false, analytics: false };
 let raceRefreshInFlight = false;
 let bettingRefreshInFlight = false;
 let bettingRefreshQueued = false;
 let currentOddsHistory = [];
 let currentMarketFlow = null;
-let activeRaceTab = "overview";
+let activeRaceTab = savedUiValue("activeRaceTab", "overview");
 const predictionSort = { key: "rank", direction: "asc" };
+const UI_STATE_KEY = "hkjc-racing-ui-state";
 
 const text = {
   scheduled: "\u672a\u958b\u8dd1",
@@ -60,6 +61,37 @@ function localStatus(status) {
   return text[status] || status || text.scheduled;
 }
 
+function savedUiState() {
+  try {
+    return JSON.parse(localStorage.getItem("hkjc-racing-ui-state") || "{}");
+  } catch (error) {
+    return {};
+  }
+}
+
+function savedUiValue(key, fallback) {
+  const state = savedUiState();
+  return state[key] === undefined ? fallback : state[key];
+}
+
+function saveUiState(patch = {}) {
+  try {
+    const state = {
+      ...savedUiState(),
+      selectedRaceId,
+      selectedHorseId,
+      currentView,
+      activeRaceTab,
+      raceFolderState,
+      raceDateFolderState,
+      ...patch,
+    };
+    localStorage.setItem("hkjc-racing-ui-state", JSON.stringify(state));
+  } catch (error) {
+    // The UI remains usable even when browser storage is unavailable.
+  }
+}
+
 function localizedHorse(row) {
   return row.display_name || row.horse_name_zh || row.horse_name || row.horse_id || "-";
 }
@@ -98,15 +130,7 @@ async function loadState() {
   $("system-status").textContent = `每 ${intervalSeconds} 秒刷新 | ${active}`;
   if (!selectedRaceId && state.current_race_id) selectedRaceId = state.current_race_id;
   renderLifecycle(lifecycle);
-  if (autoFollowRace && selectedRaceId && lifecycle.next_scheduled_race_id) {
-    const selected = races.find((race) => race.race_id === selectedRaceId);
-    if (selected && selected.status === "resulted" && lifecycle.next_scheduled_race_id !== selectedRaceId) {
-      sleepSelectedRace();
-      selectedRaceId = lifecycle.next_scheduled_race_id;
-      selectedHorseId = null;
-      activeWatchRaceId = null;
-    }
-  }
+  saveUiState();
 }
 
 async function loadRaces() {
@@ -129,9 +153,10 @@ function renderRaceList() {
   ].forEach(([key, label]) => {
     const folder = document.createElement("details");
     folder.className = `race-folder race-folder-${key}`;
-    folder.open = Boolean(raceFolderState[key] || grouped[key].some((race) => race.race_id === selectedRaceId));
+    folder.open = Boolean(raceFolderState[key] ?? (key === "upcoming"));
     folder.addEventListener("toggle", () => {
       raceFolderState[key] = folder.open;
+      saveUiState({ raceFolderState });
     });
 
     const summary = document.createElement("summary");
@@ -154,6 +179,7 @@ function renderRaceDateFolder(statusKey, date, items) {
   folder.open = raceDateFolderState[key] ?? (statusKey === "upcoming" || containsSelected);
   folder.addEventListener("toggle", () => {
     raceDateFolderState[key] = folder.open;
+    saveUiState({ raceDateFolderState });
   });
 
   const summary = document.createElement("summary");
@@ -175,6 +201,7 @@ function renderRaceDateFolder(statusKey, date, items) {
       autoFollowRace = false;
       activeWatchRaceId = null;
       countdown = intervalSeconds;
+      saveUiState();
       renderRaceList();
       refreshSelectedRace();
     });
@@ -218,6 +245,7 @@ function selectedRace() {
 
 function setRaceTab(tabName) {
   activeRaceTab = tabName || "overview";
+  saveUiState({ activeRaceTab });
   document.querySelectorAll(".race-tab").forEach((button) => {
     button.classList.toggle("active", button.dataset.raceTabTarget === activeRaceTab);
   });
@@ -228,6 +256,7 @@ function setRaceTab(tabName) {
 
 async function switchAppView(view) {
   currentView = view;
+  saveUiState({ currentView });
   document.querySelectorAll(".app-view").forEach((item) => {
     item.classList.toggle("active", item.id === `${view}-view`);
   });
@@ -343,7 +372,7 @@ async function refreshFullBetting(raceKey) {
   bettingRefreshQueued = false;
   const expectedRaceId = selectedRaceId;
   try {
-    const betting = await api(`/api/betting?race_id=${raceKey}&bankroll=${encodeURIComponent(bettingBankroll())}&risk=${encodeURIComponent(bettingRisk())}&include_exotics=1`);
+    const betting = await api(`/api/betting?race_id=${raceKey}&bankroll=${encodeURIComponent(bettingBankroll())}&risk=${encodeURIComponent(bettingRisk())}&include_exotics=1&refresh_exotics=1`);
     if (selectedRaceId !== expectedRaceId) return;
     renderBetting(betting);
     const ledger = await api(`/api/betting-ledger?race_id=${raceKey}`);
@@ -1048,6 +1077,15 @@ function predictionSortValue(row, key) {
   return Number(row.model_rank || 0);
 }
 
+function lastSixRunsText(row) {
+  return row.last_six_runs || row.last6 || "-";
+}
+
+function lastSixRunsLabel(row) {
+  const value = lastSixRunsText(row);
+  return value === "-" ? "近6場 -" : `近6場 ${value}`;
+}
+
 function renderPredictions(predictions) {
   const body = $("prediction-body");
   body.innerHTML = "";
@@ -1057,7 +1095,7 @@ function renderPredictions(predictions) {
     tr.className = `clickable ${row.horse_id === selectedHorseId ? "selected" : ""}`;
     tr.innerHTML = `
       <td>${row.model_rank}</td>
-      <td><strong>${row.horse_no || "-"} ${localizedHorse(row)}</strong><br><span>${row.horse_id}</span></td>
+      <td><strong>${row.horse_no || "-"} ${localizedHorse(row)}</strong><br><span>${lastSixRunsLabel(row)}</span><br><span>${row.horse_id}</span></td>
       <td>${row.draw || "-"}</td>
       <td>${localizedJockey(row)}<br><span>${localizedTrainer(row)}</span></td>
       <td>${formatPct(row.win_probability)}<br><span>賠 ${formatNum(row.latest_win_odds, 2)}</span><br><b class="${evClass(row.expected_value)}">EV ${row.expected_value === null ? "-" : Number(row.expected_value).toFixed(3)}</b></td>
@@ -1066,6 +1104,7 @@ function renderPredictions(predictions) {
     `;
     tr.addEventListener("click", () => {
       selectedHorseId = row.horse_id;
+      saveUiState({ selectedHorseId });
       renderPredictions(currentPredictions);
       renderRunnerDetail(row);
       renderRaceSituationCharts(currentPredictions);
@@ -1285,6 +1324,7 @@ function renderRunnerDetail(row) {
     <p class="runner-title">${localizedHorse(row)}</p>
     <p class="runner-subtitle">
       \u99ac\u865f ${row.horse_no || "-"} | \u6a94\u4f4d ${row.draw || "-"} | ${row.horse_id}<br>
+      近6場往績：${lastSixRunsText(row)}<br>
       \u9a0e\u5e2b\uff1a${localizedJockey(row)} | \u7df4\u99ac\u5e2b\uff1a${localizedTrainer(row)}<br>
       \u7368\u8d0f\u52dd\u7387\uff1a${formatPct(row.win_probability)} | \u5165\u4e09\u7532\uff1a${formatPct(row.top3_probability)} | \u4f4d\u7f6e\u671f\u671b\u503c\uff1a${row.top3_expected_value === null ? "-" : Number(row.top3_expected_value).toFixed(3)}<br>
       \u4e09\u7532\u4f86\u6e90\uff1a${top3SourceLabel(row.top3_model_source)}
@@ -2222,12 +2262,6 @@ async function manualRefreshOdds() {
 
 async function lifecycleStep() {
   const result = await api("/api/lifecycle-step", { method: "POST" });
-  if (autoFollowRace && result.next_race_id && result.next_race_id !== selectedRaceId) {
-    sleepSelectedRace();
-    selectedRaceId = result.next_race_id;
-    selectedHorseId = null;
-    activeWatchRaceId = null;
-  }
   $("system-status").textContent = result.race_id ? `全域流程已處理：${result.race_id}` : "未有未開跑場次";
   countdown = intervalSeconds;
   await loadState();
@@ -2253,7 +2287,6 @@ async function markLive() {
 async function markScheduled() {
   if (!selectedRaceId) return;
   const result = await api(`/api/mark-scheduled?race_id=${encodeURIComponent(selectedRaceId)}`, { method: "POST" });
-  if (result.status !== "resulted") autoFollowRace = true;
   $("system-status").textContent = result.status === "resulted"
     ? "已完場賽事不能改回未開跑，避免污染賽果及最後賠率"
     : "本場已恢復未開跑刷新";
@@ -2265,13 +2298,7 @@ async function refreshResults() {
   if (!selectedRaceId) return;
   const result = await api(`/api/refresh-results?race_id=${encodeURIComponent(selectedRaceId)}`, { method: "POST" });
   if (result.status === "resulted") {
-    const lifecycle = await api("/api/lifecycle");
-    if (autoFollowRace && lifecycle.next_scheduled_race_id) {
-      sleepSelectedRace();
-      selectedRaceId = lifecycle.next_scheduled_race_id;
-      selectedHorseId = null;
-      activeWatchRaceId = null;
-    }
+    await api("/api/lifecycle");
   }
   await refreshSelectedRace();
 }
@@ -2305,6 +2332,7 @@ function watchRaceDayJob(jobId) {
       $("race-day-message").textContent = `${text.loadDone}\uff1a${result.imported_races || 0} \u5834\uff0c${result.errors || 0} \u500b\u932f\u8aa4`;
       selectedRaceId = result.first_race_id || selectedRaceId;
       activeWatchRaceId = null;
+      saveUiState();
       await refreshSelectedRace({ full: true });
     }
     if (job.status === "error") {
@@ -2350,6 +2378,7 @@ function watchBackfillJob(jobId) {
       $("backfill-message").textContent = `完成：${result.imported_races || 0} 場，${result.imported_results || 0} 份賽果，重訓 ${training.training_races || 0} 場`;
       if (result.first_race_id) selectedRaceId = result.first_race_id;
       activeWatchRaceId = null;
+      saveUiState();
       await refreshSelectedRace({ full: true });
     }
     if (job.status === "error") {
@@ -2394,10 +2423,16 @@ async function boot() {
     countdown = 1;
   });
   window.addEventListener("beforeunload", sleepSelectedRace);
+  const initialView = currentView;
   await loadState();
   setRaceTab(activeRaceTab);
   await loadRaces();
-  await refreshSelectedRace({ full: false });
+  if (initialView !== "race") {
+    await switchAppView(initialView);
+  }
+  if (currentView === "race") {
+    await refreshSelectedRace({ full: false });
+  }
   countdown = intervalSeconds;
   setInterval(async () => {
     if (document.hidden || currentView !== "race") {

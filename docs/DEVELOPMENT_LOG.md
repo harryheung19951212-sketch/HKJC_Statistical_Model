@@ -2,6 +2,33 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-08 - Preserve Race Page State And Refresh Exotic Odds
+
+Goal:
+
+- Keep the user on the same page/tab after browser refresh or 30-second updates.
+- Stop collapsed race-menu folders reopening during auto refresh.
+- Keep exotic betting candidates tied to fresh official dividend refreshes.
+- Show HKJC last-six-runs form under each horse name in the prediction table.
+
+Changes:
+
+- Added browser-side state persistence for selected race, top-level view, race tab, selected horse, and race-menu folder open/closed state.
+- Removed automatic jumping from a resulted race to the next scheduled race during refresh/result checks.
+- Renamed the top-left manual button to `刷新賠率`.
+- Full betting refresh now asks `/api/betting` to synchronously refresh exotic dividends before rebuilding candidate tickets.
+- Added `last_six_runs` to runner storage, HKJC racecard parsing, model prediction payloads, and the race-page prediction/detail display.
+- Changed ordered exotic candidate structure to display boxed/複式 ticket counts, so TCE `1+2+3` shows six ordered tickets and does not imply a banker dragging every other horse.
+- Forced race-page tabs into a four-column desktop row, with a compact two-column mobile layout.
+
+Verification:
+
+- `node --check src\racing_model\web\app.js`
+- `python -m compileall -q src dashboard tests`
+- `python -m pytest tests\test_hkjc_parser.py tests\test_betting.py tests\test_ui_localization.py tests\test_fast_betting_refresh.py -q`
+- `python -m pytest -q`
+- Browser check on `http://127.0.0.1:8766/`: reload preserved the betting tab and collapsed race folder state.
+
 ## 2026-05-08 - Fix Zero-Padded HKJC Odds Runner Mapping
 
 Goal:

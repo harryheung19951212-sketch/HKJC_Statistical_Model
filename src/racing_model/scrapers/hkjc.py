@@ -247,6 +247,7 @@ def result_runner_from_row(row: dict[str, Any]) -> dict[str, Any]:
         "horse_id": row["horse_id"],
         "horse_no": row.get("horse_no"),
         "horse_name": row.get("horse_name") or row["horse_id"],
+        "last_six_runs": row.get("last_six_runs") or "",
         "jockey": row.get("jockey") or "unknown",
         "trainer": row.get("trainer") or "unknown",
         "draw": row.get("draw") or 0,
@@ -321,6 +322,7 @@ def parse_racecard_runner_tokens(tokens: list[str], race_id: str) -> list[dict[s
                     "horse_no": int(tokens[index]),
                     "horse_id": horse_id,
                     "horse_name": normalize_horse_name(horse_name),
+                    "last_six_runs": tokens[index + 1],
                     "horse_name_zh": "",
                     "jockey": jockey,
                     "jockey_zh": "",
@@ -371,6 +373,7 @@ def parse_racecard_brand_windows(tokens: list[str], race_id: str) -> list[dict[s
                     "horse_no": int(tokens[index - 3]),
                     "horse_id": tokens[index],
                     "horse_name": normalize_horse_name(tokens[index - 1]),
+                    "last_six_runs": tokens[index - 2],
                     "horse_name_zh": "",
                     "jockey": strip_allowance(tokens[index + 2]),
                     "jockey_zh": "",
@@ -406,6 +409,7 @@ def parse_chinese_racecard_brand_windows(tokens: list[str], race_id: str) -> lis
                     "race_id": race_id,
                     "horse_no": int(tokens[index - 3]),
                     "horse_id": tokens[index],
+                    "last_six_runs": tokens[index - 2],
                     "horse_name_zh": tokens[index - 1],
                     "jockey_zh": strip_allowance(tokens[index + 2]),
                     "trainer_zh": tokens[trainer_index],
@@ -462,6 +466,7 @@ def parse_chinese_racecard_runner_tokens(tokens: list[str], race_id: str) -> lis
                     "race_id": race_id,
                     "horse_no": int(tokens[index]),
                     "horse_id": tokens[index + 3],
+                    "last_six_runs": tokens[index + 1],
                     "horse_name_zh": tokens[index + 2],
                     "jockey_zh": strip_allowance(tokens[index + 5]),
                     "trainer_zh": tokens[index + 7],
@@ -483,7 +488,7 @@ def merge_runner_localization(
     for runner in runners:
         zh = zh_by_id.get(runner["horse_id"], {})
         updated = dict(runner)
-        for key in ("horse_no", "horse_name_zh", "jockey_zh", "trainer_zh"):
+        for key in ("horse_no", "last_six_runs", "horse_name_zh", "jockey_zh", "trainer_zh"):
             if zh.get(key) not in {None, ""}:
                 updated[key] = zh[key]
         merged.append(updated)
@@ -514,6 +519,7 @@ def parse_racecard_runner_line(line: str, race_id: str) -> dict[str, Any] | None
         "horse_no": int(match.group("horse_no")),
         "horse_id": match.group("brand"),
         "horse_name": match.group("horse_name").strip(),
+        "last_six_runs": match.group("last6"),
         "horse_name_zh": "",
         "jockey": strip_allowance(match.group("jockey").strip()),
         "jockey_zh": "",

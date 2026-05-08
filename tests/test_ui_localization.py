@@ -70,6 +70,22 @@ def test_auto_refresh_preserves_existing_race_panels() -> None:
     assert "preserveDeferred: preservePanels" in js
     assert "function preservePanelDuringRefresh" in js
     assert "raceRefreshInFlight" in js
+    assert "refresh_exotics=1" in js
+    assert 'folder.open = Boolean(raceFolderState[key] ?? (key === "upcoming"))' in js
+
+
+def test_browser_refresh_preserves_page_and_tab_state() -> None:
+    html = (ROOT / "src/racing_model/web/index.html").read_text(encoding="utf-8")
+    js = (ROOT / "src/racing_model/web/app.js").read_text(encoding="utf-8")
+    css = (ROOT / "src/racing_model/web/styles.css").read_text(encoding="utf-8")
+
+    assert '<button id="refresh-now" type="button">刷新賠率</button>' in html
+    assert 'const UI_STATE_KEY = "hkjc-racing-ui-state"' in js
+    assert 'savedUiValue("selectedRaceId", null)' in js
+    assert 'savedUiValue("currentView", "race")' in js
+    assert "saveUiState({ activeRaceTab })" in js
+    assert "lastSixRunsLabel(row)" in js
+    assert "grid-template-columns: repeat(4, minmax(0, 1fr));" in css
 
 
 def test_race_page_prioritizes_prediction_betting_and_collapsible_diagnostics() -> None:

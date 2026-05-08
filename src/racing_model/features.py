@@ -57,6 +57,7 @@ class RunnerFeatures:
     horse_id: str
     horse_no: int | None
     horse_name: str
+    last_six_runs: str
     horse_name_zh: str
     jockey: str
     jockey_zh: str
@@ -132,6 +133,7 @@ def build_race_features(conn: sqlite3.Connection, race_id: str) -> list[RunnerFe
                 horse_id=horse_id,
                 horse_no=int(runner["horse_no"]) if "horse_no" in runner.keys() and runner["horse_no"] else None,
                 horse_name=runner["horse_name"],
+                last_six_runs=str(runner["last_six_runs"] or "") if "last_six_runs" in runner.keys() else "",
                 horse_name_zh=runner["horse_name_zh"] if "horse_name_zh" in runner.keys() else "",
                 jockey=runner["jockey"],
                 jockey_zh=runner["jockey_zh"] if "jockey_zh" in runner.keys() else "",
