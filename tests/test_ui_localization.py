@@ -47,6 +47,8 @@ def test_model_reports_are_top_level_menu_pages() -> None:
     assert 'data-view="coverage">方程式覆蓋率 / 盲點報告</button>' in html
     assert 'data-view="analytics">回測 / 智能迭代中心</button>' in html
     assert '<section id="coverage-view" class="app-view">' in html
+    assert "36 項覆蓋狀態" in html
+    assert "32 項覆蓋狀態" not in html
     assert '<section id="analytics-view" class="app-view">' in html
     assert '<details class="panel coverage-panel">' not in html
     assert '<details class="panel analytics-panel">' not in html

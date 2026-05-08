@@ -2,6 +2,26 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-08 - Align Betting Minimums And Coverage Header
+
+Goal:
+
+- Make every betting market use a HK$10 minimum ticket amount with no hard maximum ticket size.
+- Fix the coverage page header from the old 32-item wording to the current 36-item roadmap.
+
+Changes:
+
+- Updated TRIO, TCE, FIRST4, and QUARTET pool rules from HK$1 to HK$10 minimum units, matching WIN, PLACE, QIN, QPL, and FCT.
+- Updated the coverage view heading to `36 項覆蓋狀態`.
+- Added/updated tests so every pool rule has `min_unit == 10.0` and the UI no longer contains the old 32-item heading.
+
+Verification:
+
+- `python -m compileall -q src tests`
+- `node --check src\racing_model\web\app.js`
+- `python -m pytest tests\test_betting.py tests\test_ui_localization.py tests\test_coverage.py -q`
+- `python -m pytest -q`
+
 ## 2026-05-08 - Betting Tab Refreshes All Live Odds
 
 Goal:

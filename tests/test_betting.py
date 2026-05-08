@@ -134,7 +134,7 @@ def test_exotic_candidate_structure_does_not_drag_too_many_legs() -> None:
     assert len(first4["legs"]) <= 4
     assert len(first4["legs"]) <= 3 if first4["structure_label"] == "膽拖腳" else True
     assert first4["combination_count"] == 1
-    assert first4["minimum_ticket_cost"] == 1.0
+    assert first4["minimum_ticket_cost"] == 10.0
     assert first4["recommended_stake"] >= 0.0
 
 
@@ -376,6 +376,11 @@ def test_correlated_exposure_reduces_shared_horse_and_leg_stakes() -> None:
             "dividend_status": "probable",
             "source": "manual_test",
         },
+        ("FCT", "1>2"): {
+            "dividend": 40.0,
+            "dividend_status": "probable",
+            "source": "manual_test",
+        },
         ("TRIO", "1+2+3"): {
             "dividend": 80.0,
             "dividend_status": "probable",
@@ -473,4 +478,5 @@ def test_pool_rules_cover_all_betting_markets() -> None:
     assert POOL_RULES["FCT"].payout_rate == 0.805
     assert POOL_RULES["TRIO"].payout_rate == 0.770
     assert POOL_RULES["TCE"].payout_rate == 0.750
+    assert all(rule.min_unit == 10.0 for rule in POOL_RULES.values())
     assert required_expected_value("QUARTET", 0.05) > required_expected_value("WIN", 0.05)

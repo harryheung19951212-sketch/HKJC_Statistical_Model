@@ -25,10 +25,10 @@ POOL_RULES = {
     "QIN": PoolRule("QIN", "Quinella", 0.825, 10.0, False, 2, 2, 0.015),
     "QPL": PoolRule("QPL", "Quinella Place", 0.825, 10.0, False, 2, 3, 0.015),
     "FCT": PoolRule("FCT", "Forecast", 0.805, 10.0, True, 2, 2, 0.020),
-    "TRIO": PoolRule("TRIO", "Trio", 0.770, 1.0, False, 3, 3, 0.025),
-    "TCE": PoolRule("TCE", "Tierce", 0.750, 1.0, True, 3, 3, 0.030),
-    "FIRST4": PoolRule("FIRST4", "First 4", 0.750, 1.0, False, 4, 4, 0.035),
-    "QUARTET": PoolRule("QUARTET", "Quartet", 0.750, 1.0, True, 4, 4, 0.040),
+    "TRIO": PoolRule("TRIO", "Trio", 0.770, 10.0, False, 3, 3, 0.025),
+    "TCE": PoolRule("TCE", "Tierce", 0.750, 10.0, True, 3, 3, 0.030),
+    "FIRST4": PoolRule("FIRST4", "First 4", 0.750, 10.0, False, 4, 4, 0.035),
+    "QUARTET": PoolRule("QUARTET", "Quartet", 0.750, 10.0, True, 4, 4, 0.040),
 }
 
 
