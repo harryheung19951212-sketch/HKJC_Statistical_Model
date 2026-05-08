@@ -290,7 +290,87 @@ def test_same_ticket_across_risk_profiles_adds_stake_without_duplicate(tmp_path:
     assert ledger["items"][0]["market"] == "QPL"
     assert ledger["items"][0]["horse_id"] == "2+7"
     assert ledger["items"][0]["recommended_stake"] == 40
-    assert ledger["items"][0]["execution_stake"] == 40
+    assert ledger["items"][0]["execution_status"] == "suggested"
+    assert ledger["items"][0]["execution_stake"] is None
+    assert "官方即時 probable dividend" in ledger["items"][0]["execution_value_message"]
+
+
+def test_unapproved_positive_stake_is_not_auto_executed(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    with connect(db_path) as conn:
+        insert_rows(
+            conn,
+            "races",
+            [
+                {
+                    "race_id": "HK20260506-ST-01",
+                    "date": "2026/05/06",
+                    "track": "Sha Tin",
+                    "course": "Turf",
+                    "distance_m": 1200,
+                    "going": "Good",
+                    "class_rating": "Class 4",
+                    "prize": 1000000,
+                }
+            ],
+        )
+        conn.commit()
+
+        race = {"race_id": "HK20260506-ST-01", "date": "2026/05/06"}
+        payload = simple_win_payload("H001", 1, "測試馬", 100)
+        payload["tickets"][0]["action"] = "觀望"
+        record_betting_payload(conn, race, payload, "models/baseline.json")
+        ledger = betting_ledger_report(conn, "HK20260506-ST-01")
+
+    item = ledger["items"][0]
+    assert item["recommended_stake"] == 100
+    assert item["execution_status"] == "suggested"
+    assert item["execution_stake"] is None
+    assert ledger["summary"]["confirmed"] == 0
+    assert "未批准落飛" in item["execution_value_message"]
+
+
+def test_suggested_exotic_ticket_upgrades_when_official_probable_dividend_arrives(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    with connect(db_path) as conn:
+        insert_rows(
+            conn,
+            "races",
+            [
+                {
+                    "race_id": "HK20260506-ST-01",
+                    "date": "2026/05/06",
+                    "track": "Sha Tin",
+                    "course": "Turf",
+                    "distance_m": 1200,
+                    "going": "Good",
+                    "class_rating": "Class 4",
+                    "prize": 1000000,
+                }
+            ],
+        )
+        conn.commit()
+
+        race = {"race_id": "HK20260506-ST-01", "date": "2026/05/06"}
+        payload = exotic_payload("QPL", "位置Q", "2+7", 20.0, 40)
+        record_betting_payload(conn, race, payload, "models/baseline.json")
+        first = betting_ledger_report(conn, "HK20260506-ST-01")["items"][0]
+        upsert_exotic_dividends(
+            conn,
+            "HK20260506-ST-01",
+            [{"market": "QPL", "combination": "2+7", "dividend": 22.0}],
+            source="hkjc_mqtt",
+            dividend_status="probable",
+        )
+        record_betting_payload(conn, race, payload, "models/baseline.json")
+        upgraded = betting_ledger_report(conn, "HK20260506-ST-01")["items"][0]
+
+    assert first["execution_status"] == "suggested"
+    assert upgraded["execution_status"] == "confirmed"
+    assert upgraded["execution_odds"] == 22.0
+    assert upgraded["execution_stake"] == 40
 
 
 def test_confirmed_ticket_keeps_live_pool_price_until_settlement(tmp_path: Path) -> None:
@@ -427,12 +507,13 @@ def test_ledger_records_pool_choice_and_flags_stale_execution_price(tmp_path: Pa
             recommendation_id,
             execution_odds=3.2,
             execution_stake=100,
-            source="unit_test",
+            source="hkjc_mqtt",
         )
         ledger = betting_ledger_report(conn, "HK20260506-ST-01")
 
     item = ledger["items"][0]
-    assert confirmed["status"] == "confirmed"
+    assert confirmed["status"] == "blocked"
+    assert "低過所需" in confirmed["message"]
     assert item["pool_choice_score"] == 42.5
     assert item["pool_choice_rank"] == 1
     assert item["pool_choice_verdict"] == "actionable"
@@ -444,8 +525,10 @@ def test_ledger_records_pool_choice_and_flags_stale_execution_price(tmp_path: Pa
     assert item["portfolio_role"] == "value"
     assert item["expected_profit"] == 28.0
     assert item["hit_probability"] == 0.4
-    assert item["execution_value_status"] == "stale_price"
-    assert item["execution_expected_value_at_bet"] == 0.28
+    assert item["execution_status"] == "confirmed"
+    assert item["execution_odds"] == 4.0
+    assert item["execution_value_status"] == "valid_execution"
+    assert item["execution_expected_value_at_bet"] == 0.6
     assert item["execution_edge_at_bet"] > 0
 
 

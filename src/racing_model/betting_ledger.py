@@ -255,15 +255,16 @@ def recommendation_key(
 def auto_execution_payload(ticket: dict[str, Any], now: str) -> dict[str, Any]:
     stake = optional_float(ticket.get("recommended_stake")) or 0.0
     odds = optional_float(ticket.get("odds"))
-    if stake <= 0:
+    approved, gate_message = execution_model_gate(ticket, odds)
+    if stake <= 0 or not approved:
         return {
             "execution_status": "suggested",
             "executed_at": None,
             "execution_odds": None,
             "execution_stake": None,
             "execution_source": "",
-            "execution_value_status": "",
-            "execution_value_message": "",
+            "execution_value_status": "model_gate_hold" if stake > 0 else "",
+            "execution_value_message": gate_message if stake > 0 else "",
             "execution_edge_at_bet": None,
             "execution_expected_value_at_bet": None,
         }
@@ -276,6 +277,45 @@ def auto_execution_payload(ticket: dict[str, Any], now: str) -> dict[str, Any]:
         "execution_source": str(ticket.get("odds_source") or "auto_recommended"),
         **execution_value,
     }
+
+
+def execution_model_gate(ticket: dict[str, Any], odds: float | None = None) -> tuple[bool, str]:
+    stake = optional_float(ticket.get("recommended_stake")) or 0.0
+    if stake <= 0:
+        return False, "無建議注碼。"
+    if str(ticket.get("action") or "") != "有值博":
+        return False, f"模型動作為「{ticket.get('action') or '未定'}」，未批准落飛。"
+    market = str(ticket.get("market") or "")
+    source = str(ticket.get("odds_source") or "")
+    if market in {"WIN", "PLACE"} and source not in LIVE_ODDS_SOURCES:
+        return False, "WIN/PLACE 未有官方即時賠率，不落飛。"
+    if market in EXOTIC_PRODUCTS and source not in LIVE_ODDS_SOURCES:
+        return False, "組合票未有官方即時 probable dividend，不落飛。"
+    current_odds = odds if odds is not None else optional_float(ticket.get("odds"))
+    required = optional_float(ticket.get("required_dividend"))
+    if current_odds is None or current_odds <= 1:
+        return False, "未有可用最新彩池賠率。"
+    if required is not None and current_odds < required:
+        return False, f"最新彩池 {current_odds:.2f} 低過所需 {required:.2f}。"
+    expected_value = optional_float(ticket.get("expected_value"))
+    if expected_value is None or expected_value <= 0:
+        return False, "期望值未過正 EV 門檻。"
+    cost_adjusted = optional_float(ticket.get("cost_adjusted_expected_value"))
+    if cost_adjusted is not None and cost_adjusted <= 0:
+        return False, "扣彩池成本後 EV 未過門檻。"
+    edge = optional_float(ticket.get("edge"))
+    if edge is not None and edge <= 0:
+        return False, "市場價值差未過門檻。"
+    exposure_action = str(ticket.get("exposure_action") or "")
+    if exposure_action in {"不加注", "剔除"}:
+        return False, f"相關曝險 gate：{exposure_action}。"
+    calibration_factor = optional_float(ticket.get("calibration_stake_factor"))
+    if calibration_factor is not None and calibration_factor <= 0:
+        return False, "模型校準 gate 阻擋落飛。"
+    pool_verdict = str(ticket.get("pool_choice_verdict") or "")
+    if pool_verdict and pool_verdict not in {"actionable", "watchlist"}:
+        return False, f"彩池選擇 gate：{pool_verdict}。"
+    return True, "通過落飛模型 gate。"
 
 
 def dedupe_logical_recommendations(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -359,8 +399,6 @@ def preserve_existing_state(row: dict[str, Any], existing: dict[str, Any]) -> No
     automatic_existing = str(existing.get("execution_status") or "") == "confirmed" and not manual_execution(existing)
     preserve_fields = [
         "created_at",
-        "execution_status",
-        "executed_at",
         "final_odds",
         "finish_position",
         "outcome_win",
@@ -374,6 +412,9 @@ def preserve_existing_state(row: dict[str, Any], existing: dict[str, Any]) -> No
     for field in preserve_fields:
         if field in existing:
             row[field] = existing[field]
+    if str(existing.get("execution_status") or "") == "confirmed":
+        row["execution_status"] = existing.get("execution_status")
+        row["executed_at"] = existing.get("executed_at")
     if automatic_existing:
         if next_execution_stake > previous_execution_stake:
             row["execution_stake"] = next_execution_stake
@@ -460,6 +501,17 @@ def confirm_betting_recommendation(
     stake = optional_float(execution_stake)
     if stake is None or stake <= 0:
         stake = float(row.get("recommended_stake") or 0)
+    gate_candidate = dict(row)
+    gate_candidate["odds"] = resolved_odds
+    gate_candidate["odds_source"] = resolved_source
+    gate_candidate["recommended_stake"] = stake
+    approved, gate_message = execution_model_gate(gate_candidate, resolved_odds)
+    if not approved:
+        return {
+            "status": "blocked",
+            "message": gate_message,
+            "item": public_row(row),
+        }
     now = utc_now()
     recommended_odds = optional_float(row.get("recommended_odds"))
     final_odds = optional_float(row.get("final_odds"))

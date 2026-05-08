@@ -2,6 +2,26 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-09 - Model-Gated Ticket Execution
+
+Goal:
+
+- Stop treating every positive-stake recommendation as an executed ticket.
+- Make payout reconciliation replay only tickets that passed the model's execution gate after the 36-factor analysis, pool-choice, edge, EV, live price, calibration, and exposure checks.
+
+Changes:
+
+- Added an execution model gate before auto-confirming tickets in `betting_recommendations`.
+- Positive-stake rows can now remain `suggested` when the model action is not `有值博`, live official odds/dividend is missing, latest pool price is below required dividend, EV/edge is not positive, calibration blocks, exposure blocks, or pool-choice verdict is not actionable.
+- Manual confirmation now also goes through the execution model gate; stale or non-official prices are blocked instead of being forced into settlement.
+- Suggested exotic tickets can upgrade to confirmed on a later 30-second refresh once official probable dividends arrive and all gate checks pass.
+- Payout reconciliation continues to use only `execution_status='confirmed'`, so stored suggestions are audit material rather than simulated bets.
+
+Verification:
+
+- `python -m pytest tests\test_betting_ledger.py tests\test_fast_betting_refresh.py tests\test_betting_settlement.py -q`
+- `node --check src\racing_model\web\app.js`
+
 ## 2026-05-09 - Live Pool Price Refresh For Open Tickets
 
 Goal:

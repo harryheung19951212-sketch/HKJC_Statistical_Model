@@ -181,6 +181,7 @@ foreach ($t in $tests) {
   - 保存建議時賠率、概率、EV、edge、stake。
   - 對數最終賠率 / 賽果。
   - 計 P/L、slippage、CLV 參考。
+  - 派彩對數只 replay 已通過落飛模型 gate 的 `confirmed` tickets；未過 gate 的 positive-stake rows 只作 `suggested` 建議留痕。
 
 ### 組合彩池 / 可能派彩
 
