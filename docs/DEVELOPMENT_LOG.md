@@ -2,6 +2,28 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-08 - Keep Pool Prices Live Until Settlement
+
+Goal:
+
+- Match HKJC pool betting: placing a ticket does not lock odds/dividends; prices keep moving until the race closes and final dividends are reconciled.
+- Fix exact-size Trio and First 4 candidates so they remain boxed combinations, not banker-leg structures.
+
+Changes:
+
+- Betting ledger refresh now keeps confirmed tickets' stake/confirmed state but updates their indicative odds from the latest non-final pool tick or probable dividend.
+- Final dividends/results no longer overwrite the live indicative ticket price; they are used only by settlement reconciliation.
+- UI labels changed from `下注時` to `現時估算` where the value is still moving with the pool.
+- Exact 3-runner `TRIO` and exact 4-runner `FIRST4` candidates are forced to `複式` with no banker.
+
+Verification:
+
+- `python -m compileall -q src tests`
+- `node --check src\racing_model\web\app.js`
+- `python -m pytest tests\test_betting.py tests\test_betting_ledger.py tests\test_ui_localization.py -q`
+- `python -m pytest -q`
+- Local API check on `http://127.0.0.1:8766/`: betting ledger note states pool prices are not locked; TRIO/FIRST4 candidates do not show bankers when no value/edge structure is active.
+
 ## 2026-05-08 - Race Pace Simulation MVP
 
 Goal:

@@ -1300,7 +1300,14 @@ def exotic_structure_payload(
     top_strength = probabilities.get(str(top.get("horse_id")), 0.0) if top else 0.0
     leg_rows = [row for row in ranked_rows if top and str(row.get("horse_id")) != str(top.get("horse_id"))]
     leg_count = len(leg_rows)
-    clear_banker = bool(top and not ordered and leg_count in {2, 3} and top_strength >= second_strength * 1.2)
+    market_size = int(EXOTIC_PRODUCTS.get(market, {}).get("size") or len(rows))
+    clear_banker = bool(
+        top
+        and not ordered
+        and len(rows) > market_size
+        and leg_count in {2, 3}
+        and top_strength >= second_strength * 1.2
+    )
     if clear_banker:
         return {
             "structure_mode": "banker_leg",

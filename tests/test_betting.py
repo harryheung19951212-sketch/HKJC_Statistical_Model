@@ -132,12 +132,50 @@ def test_exotic_candidate_structure_does_not_drag_too_many_legs() -> None:
     )
 
     first4 = next(row for row in result["exotic_candidates"] if row["market"] == "FIRST4" and row["combination_key"] == "1+2+3+4")
-    assert first4["structure_label"] in {"膽拖腳", "複式", "不做膽腳"}
-    assert len(first4["legs"]) <= 4
-    assert len(first4["legs"]) <= 3 if first4["structure_label"] == "膽拖腳" else True
+    assert first4["structure_label"] == "複式"
+    assert first4["bankers"] == []
+    assert len(first4["legs"]) == 4
     assert first4["combination_count"] == 1
     assert first4["minimum_ticket_cost"] == 10.0
     assert first4["recommended_stake"] >= 0.0
+
+
+def test_trio_exact_three_selection_is_box_not_banker_leg() -> None:
+    predictions = [
+        {
+            "horse_id": f"H00{index}",
+            "horse_no": index,
+            "display_name": f"馬{index}",
+            "win_probability": probability,
+            "latest_win_odds": 3.0 + index,
+            "latest_win_odds_source": "hkjc_mqtt",
+            "top3_probability": min(probability * 3, 0.9),
+            "place_odds": 1.5,
+            "place_odds_source": "hkjc_mqtt",
+        }
+        for index, probability in enumerate([0.42, 0.20, 0.16, 0.10, 0.07, 0.05], start=1)
+    ]
+    dividends = {
+        ("TRIO", "1+2+3"): {
+            "dividend": 120.0,
+            "dividend_status": "probable",
+            "source": "manual_test",
+        }
+    }
+
+    result = build_betting_decisions(
+        predictions,
+        "scheduled",
+        bankroll=10000,
+        risk_profile="standard",
+        exotic_dividends=dividends,
+    )
+
+    trio = next(row for row in result["exotic_candidates"] if row["market"] == "TRIO" and row["combination_key"] == "1+2+3")
+    assert trio["structure_label"] == "複式"
+    assert trio["bankers"] == []
+    assert trio["leg_ids"] == ["H001", "H002", "H003"]
+    assert trio["combination_count"] == 1
 
 
 def test_exotic_dividend_turns_candidate_into_ev_ticket() -> None:
@@ -181,7 +219,7 @@ def test_exotic_dividend_turns_candidate_into_ev_ticket() -> None:
     qpl_candidate = next(row for row in result["exotic_candidates"] if row["market"] == "QPL" and row["combination_key"] == "1+2")
     assert qpl_candidate["recommended_stake"] == qpl["recommended_stake"]
     assert qpl_candidate["stake_action"] == "有值博"
-    assert qpl_candidate["structure_label"] in {"複式", "膽拖腳"}
+    assert qpl_candidate["structure_label"] == "複式"
     assert qpl_candidate["per_combination_stake"] == qpl_candidate["recommended_stake"]
     assert result["pool_choice"]["summary"]["actionable_markets"] >= 1
     qpl_pool = next(row for row in result["pool_choice"]["markets"] if row["market"] == "QPL")

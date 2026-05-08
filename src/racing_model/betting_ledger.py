@@ -21,6 +21,8 @@ def record_betting_payload(
     if not tickets:
         return {"recorded": 0, "tickets": 0, "message": "no_active_tickets"}
     annotate_pool_choice_context(tickets, payload)
+    for ticket in tickets:
+        sync_ticket_current_pool_odds(conn, str(race.get("race_id") or ""), ticket)
     now = utc_now()
     rows = [
         recommendation_row(
@@ -51,6 +53,54 @@ def record_betting_payload(
     return {"recorded": inserted, "tickets": len(tickets)}
 
 
+def sync_ticket_current_pool_odds(conn: sqlite3.Connection, race_id: str, ticket: dict[str, Any]) -> None:
+    odds, source = current_ticket_pool_odds(conn, race_id, ticket)
+    if odds is None or odds <= 1:
+        return
+    ticket["odds"] = odds
+    ticket["odds_source"] = source
+    probability = optional_float(ticket.get("probability"))
+    if probability is not None:
+        ticket["market_probability"] = round(1.0 / odds, 6)
+        ticket["edge"] = round(probability - (1.0 / odds), 6)
+        ticket["expected_value"] = round(probability * odds - 1.0, 6)
+
+
+def current_ticket_pool_odds(conn: sqlite3.Connection, race_id: str, ticket: dict[str, Any]) -> tuple[float | None, str]:
+    market = str(ticket.get("market") or "")
+    if market in EXOTIC_PRODUCTS:
+        rows = fetch_all(
+            conn,
+            """
+            SELECT dividend, source
+            FROM exotic_dividends
+            WHERE race_id = ? AND market = ? AND combination_key = ? AND dividend_status IN ('probable', 'estimated')
+            ORDER BY updated_at DESC
+            LIMIT 1
+            """,
+            (race_id, market, ticket.get("horse_id")),
+        )
+        if rows:
+            return optional_float(rows[0]["dividend"]), str(rows[0]["source"] or "exotic_dividend")
+        return optional_float(ticket.get("odds")), str(ticket.get("odds_source") or "recommended")
+
+    column = "win_odds" if market == "WIN" else "place_odds"
+    rows = fetch_all(
+        conn,
+        f"""
+        SELECT {column} AS odds, source
+        FROM odds_ticks
+        WHERE race_id = ? AND horse_id = ? AND {column} IS NOT NULL AND source <> 'hkjc_results_final'
+        ORDER BY timestamp DESC
+        LIMIT 1
+        """,
+        (race_id, ticket.get("horse_id")),
+    )
+    if rows:
+        return optional_float(rows[0]["odds"]), str(rows[0]["source"] or "odds_tick")
+    return optional_float(ticket.get("odds")), str(ticket.get("odds_source") or "recommended")
+
+
 def betting_ledger_report(conn: sqlite3.Connection, race_id: str | None = None, limit: int = 40) -> dict[str, Any]:
     where = ""
     params: tuple[Any, ...] = (limit,)
@@ -75,7 +125,7 @@ def betting_ledger_report(conn: sqlite3.Connection, race_id: str | None = None, 
         "items": items,
         "raw_count": len(raw_items),
         "deduped_count": max(len(raw_items) - len(items), 0),
-        "clv_note": "CLV 用建議當刻賠率對比最後/派彩賠率；香港彩池不保證鎖價，現階段用作市場驗證及 slippage 監控。",
+        "clv_note": "香港彩池不鎖入飛賠率；已入飛項目的賠率會跟最新 tick/派彩推進，直到開跑後以最終派彩對數。",
     }
 
 
@@ -259,15 +309,7 @@ def preserve_existing_state(row: dict[str, Any], existing: dict[str, Any]) -> No
         "created_at",
         "execution_status",
         "executed_at",
-        "execution_odds",
         "execution_stake",
-        "execution_source",
-        "execution_slippage",
-        "execution_clv",
-        "execution_value_status",
-        "execution_value_message",
-        "execution_edge_at_bet",
-        "execution_expected_value_at_bet",
         "final_odds",
         "finish_position",
         "outcome_win",
@@ -281,6 +323,20 @@ def preserve_existing_state(row: dict[str, Any], existing: dict[str, Any]) -> No
     for field in preserve_fields:
         if field in existing:
             row[field] = existing[field]
+    if str(existing.get("reconciliation_status") or "") == "reconciled":
+        for field in [
+            "execution_odds",
+            "execution_source",
+            "execution_slippage",
+            "execution_clv",
+            "execution_value_status",
+            "execution_value_message",
+            "execution_edge_at_bet",
+            "execution_expected_value_at_bet",
+        ]:
+            if field in existing:
+                row[field] = existing[field]
+        return
 
 
 def confirm_betting_recommendation(
@@ -307,7 +363,7 @@ def confirm_betting_recommendation(
     if resolved_odds is None:
         resolved_odds, resolved_source = current_execution_odds(conn, row)
     if resolved_odds is None or resolved_odds <= 1:
-        return {"status": "no_odds", "message": "未有可確認的下注時賠率", "item": public_row(row)}
+        return {"status": "no_odds", "message": "未有可確認的最新賠率", "item": public_row(row)}
 
     stake = optional_float(execution_stake)
     if stake is None or stake <= 0:
@@ -331,7 +387,7 @@ def confirm_betting_recommendation(
     )
     insert_rows(conn, "betting_recommendations", [row])
     conn.commit()
-    return {"status": "confirmed", "message": "已確認下注時賠率及注碼", "item": public_row(row)}
+    return {"status": "confirmed", "message": "已確認下注；賠率會跟最新彩池更新，直到最終派彩對數", "item": public_row(row)}
 
 
 def current_execution_odds(conn: sqlite3.Connection, row: dict[str, Any]) -> tuple[float | None, str]:
@@ -391,7 +447,7 @@ def execution_value_check(row: dict[str, Any], execution_odds: float | None) -> 
     if execution_odds is None or execution_odds <= 1:
         return {
             "execution_value_status": "no_execution_odds",
-            "execution_value_message": "未有下注時賠率",
+            "execution_value_message": "未有最新賠率",
             "execution_edge_at_bet": None,
             "execution_expected_value_at_bet": None,
         }
@@ -399,13 +455,13 @@ def execution_value_check(row: dict[str, Any], execution_odds: float | None) -> 
     edge_at_bet = probability - (1.0 / execution_odds) if probability is not None else None
     if required_dividend is not None and execution_odds < required_dividend:
         status = "stale_price"
-        message = f"下注時賠率 {execution_odds:.2f} 低過所需 {required_dividend:.2f}，應標記為不合格執行。"
+        message = f"最新賠率 {execution_odds:.2f} 低過所需 {required_dividend:.2f}，應標記為不合格執行。"
     elif expected_at_bet is not None and expected_at_bet <= 0:
         status = "negative_ev_at_execution"
-        message = "下注時已跌至負期望值。"
+        message = "最新賠率已跌至負期望值。"
     else:
         status = "valid_execution"
-        message = "下注時賠率仍符合建議條件。"
+        message = "最新賠率仍符合建議條件。"
     return {
         "execution_value_status": status,
         "execution_value_message": message,

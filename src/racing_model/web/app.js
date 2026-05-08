@@ -674,7 +674,7 @@ function portfolioRoleLabel(value) {
 
 function renderDecisionCard(row) {
   const executionText = row.execution_status === "confirmed"
-    ? `已入飛｜下注時 ${formatNum(row.execution_odds, 2)}｜${formatMoney(row.execution_stake)}`
+    ? `已入飛｜現時估算 ${formatNum(row.execution_odds, 2)}｜${formatMoney(row.execution_stake)}`
     : "未入飛";
   return `
     <div class="ticket ${ticketClass(row.action)}">
@@ -757,7 +757,7 @@ function renderSettlementCard(row) {
       <div class="settlement-metrics">
         <label>結果 <b>${status.label}</b></label>
         <label>注碼 <b>${formatMoney(row.recommended_stake)}</b></label>
-        <label>下注時 <b>${row.execution_status === "confirmed" ? `${formatNum(row.execution_odds, 2)} / ${formatMoney(row.execution_stake)}` : "未入飛"}</b></label>
+        <label>現時估算 <b>${row.execution_status === "confirmed" ? `${formatNum(row.execution_odds, 2)} / ${formatMoney(row.execution_stake)}` : "未入飛"}</b></label>
         <label>派彩 <b>${formatMoney(row.returned)}</b></label>
         <label>盈虧 <b class="${evClass(row.profit)}">${formatMoney(row.profit)}</b></label>
         <label>最後賠率 <b>${formatNum(row.final_odds, 2)}</b></label>
@@ -1846,7 +1846,7 @@ function renderBettingLedger(data) {
       <div class="version-metrics">
         <div><label>建議賠率</label><b>${formatNum(row.recommended_odds, 2)}</b></div>
         <div><label>所需賠率</label><b>${formatNum(row.required_dividend, 2)}</b></div>
-        <div><label>下注時</label><b>${row.execution_status === "confirmed" ? formatNum(row.execution_odds, 2) : "未入飛"}</b></div>
+        <div><label>現時估算</label><b>${row.execution_status === "confirmed" ? formatNum(row.execution_odds, 2) : "未入飛"}</b></div>
         <div><label>執行狀態</label><b>${executionValueLabel(row.execution_value_status)}</b></div>
         <div><label>彩池分</label><b>${row.pool_choice_score === null || row.pool_choice_score === undefined ? "-" : formatNum(row.pool_choice_score, 2)}</b></div>
         <div><label>彩池排名</label><b>${row.pool_choice_rank || "-"}</b></div>
