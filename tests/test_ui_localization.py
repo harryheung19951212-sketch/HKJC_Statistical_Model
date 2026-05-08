@@ -87,6 +87,12 @@ def test_race_page_prioritizes_prediction_betting_and_collapsible_diagnostics() 
     assert '<h3>馬匹詳情 / 單匹賠率走勢</h3>' in html
     assert 'aria-label="單匹賠率走勢圖"' in html
     assert '<div class="panel odds-panel">' not in html
+    assert '<table class="prediction-table">' in html
+    assert "<th>人馬配搭</th>" in html
+    assert "<th>市場價值</th>" in html
+    assert "<th>獨贏市場</th>" not in html
+    assert "grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);" in css
+    assert ".prediction-table {\n  min-width: 0;" in css
     assert ".predictions-panel {\n  grid-column: 1;\n  grid-row: 1;" in css
     assert ".detail-panel {\n  grid-column: 2;\n  grid-row: 1;" in css
     assert "align-items: stretch;" in css

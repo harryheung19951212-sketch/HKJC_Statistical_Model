@@ -614,20 +614,12 @@ function renderPredictions(predictions) {
     tr.className = `clickable ${row.horse_id === selectedHorseId ? "selected" : ""}`;
     tr.innerHTML = `
       <td>${index + 1}</td>
-      <td>${row.horse_no || "-"}</td>
-      <td><strong>${localizedHorse(row)}</strong><br><span>${row.horse_id}</span></td>
+      <td><strong>${row.horse_no || "-"} ${localizedHorse(row)}</strong><br><span>${row.horse_id}</span></td>
       <td>${row.draw || "-"}</td>
-      <td>${localizedJockey(row)}</td>
-      <td>${localizedTrainer(row)}</td>
-      <td>${formatPct(row.win_probability)}</td>
-      <td>${formatPct(row.top3_probability)}</td>
-      <td>${formatNum(row.latest_win_odds, 2)}</td>
-      <td>${formatPct(row.market_probability)}</td>
-      <td class="${evClass(row.expected_value)}">${row.expected_value === null ? "-" : Number(row.expected_value).toFixed(3)}</td>
-      <td class="${evClass(row.value_gap)}">${formatPct(row.value_gap)}</td>
-      <td>${formatNum(row.place_odds, 2)}<br><span>${placeOddsSourceLabel(row.place_odds_source)}</span></td>
-      <td class="${evClass(row.top3_expected_value)}">${row.top3_expected_value === null ? "-" : Number(row.top3_expected_value).toFixed(3)}</td>
-      <td class="${evClass(row.top3_value_gap)}">${formatPct(row.top3_value_gap)}</td>
+      <td>${localizedJockey(row)}<br><span>${localizedTrainer(row)}</span></td>
+      <td>${formatPct(row.win_probability)}<br><span>賠 ${formatNum(row.latest_win_odds, 2)}</span><br><b class="${evClass(row.expected_value)}">EV ${row.expected_value === null ? "-" : Number(row.expected_value).toFixed(3)}</b></td>
+      <td>${formatPct(row.top3_probability)}<br><span>賠 ${formatNum(row.place_odds, 2)} ${placeOddsSourceLabel(row.place_odds_source)}</span><br><b class="${evClass(row.top3_expected_value)}">EV ${row.top3_expected_value === null ? "-" : Number(row.top3_expected_value).toFixed(3)}</b></td>
+      <td><span>市場 ${formatPct(row.market_probability)}</span><br><b class="${evClass(row.value_gap)}">獨 ${formatPct(row.value_gap)}</b><br><b class="${evClass(row.top3_value_gap)}">位 ${formatPct(row.top3_value_gap)}</b></td>
     `;
     tr.addEventListener("click", () => {
       selectedHorseId = row.horse_id;

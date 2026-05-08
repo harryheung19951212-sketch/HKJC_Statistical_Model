@@ -420,7 +420,7 @@ h2 {
 
 .grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 420px);
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);
   gap: 16px;
   align-items: stretch;
 }
@@ -1141,6 +1141,59 @@ table {
 
 .results-table {
   min-width: 1220px;
+}
+
+.prediction-table {
+  min-width: 0;
+  table-layout: fixed;
+  font-size: 12px;
+}
+
+.prediction-table th,
+.prediction-table td {
+  padding: 9px 6px;
+  vertical-align: top;
+}
+
+.prediction-table th:nth-child(n),
+.prediction-table td:nth-child(n) {
+  width: auto;
+  text-align: right;
+}
+
+.prediction-table th:first-child,
+.prediction-table td:first-child,
+.prediction-table th:nth-child(3),
+.prediction-table td:nth-child(3) {
+  width: 44px;
+  text-align: center;
+}
+
+.prediction-table th:nth-child(2),
+.prediction-table td:nth-child(2),
+.prediction-table th:nth-child(4),
+.prediction-table td:nth-child(4) {
+  text-align: left;
+}
+
+.prediction-table th:nth-child(2),
+.prediction-table td:nth-child(2) {
+  width: 22%;
+}
+
+.prediction-table th:nth-child(4),
+.prediction-table td:nth-child(4) {
+  width: 17%;
+}
+
+.prediction-table span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.prediction-table b {
+  font-size: 12px;
 }
 
 .results-table .winner {
