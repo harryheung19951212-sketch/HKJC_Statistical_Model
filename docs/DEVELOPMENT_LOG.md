@@ -567,3 +567,24 @@ Verification:
 - `python -m compileall -q src dashboard tests`
 - `node --check src/racing_model/web/app.js`
 - Direct execution of model-comparison, feed-health, and final-place test functions because local Python does not have `pytest` installed.
+
+## 2026-05-08 - Persistent Independent Race Watch
+
+Goal:
+
+- Keep an unopened/scheduled independent race page awake until the race status changes, instead of letting the active race expire after a short TTL.
+- Continue checking live races for HKJC results so the system can automatically flip a race to completed and preserve final odds/training material.
+
+Implementation:
+
+- Changed `AppState.focus_race()` / `active_race()` so active race tracking is persistent and `expires_in_seconds` is reported as `null`.
+- Updated lifecycle selection to keep processing active races in `scheduled` or `live` status, and to stop tracking only after the race is detected as `resulted`.
+- Updated `/api/watch-race` so completed races are not kept as active live-refresh targets.
+- Removed browser-tab visibility sleep for the race page: the frontend pauses visible repaint while hidden, but the server keeps refreshing the watched race.
+- Added regression coverage for non-expiring active races and live-race result detection.
+
+Verification:
+
+- `python -m compileall -q src dashboard tests`
+- `node --check src/racing_model/web/app.js`
+- `python -m pytest tests`

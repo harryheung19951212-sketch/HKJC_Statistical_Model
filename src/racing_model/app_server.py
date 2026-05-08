@@ -142,7 +142,8 @@ class AppState:
             self.active_race_external_clock = now is not None
         return {
             "active_race_id": race_id,
-            "expires_in_seconds": self.active_race_ttl_seconds,
+            "expires_in_seconds": None,
+            "persistent": True,
         }
 
     def sleep_race(self, race_id: str | None = None) -> dict[str, object]:
@@ -155,23 +156,15 @@ class AppState:
 
     def active_race(self, now: float | None = None) -> str | None:
         with self.active_race_lock:
-            timestamp = self.active_race_timestamp(now)
             if not self.active_race_id:
-                return None
-            if timestamp - self.active_race_seen_at > self.active_race_ttl_seconds:
-                self.active_race_id = None
-                self.active_race_seen_at = 0.0
-                self.active_race_external_clock = False
                 return None
             return self.active_race_id
 
-    def active_race_expires_in(self, now: float | None = None) -> int:
+    def active_race_expires_in(self, now: float | None = None) -> int | None:
         with self.active_race_lock:
-            timestamp = self.active_race_timestamp(now)
             if not self.active_race_id:
                 return 0
-            remaining = self.active_race_ttl_seconds - (timestamp - self.active_race_seen_at)
-            return max(0, int(remaining))
+            return None
 
     def active_race_timestamp(self, now: float | None = None) -> float:
         if now is not None:
@@ -500,6 +493,19 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
                 status = race_lifecycle_status(conn, race_id)
                 if status == "missing":
                     self.send_json({"race_id": race_id, "status": "missing", "active_race_id": None})
+                    return
+                if status == "resulted":
+                    payload = self.app_state.sleep_race()
+                    payload.update(
+                        {
+                            "race_id": race_id,
+                            "status": status,
+                            "mode": "active_race_only",
+                            "persistent": False,
+                            "message": "race_resulted",
+                        }
+                    )
+                    self.send_json(payload)
                     return
                 payload = self.app_state.focus_race(race_id)
                 payload.update({"race_id": race_id, "status": status, "mode": "active_race_only"})
@@ -1106,7 +1112,7 @@ def run_lifecycle_step(conn, state: AppState, scope: str = "active") -> dict[str
     race_id = current_refreshable_race_id(conn) if scope == "global" else active_refreshable_race_id(conn, state)
     if not race_id:
         active = state.active_race()
-        message = "no_scheduled_race" if scope == "global" else "no_active_scheduled_race" if active else "no_active_race"
+        message = "no_scheduled_race" if scope == "global" else "no_active_refreshable_race" if active else "no_active_race"
         return {
             "status": "idle",
             "message": message,
@@ -1149,6 +1155,7 @@ def run_lifecycle_step(conn, state: AppState, scope: str = "active") -> dict[str
             race_id,
             build_official_odds_provider(state.settings),
         )
+        state.sleep_race(race_id)
     next_race_id = current_refreshable_race_id(conn)
     return {
         "status": "done",
@@ -1190,7 +1197,7 @@ def active_refreshable_race_id(conn, state: AppState) -> str | None:
     race_id = state.active_race()
     if not race_id:
         return None
-    if race_lifecycle_status(conn, race_id) != "scheduled":
+    if race_lifecycle_status(conn, race_id) not in {"scheduled", "live"}:
         return None
     return race_id
 

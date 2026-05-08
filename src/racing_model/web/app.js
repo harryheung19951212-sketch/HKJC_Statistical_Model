@@ -261,7 +261,11 @@ function renderRaceHeader(options = {}) {
 async function watchSelectedRace() {
   if (!selectedRaceId || document.hidden) return null;
   const payload = await api(`/api/watch-race?race_id=${encodeURIComponent(selectedRaceId)}`, { method: "POST" });
-  if (payload.active_race_id) activeWatchRaceId = payload.active_race_id;
+  if (payload.active_race_id) {
+    activeWatchRaceId = payload.active_race_id;
+  } else if (payload.status === "resulted" && activeWatchRaceId === selectedRaceId) {
+    activeWatchRaceId = null;
+  }
   return payload;
 }
 
@@ -2336,11 +2340,9 @@ async function boot() {
   $("backfill-form").addEventListener("submit", loadBackfill);
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
-      sleepSelectedRace();
-      $("system-status").textContent = "畫面休眠中，暫停即時刷新";
+      $("system-status").textContent = "畫面背景中，伺服器繼續追蹤本場";
       return;
     }
-    activeWatchRaceId = null;
     countdown = 1;
   });
   window.addEventListener("beforeunload", sleepSelectedRace);
