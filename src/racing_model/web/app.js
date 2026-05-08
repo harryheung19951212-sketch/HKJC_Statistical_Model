@@ -1570,9 +1570,9 @@ function renderCoverage(data) {
   $("coverage-objective").textContent = data.objective || "";
   $("coverage-summary").innerHTML = `
     <div><label>覆蓋分</label><strong>${formatPct(summary.coverage_score)}</strong></div>
-    <div><label>總項目</label><strong>${summary.total_groups || 0}</strong></div>
+    <div><label>36 主項</label><strong>${summary.total_groups || 0}/${summary.target_groups || 36}</strong></div>
     <div><label>主分析項</label><strong>${summary.core_groups || 0}</strong></div>
-    <div><label>額外盲點</label><strong>${summary.blind_spot_groups || 0}</strong></div>
+    <div><label>進階主項</label><strong>${summary.blind_spot_groups || 0}</strong></div>
     <div><label>已完成</label><strong>${counts["已完成"] || 0}</strong></div>
     <div><label>部分完成</label><strong>${counts["部分完成"] || 0}</strong></div>
     <div><label>未完成</label><strong>${counts["未完成"] || 0}</strong></div>
@@ -1606,6 +1606,7 @@ function renderCoverageCard(item) {
       <p>${item.current_support}</p>
       <div class="coverage-meta">
         <span><b>類別</b>：${item.category_label}</span>
+        <span><b>細項</b>：${listText(item.sub_items)}</span>
         <span><b>資料來源</b>：${listText(item.data_sources)}</span>
         <span><b>支援檔案</b>：${listText(item.supported_files)}</span>
         <span><b>缺口</b>：${item.gaps}</span>

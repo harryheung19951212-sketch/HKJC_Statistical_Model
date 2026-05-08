@@ -193,8 +193,8 @@ Expected columns:
 
 ## Next Development Steps
 
-1. Build `/api/coverage` and a UI panel for the 21 core factor groups plus the extra blind spots in `docs/RACING_EQUATION_ROADMAP.md`.
-2. Validate live HKJC probable-dividend availability on real race days and add final exotic dividend settlement.
-3. Add late market-flow features from final 5 minutes, 2 minutes, and 30 seconds.
-4. Add same-day track-bias learning after each completed race.
+1. Use `/api/coverage` as the 36-factor equation progress map; do not treat the old 32-item roadmap as current.
+2. Add horse/pool/combination correlated-exposure controls before increasing exotic stakes.
+3. Validate live HKJC probable-dividend availability on real race days and add final exotic dividend settlement.
+4. Turn calibration, drawdown, CLV, and walk-forward promotion gates into hard blockers for model replacement.
 5. Add pool-size/tote-depth storage so exotic EV can be calibrated against liquidity.

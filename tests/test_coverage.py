@@ -45,13 +45,15 @@ def test_coverage_report_contains_all_roadmap_groups() -> None:
 
     items = report["items"]
     statuses = {STATUS_DONE, STATUS_PARTIAL, STATUS_MISSING, STATUS_EXTERNAL}
-    assert len(items) == 32
+    assert len(items) == 36
+    assert report["summary"]["target_groups"] == 36
     assert sum(1 for item in items if item["category"] == "core") == 21
-    assert sum(1 for item in items if item["category"] == "blind_spot") == 11
+    assert sum(1 for item in items if item["category"] == "advanced") == 15
     assert {item["status"] for item in items}.issubset(statuses)
     assert all(item["data_sources"] for item in items)
     assert all(item["gaps"] for item in items)
     assert all(item["next_steps"] for item in items)
+    assert all(item["sub_items"] for item in items)
     assert report["summary"]["database"]["races"] > 0
     assert report["summary"]["database"]["runners"] > 0
     assert report["summary"]["coverage_score"] > 0
@@ -72,9 +74,12 @@ def test_coverage_report_is_localized_for_users() -> None:
     first = report["items"][0]
     names = {item["name"] for item in report["items"]}
     joined_sources = " ".join(first["data_sources"])
-    assert "馬匹基礎能力" in names
-    assert "臨場賠率變化" in names
-    assert first["current_support"].startswith("已使用")
+    assert "賽事基本條件" in names
+    assert "馬匹本身能力" in names
+    assert "臨場資金流模型" in names
+    assert "不下注決策" in names
+    assert "馬場" in first["sub_items"]
+    assert first["current_support"].startswith("已儲存")
     assert "HKJC" in joined_sources
     assert "Horse baseline ability" not in names
     assert "Recent condition" not in names
