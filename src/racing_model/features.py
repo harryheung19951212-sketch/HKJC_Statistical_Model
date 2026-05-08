@@ -41,6 +41,9 @@ FEATURE_NAMES = [
     "class_change_signal",
     "rating_change_signal",
     "hidden_ability_signal",
+    "pedigree_distance_fit",
+    "pedigree_surface_fit",
+    "pedigree_novelty_risk",
     "trip_luck_score",
     "ability_issue_score",
     "closing_gain_score",
@@ -153,6 +156,16 @@ def build_race_features(conn: sqlite3.Connection, race_id: str) -> list[RunnerFe
         )
         pace_profile = pace_profiles.get(str(horse_id), {})
         pace_context = pace_contexts.get(str(horse_id), {})
+        pedigree = pedigree_context(
+            conn,
+            str(row_value(runner, "sire") or ""),
+            str(row_value(runner, "dam") or ""),
+            str(horse_id),
+            str(race_row["date"]),
+            int(race_row["distance_m"]),
+            str(race_row["course"] or ""),
+            str(race_row["going"] or ""),
+        )
         feature_values = {
             "official_rating": float(runner["official_rating"] or 0),
             "weight_lbs": float(runner["weight_lbs"] or 0),
@@ -187,6 +200,9 @@ def build_race_features(conn: sqlite3.Connection, race_id: str) -> list[RunnerFe
             "class_change_signal": pace_profile.get("class_change_signal", 0.0),
             "rating_change_signal": pace_profile.get("rating_change_signal", 0.0),
             "hidden_ability_signal": pace_profile.get("hidden_ability_signal", 0.0),
+            "pedigree_distance_fit": pedigree["pedigree_distance_fit"],
+            "pedigree_surface_fit": pedigree["pedigree_surface_fit"],
+            "pedigree_novelty_risk": pedigree["pedigree_novelty_risk"],
             "trip_luck_score": context["trip_luck_score"],
             "ability_issue_score": context["ability_issue_score"],
             "closing_gain_score": context["closing_gain_score"],
@@ -478,6 +494,110 @@ def going_fit(conn: sqlite3.Connection, horse_id: str, going: str, before_date: 
     if not matching:
         return 0.0
     return sum(1.0 / max(int(row["finish_position"]), 1) for row in matching) / len(matching)
+
+
+def pedigree_context(
+    conn: sqlite3.Connection,
+    sire: str,
+    dam: str,
+    horse_id: str,
+    before_date: str,
+    target_distance_m: int,
+    target_course: str,
+    target_going: str,
+    limit: int = 80,
+) -> dict[str, float]:
+    sire = sire.strip()
+    dam = dam.strip()
+    if not sire and not dam:
+        return {
+            "pedigree_distance_fit": 0.0,
+            "pedigree_surface_fit": 0.0,
+            "pedigree_novelty_risk": 0.0,
+        }
+    rows = fetch_all(
+        conn,
+        """
+        SELECT
+          ru.horse_id,
+          ru.sire,
+          ru.dam,
+          r.date,
+          r.course,
+          r.distance_m,
+          r.going,
+          x.finish_position,
+          x.margin_lengths
+        FROM runners ru
+        JOIN races r ON r.race_id = ru.race_id
+        JOIN results x ON x.race_id = ru.race_id AND x.horse_id = ru.horse_id
+        WHERE r.date < ?
+          AND ru.horse_id != ?
+          AND (
+            (COALESCE(ru.sire, '') != '' AND ru.sire = ?)
+            OR (COALESCE(ru.dam, '') != '' AND ru.dam = ?)
+          )
+        ORDER BY r.date DESC
+        LIMIT ?
+        """,
+        (before_date, horse_id, sire, dam, limit),
+    )
+    own_runs = fetch_all(
+        conn,
+        """
+        SELECT count(*) AS n
+        FROM runners ru
+        JOIN races r ON r.race_id = ru.race_id
+        JOIN results x ON x.race_id = ru.race_id AND x.horse_id = ru.horse_id
+        WHERE ru.horse_id = ? AND r.date < ?
+        """,
+        (horse_id, before_date),
+    )
+    own_run_count = int(own_runs[0]["n"] or 0) if own_runs else 0
+    target_surface = surface_bucket(target_course)
+    target_going_bucket = normalize_going(target_going)
+    distance_scores: list[tuple[float, float]] = []
+    surface_scores: list[tuple[float, float]] = []
+    for row in rows:
+        finish_score = pedigree_finish_score(row["finish_position"], row["margin_lengths"])
+        relation_weight = 1.0 if sire and row["sire"] == sire else 0.65
+        distance_similarity = math.exp(-abs(int(row["distance_m"] or 0) - target_distance_m) / 650)
+        going_similarity = 1.0 if normalize_going(row["going"]) == target_going_bucket else 0.88
+        distance_scores.append((finish_score, relation_weight * distance_similarity * going_similarity))
+        if surface_bucket(str(row["course"] or "")) == target_surface:
+            surface_scores.append((finish_score, relation_weight))
+    distance_fit_score = weighted_average(distance_scores)
+    surface_fit_score = weighted_average(surface_scores)
+    sparse_penalty = max(0.0, (3 - len(rows)) / 3.0)
+    debut_penalty = 1.0 if own_run_count == 0 else 0.35 if own_run_count <= 2 else 0.0
+    novelty_risk = -0.22 * sparse_penalty * debut_penalty
+    if len(rows) >= 4 and distance_fit_score > 0.28 and surface_fit_score > 0.25:
+        novelty_risk += 0.08 * debut_penalty
+    return {
+        "pedigree_distance_fit": round(distance_fit_score, 4),
+        "pedigree_surface_fit": round(surface_fit_score, 4),
+        "pedigree_novelty_risk": round(novelty_risk, 4),
+    }
+
+
+def pedigree_finish_score(position: object, margin_lengths: object) -> float:
+    finish_position = max(int(position or 99), 1)
+    margin = max(float(margin_lengths or 0.0), 0.0)
+    return 1.0 / finish_position - min(margin, 12.0) * 0.015
+
+
+def weighted_average(values: list[tuple[float, float]]) -> float:
+    total_weight = sum(weight for _, weight in values if weight > 0)
+    if total_weight <= 0:
+        return 0.0
+    return sum(value * weight for value, weight in values if weight > 0) / total_weight
+
+
+def surface_bucket(course: str) -> str:
+    text = (course or "").lower()
+    if "all weather" in text or "awt" in text or "dirt" in text:
+        return "all_weather"
+    return "turf"
 
 
 def participant_win_rate(conn: sqlite3.Connection, field: str, name: str, before_date: str) -> float:

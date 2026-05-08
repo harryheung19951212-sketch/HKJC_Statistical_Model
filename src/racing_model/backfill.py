@@ -178,6 +178,8 @@ def complete_repaired_runners(
                OR COALESCE(jockey_zh, '') = ''
                OR COALESCE(trainer_zh, '') = ''
                OR body_weight_lbs IS NULL
+               OR COALESCE(sire, '') = ''
+               OR COALESCE(dam, '') = ''
             ORDER BY race_id
             """,
         )
@@ -273,6 +275,9 @@ def latest_raw_snapshot(
 
 
 def update_runner_from_racecard(conn: sqlite3.Connection, runner: dict[str, Any]) -> sqlite3.Cursor:
+    params = dict(runner)
+    params.setdefault("sire", "")
+    params.setdefault("dam", "")
     return conn.execute(
         """
         UPDATE runners
@@ -296,6 +301,8 @@ def update_runner_from_racecard(conn: sqlite3.Connection, runner: dict[str, Any]
           official_rating = CASE WHEN COALESCE(:official_rating, 0) > 0 THEN :official_rating ELSE official_rating END,
           age = CASE WHEN COALESCE(:age, 0) > 0 THEN :age ELSE age END,
           sex = CASE WHEN COALESCE(:sex, '') != '' THEN :sex ELSE sex END,
+          sire = CASE WHEN COALESCE(:sire, '') != '' THEN :sire ELSE sire END,
+          dam = CASE WHEN COALESCE(:dam, '') != '' THEN :dam ELSE dam END,
           gear = CASE
             WHEN gear = 'repaired_from_result' AND COALESCE(:gear, '') != '' THEN :gear
             WHEN gear = 'repaired_from_result' THEN ''
@@ -310,9 +317,11 @@ def update_runner_from_racecard(conn: sqlite3.Connection, runner: dict[str, Any]
             OR COALESCE(jockey_zh, '') = ''
             OR COALESCE(trainer_zh, '') = ''
             OR body_weight_lbs IS NULL
+            OR COALESCE(sire, '') = ''
+            OR COALESCE(dam, '') = ''
           )
         """,
-        runner,
+        params,
     )
 
 

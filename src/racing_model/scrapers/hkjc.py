@@ -417,6 +417,8 @@ def parse_declaration_runners(html: str, race_id: str) -> list[dict[str, Any]]:
                 "official_rating": optional_float(value_at(values, 10)) or 0.0,
                 "age": optional_int(value_at(values, 8)) or 0,
                 "sex": (clean_null(value_at(values, 14)) or "").upper(),
+                "sire": clean_null(value_at(values, 15)) or "",
+                "dam": clean_null(value_at(values, 16)) or "",
                 "running_style": "unknown",
                 "gear": clean_null(value_at(values, 20)) or "",
             }
@@ -660,6 +662,8 @@ def merge_runner_localization(
             "official_rating",
             "age",
             "sex",
+            "sire",
+            "dam",
             "gear",
         ):
             if zh.get(key) not in {None, ""}:

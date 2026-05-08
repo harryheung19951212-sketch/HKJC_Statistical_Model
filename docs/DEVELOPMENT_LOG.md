@@ -2,6 +2,26 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-09 - Pedigree Factor Coverage V1
+
+Goal:
+
+- Continue the 36-factor equation work by turning the missing bloodline factor into a testable model signal.
+
+Changes:
+
+- Added runner-level `sire` and `dam` storage columns with schema migration support.
+- HKJC declaration parsing now extracts sire and dam from the official `declaration_all.asp` rows.
+- Added pedigree proxy features for related-horse distance fit, surface fit, and sparse-data debut risk.
+- Prediction payloads and runner detail UI now expose the pedigree signals.
+- Updated 36-factor coverage item 9 from missing to partial.
+
+Verification:
+
+- `python -m pytest tests\test_pedigree.py tests\test_hkjc_parser.py tests\test_coverage.py -q`
+- `python -m compileall -q src tests`
+- `node --check src\racing_model\web\app.js`
+
 ## 2026-05-08 - Declaration Rows Override Stale Racecard Rows
 
 Goal:

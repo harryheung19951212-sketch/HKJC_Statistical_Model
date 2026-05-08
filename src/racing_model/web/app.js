@@ -1382,6 +1382,8 @@ function renderRunnerDetail(row) {
     <div class="stat"><label>步速優勢/路程步速</label><strong>${formatSignal(row.pace_advantage_score)} / ${formatSignal(row.distance_pace_fit)}</strong></div>
     <div class="stat"><label>升降班/評分變化</label><strong>${formatSignal(row.class_change_signal)} / ${formatSignal(row.rating_change_signal)}</strong></div>
     <div class="stat"><label>隱藏能力</label><strong>${formatSignal(row.hidden_ability_signal)}</strong></div>
+    <div class="stat"><label>血統路程/場地</label><strong>${formatSignal(row.pedigree_distance_fit)} / ${formatSignal(row.pedigree_surface_fit)}</strong></div>
+    <div class="stat"><label>血統新鮮風險</label><strong>${formatSignal(row.pedigree_novelty_risk)}</strong></div>
     <div class="stat"><label>同日內檔偏差</label><strong class="${evClass(row.same_day_inside_bias)}">${formatSigned(row.same_day_inside_bias)}</strong></div>
     <div class="stat"><label>同日外檔偏差</label><strong class="${evClass(row.same_day_outside_bias)}">${formatSigned(row.same_day_outside_bias)}</strong></div>
     <div class="stat"><label>同日跑法偏差</label><strong class="${evClass(row.same_day_pace_bias)}">${formatSigned(row.same_day_pace_bias)}</strong></div>

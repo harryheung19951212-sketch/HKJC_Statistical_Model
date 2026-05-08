@@ -91,6 +91,8 @@ def test_parse_chinese_declaration_rows_with_body_weight() -> None:
     assert rows[0]["horse_name_zh"] == "全能勇士"
     assert rows[0]["body_weight_lbs"] == 936.0
     assert rows[0]["jockey_zh"] == "潘頓"
+    assert rows[0]["sire"] == "Saxon Warrior"
+    assert rows[0]["dam"] == "One Last Look"
     assert rows[1]["horse_id"] == "J488"
     assert rows[1]["body_weight_lbs"] == 1126.0
     assert rows[1]["last_six_runs"] == "12/4/1/4/8/6"
