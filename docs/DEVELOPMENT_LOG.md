@@ -2,6 +2,27 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-08 - Stable Race Header Refresh
+
+Goal:
+
+- Stop the race page header from collapsing during the 30-second refresh cycle.
+
+Changes:
+
+- `renderRaceHeader()` now supports preserve mode and no longer clears the top `賠率錄影` line when the refreshed race-list payload has no notes.
+- `renderWeather()` preserves the previous weather/error line while deferred weather data is loading.
+- `renderPredictionPolicy()` preserves the previous policy line when a refresh payload does not yet include policy data.
+- Added fixed minimum heights to the race header and its metadata/status lines to reduce layout shift.
+
+Verification:
+
+- `node --check src\racing_model\web\app.js`
+- `python -m compileall -q src dashboard tests`
+- `python tests\test_smoke.py`
+- `python tests\test_market_flow.py`
+- `Get-ChildItem tests -Filter 'test_*.py' | ForEach-Object { python $_.FullName }`
+
 ## 2026-05-08 - Market Flow Signal Labels
 
 Goal:

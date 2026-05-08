@@ -237,16 +237,21 @@ async function switchAppView(view) {
   }
 }
 
-function renderRaceHeader() {
+function renderRaceHeader(options = {}) {
   const race = selectedRace();
   if (!race) return;
+  const preserve = Boolean(options.preserve);
   $("race-status").textContent = localStatus(race.status);
   $("race-title").textContent = `${race.race_id}`;
   $("race-meta").textContent = formatRaceMeta(race);
   $("runner-count").textContent = race.runners || 0;
   $("odds-count").textContent = `${race.odds_ticks || 0} / ${race.exotic_dividends || 0}`;
   $("last-refresh").textContent = race.last_odds_refresh_at || "-";
-  $("feed-status").textContent = race.notes ? `賠率來源：${race.notes}` : "";
+  if (race.notes) {
+    $("feed-status").textContent = `賠率來源：${race.notes}`;
+  } else if (!preserve || !hasTextContent("feed-status")) {
+    $("feed-status").textContent = "";
+  }
   const isResulted = race.status === "resulted";
   $("mark-live").disabled = isResulted;
   $("mark-scheduled").disabled = isResulted;
@@ -284,7 +289,7 @@ async function refreshSelectedRace(options = {}) {
     races = dashboard.races || [];
     renderLifecycle(dashboard.lifecycle || {});
     renderRaceList();
-    renderRaceHeader();
+    renderRaceHeader({ preserve: preservePanels });
     const payload = dashboard.predictions || {};
     currentPredictions = payload.predictions || [];
     if (!selectedHorseId && currentPredictions.length) selectedHorseId = currentPredictions[0].horse_id;
@@ -295,7 +300,7 @@ async function refreshSelectedRace(options = {}) {
     renderRunnerDetail(currentPredictions.find((row) => row.horse_id === selectedHorseId));
     renderRaceSituationCharts(currentPredictions);
     renderMarketFlow(dashboard.market_flow || {}, { preserveDeferred: preservePanels });
-    renderPredictionPolicy(payload.policy || {});
+    renderPredictionPolicy(payload.policy || {}, { preserve: preservePanels });
     renderBetting(dashboard.betting || {}, { preserveDeferred: preservePanels });
     refreshFullBetting(raceKey);
     renderBettingLedger(dashboard.betting_ledger || {});
@@ -304,7 +309,7 @@ async function refreshSelectedRace(options = {}) {
     renderModelComparison(dashboard.model_comparison || {}, { preserveDeferred: preservePanels });
     renderOddsHistoryLoading({ preserve: preservePanels });
     renderResultsLoading({ preserve: preservePanels });
-    renderWeather(dashboard.weather || {});
+    renderWeather(dashboard.weather || {}, { preserve: preservePanels });
     refreshSupplementalRacePanels(raceKey);
     if (full) await refreshModelReports();
   } finally {
@@ -376,27 +381,41 @@ async function refreshModelReports(options = {}) {
   viewDataLoaded.analytics = true;
 }
 
-function renderWeather(weather) {
+function renderWeather(weather, options = {}) {
   const box = $("weather-status");
   if (weather && weather.deferred) {
+    if (options.preserve && hasTextContent("weather-status")) {
+      box.classList.add("refreshing");
+      return;
+    }
+    box.classList.remove("refreshing");
     box.textContent = "賽日天氣載入中...";
     return;
   }
+  box.classList.remove("refreshing");
   if (!weather || weather.status !== "ok") {
-    box.textContent = weather && weather.message ? weather.message : "";
+    const message = weather && weather.message ? weather.message : "";
+    if (message || !options.preserve || !hasTextContent("weather-status")) {
+      box.textContent = message;
+    }
     return;
   }
   const update = weather.update_time ? `｜更新 ${weather.update_time}` : "";
   box.textContent = `賽日天氣：${weather.summary}${update}`;
 }
 
-function renderPredictionPolicy(policy) {
+function renderPredictionPolicy(policy, options = {}) {
   const box = $("prediction-policy-status");
   if (!box) return;
   if (!policy || !policy.mode) {
-    box.textContent = "";
+    if (!options.preserve || !hasTextContent("prediction-policy-status")) {
+      box.textContent = "";
+    } else {
+      box.classList.add("refreshing");
+    }
     return;
   }
+  box.classList.remove("refreshing");
   const mode = {
     baseline: "基礎融合模型",
     ability: "純能力優先",
@@ -420,6 +439,11 @@ function hasStableContent(id) {
   const textValue = box.textContent.trim();
   if (!textValue) return false;
   return !box.querySelector(".loading-placeholder");
+}
+
+function hasTextContent(id) {
+  const box = $(id);
+  return Boolean(box && box.textContent.trim());
 }
 
 function preservePanelDuringRefresh(contentId, summaryId, message) {

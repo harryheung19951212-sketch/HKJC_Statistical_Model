@@ -347,6 +347,7 @@ main { padding: 24px; min-width: 0; }
   gap: 24px;
   align-items: flex-start;
   margin-bottom: 18px;
+  min-height: 156px;
 }
 
 .eyebrow {
@@ -366,6 +367,7 @@ h2 {
 #race-meta {
   margin: 0;
   color: var(--muted);
+  min-height: 19px;
 }
 
 #weather-status {
@@ -374,6 +376,7 @@ h2 {
   font-size: 13px;
   font-weight: 700;
   max-width: 860px;
+  min-height: 18px;
 }
 
 #prediction-policy-status {
@@ -382,6 +385,7 @@ h2 {
   font-size: 13px;
   font-weight: 700;
   max-width: 860px;
+  min-height: 18px;
 }
 
 #feed-status {
@@ -389,6 +393,12 @@ h2 {
   color: var(--muted);
   font-size: 13px;
   max-width: 760px;
+  min-height: 18px;
+}
+
+#weather-status.refreshing,
+#prediction-policy-status.refreshing {
+  opacity: 0.72;
 }
 
 .metrics {
