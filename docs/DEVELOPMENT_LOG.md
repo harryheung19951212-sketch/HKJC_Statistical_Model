@@ -2,6 +2,34 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-09 - Global Logical Ticket Dedupe Hardening
+
+Goal:
+
+- Fix duplicate payout-reconciliation tickets globally, including Sha Tin race 2 `QPL 2+7`.
+- Enforce the betting rule that the same logical ticket may only refresh or add stake; it must not duplicate or reduce the recorded stake.
+
+Changes:
+
+- Betting ledger recording now looks up existing tickets by logical key: race, market, horse/combination, risk profile, and model path.
+- If an existing logical ticket has an older/legacy recommendation id, refreshes now reuse that row instead of inserting a second ticket.
+- Refreshes no longer reduce the stored recommended stake or execution stake; lower later recommendations preserve the higher existing stake, while higher later recommendations are treated as add-stake.
+- Added a database unique index on the logical ticket key as a final duplicate-prevention guard.
+- Updated the 36-factor coverage report item 32 to include the storage-level ledger guard.
+
+Production data maintenance:
+
+- Backed up production `betting_recommendations` before changing data.
+- Removed all remaining duplicate logical ticket rows across production, not just selected races.
+- For each duplicate group, kept one row and preserved the highest stake so cleanup acts like same-ticket add-stake rather than stake reduction.
+
+Verification:
+
+- `python -m pytest tests\test_betting_ledger.py tests\test_betting_settlement.py tests\test_fast_betting_refresh.py -q`
+- `python -m pytest tests\test_db_migrate.py tests\test_smoke.py -q`
+- `python -m compileall -q src tests`
+- Production PostgreSQL duplicate-group verification query.
+
 ## 2026-05-09 - Production Race Status And Ticket Ledger Cleanup
 
 Goal:

@@ -218,6 +218,9 @@ CREATE TABLE IF NOT EXISTS betting_recommendations (
   reconciliation_status TEXT NOT NULL DEFAULT 'pending'
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_betting_recommendations_logical_ticket
+ON betting_recommendations (race_id, market, horse_id, risk_profile, model_path);
+
 CREATE TABLE IF NOT EXISTS exotic_dividends (
   race_id TEXT NOT NULL,
   market TEXT NOT NULL,
@@ -481,6 +484,12 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
           reconciled_at TEXT,
           reconciliation_status TEXT NOT NULL DEFAULT 'pending'
         )
+        """
+    )
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_betting_recommendations_logical_ticket
+        ON betting_recommendations (race_id, market, horse_id, risk_profile, model_path)
         """
     )
     conn.execute(

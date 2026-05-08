@@ -207,6 +207,50 @@ def test_refreshing_same_ticket_updates_one_logical_recommendation(tmp_path: Pat
     assert ledger["items"][0]["ticket_update_label"] == "同飛刷新"
 
 
+def test_legacy_same_ticket_id_is_reused_instead_of_duplicated(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    with connect(db_path) as conn:
+        insert_rows(
+            conn,
+            "races",
+            [
+                {
+                    "race_id": "HK20260506-ST-01",
+                    "date": "2026/05/06",
+                    "track": "Sha Tin",
+                    "course": "Turf",
+                    "distance_m": 1200,
+                    "going": "Good",
+                    "class_rating": "Class 4",
+                    "prize": 1000000,
+                }
+            ],
+        )
+        conn.commit()
+
+        race = {"race_id": "HK20260506-ST-01", "date": "2026/05/06"}
+        payload = simple_win_payload("H001", 1, "Test Horse", 100)
+        record_betting_payload(conn, race, payload, "models/baseline.json")
+        original_id = payload["tickets"][0]["recommendation_id"]
+        conn.execute(
+            "UPDATE betting_recommendations SET recommendation_id = ? WHERE recommendation_id = ?",
+            ("legacy-ticket-id", original_id),
+        )
+        conn.commit()
+
+        payload = simple_win_payload("H001", 1, "Test Horse", 120)
+        record_betting_payload(conn, race, payload, "models/baseline.json")
+        ledger = betting_ledger_report(conn, "HK20260506-ST-01")
+        raw_rows = fetch_all(conn, "SELECT recommendation_id FROM betting_recommendations")
+
+    assert [row["recommendation_id"] for row in raw_rows] == ["legacy-ticket-id"]
+    assert payload["tickets"][0]["recommendation_id"] == "legacy-ticket-id"
+    assert ledger["summary"]["recommendations"] == 1
+    assert ledger["items"][0]["recommended_stake"] == 120
+    assert ledger["items"][0]["execution_stake"] == 120
+
+
 def test_confirmed_ticket_keeps_live_pool_price_until_settlement(tmp_path: Path) -> None:
     db_path = tmp_path / "racing.db"
     init_db(db_path)
@@ -244,6 +288,7 @@ def test_confirmed_ticket_keeps_live_pool_price_until_settlement(tmp_path: Path)
     assert item["execution_status"] == "confirmed"
     assert item["recommended_odds"] == 5.2
     assert item["execution_odds"] == 4.0
+    assert item["recommended_stake"] == 100
     assert item["execution_stake"] == 100
     assert item["ticket_update_label"] == "同飛刷新"
     assert "不鎖入飛賠率" in ledger["clv_note"]

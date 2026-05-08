@@ -35,12 +35,15 @@ def record_betting_payload(
         )
         for ticket in tickets
     ]
-    existing_rows = existing_recommendations(conn, [row["recommendation_id"] for row in rows])
+    existing_rows = existing_logical_recommendations(conn, rows)
     for row in rows:
         existing = existing_rows.get(row["recommendation_id"])
         if existing:
+            row["recommendation_id"] = existing["recommendation_id"]
             preserve_existing_state(row, existing)
         ticket = next((item for item in tickets if recommendation_key(item, race, payload, model_path) == row["recommendation_id"]), None)
+        if ticket is None and existing:
+            ticket = next((item for item in tickets if logical_ticket_matches(item, row)), None)
         if ticket is not None:
             ticket["recommendation_id"] = row["recommendation_id"]
             ticket["execution_status"] = row.get("execution_status")
@@ -304,9 +307,59 @@ def existing_recommendations(conn: sqlite3.Connection, ids: list[str]) -> dict[s
     return {str(row["recommendation_id"]): dict(row) for row in rows}
 
 
+def existing_logical_recommendations(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    existing_by_id = existing_recommendations(conn, [str(row["recommendation_id"]) for row in rows])
+    existing: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        generated_id = str(row["recommendation_id"])
+        direct = existing_by_id.get(generated_id)
+        if direct:
+            existing[generated_id] = direct
+            continue
+        matches = fetch_all(
+            conn,
+            """
+            SELECT *
+            FROM betting_recommendations
+            WHERE race_id = ?
+              AND market = ?
+              AND horse_id = ?
+              AND risk_profile = ?
+              AND model_path = ?
+            ORDER BY
+              CASE WHEN execution_status = 'confirmed' THEN 0 ELSE 1 END,
+              created_at DESC,
+              updated_at DESC,
+              recommendation_id DESC
+            LIMIT 1
+            """,
+            (
+                row.get("race_id"),
+                row.get("market"),
+                row.get("horse_id"),
+                row.get("risk_profile"),
+                row.get("model_path"),
+            ),
+        )
+        if matches:
+            existing[generated_id] = dict(matches[0])
+    return existing
+
+
+def logical_ticket_matches(ticket: dict[str, Any], row: dict[str, Any]) -> bool:
+    return (
+        str(ticket.get("market") or "") == str(row.get("market") or "")
+        and str(ticket.get("horse_id") or "") == str(row.get("horse_id") or "")
+    )
+
+
 def preserve_existing_state(row: dict[str, Any], existing: dict[str, Any]) -> None:
     previous_execution_stake = optional_float(existing.get("execution_stake")) or 0.0
     next_execution_stake = optional_float(row.get("execution_stake")) or 0.0
+    previous_recommended_stake = optional_float(existing.get("recommended_stake")) or 0.0
+    next_recommended_stake = optional_float(row.get("recommended_stake")) or 0.0
+    if next_recommended_stake < previous_recommended_stake:
+        row["recommended_stake"] = existing.get("recommended_stake")
     automatic_existing = str(existing.get("execution_status") or "") == "confirmed" and not manual_execution(existing)
     preserve_fields = [
         "created_at",
