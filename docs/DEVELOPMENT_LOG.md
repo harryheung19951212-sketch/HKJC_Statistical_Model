@@ -632,3 +632,23 @@ Verification:
 - `python -m compileall -q src dashboard tests`
 - `node --check src/racing_model/web/app.js`
 - `python -m pytest tests`
+
+## 2026-05-08 - Cached Prediction Reuse For Live Betting
+
+Goal:
+
+- Avoid recomputing the full adaptive race prediction every time the live betting recommendation panel refreshes.
+- Keep the 30-second betting cycle fast while still using the latest dashboard WIN/PLACE odds snapshot for every odds-dependent betting block.
+
+Implementation:
+
+- Added a short-lived per-race prediction cache in `AppState`.
+- `/api/race-dashboard` now stores the predictions it already computed for the selected race.
+- `/api/betting` reuses that recent prediction snapshot within the odds-refresh window, then only falls back to full adaptive prediction when the cache is stale or missing.
+- Added regression coverage proving that full betting refresh uses the dashboard prediction cache instead of rerunning adaptive prediction.
+
+Verification:
+
+- `python -m compileall -q src dashboard tests`
+- `node --check src/racing_model/web/app.js`
+- `python -m pytest tests/test_fast_betting_refresh.py -q`

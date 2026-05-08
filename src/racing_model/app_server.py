@@ -87,6 +87,8 @@ class AppState:
         self.exotic_refresh_lock = threading.Lock()
         self.betting_recording_races: set[str] = set()
         self.betting_record_lock = threading.Lock()
+        self.prediction_cache: dict[str, dict[str, object]] = {}
+        self.prediction_cache_lock = threading.Lock()
         self.policy_cache: dict[str, object] = {"expires_at": 0.0, "policy": None, "refreshing": False}
         self.policy_lock = threading.Lock()
         self.calibration_cache: dict[str, object] = {"expires_at": 0.0, "gate": None}
@@ -239,6 +241,26 @@ class AppState:
 
         threading.Thread(target=worker, daemon=True).start()
         return True
+
+    def cache_race_predictions(self, race_id: str, predictions: list[dict[str, object]], policy: dict[str, object]) -> None:
+        with self.prediction_cache_lock:
+            self.prediction_cache[race_id] = {
+                "created_at": time.monotonic(),
+                "predictions": [dict(row) for row in predictions],
+                "policy": dict(policy),
+            }
+
+    def cached_race_predictions(self, race_id: str, max_age_seconds: float) -> dict[str, object] | None:
+        with self.prediction_cache_lock:
+            cached = self.prediction_cache.get(race_id)
+            if not cached:
+                return None
+            if time.monotonic() - float(cached.get("created_at") or 0.0) > max_age_seconds:
+                return None
+            return {
+                "predictions": [dict(row) for row in cached.get("predictions", [])],
+                "policy": dict(cached.get("policy") or {}),
+            }
 
     def start_race_day_job(self, race_date: str, venue: str, race_count: int) -> dict[str, object]:
         job_id = uuid.uuid4().hex
@@ -960,6 +982,11 @@ def api_race_dashboard(conn, state: AppState, race_id: str, bankroll: float, ris
     model = state.model()
     policy = state.prediction_policy(conn, model)
     prediction_payload = api_predictions(conn, model, race_id, policy)
+    state.cache_race_predictions(
+        race_id,
+        prediction_payload.get("predictions", []),
+        prediction_payload.get("policy", {}),
+    )
     return {
         "lifecycle": api_lifecycle(conn, state),
         "races": api_races(conn),
@@ -1054,7 +1081,17 @@ def api_betting(
     if not race_rows:
         return {"race": None, "tickets": [], "decisions": []}
     if predictions is None:
-        predictions = adaptive_predict_race(conn, model, race_id, policy)["predictions"]
+        cached = state.cached_race_predictions(race_id, state.odds_interval_seconds + 5) if state is not None else None
+        if cached:
+            predictions = cached["predictions"]
+            if policy is None:
+                policy = cached["policy"]
+        else:
+            adaptive = adaptive_predict_race(conn, model, race_id, policy)
+            predictions = adaptive["predictions"]
+            policy = policy or adaptive.get("policy", {})
+            if state is not None:
+                state.cache_race_predictions(race_id, predictions, policy or {})
     status = race_lifecycle_status(conn, race_id)
     exotic_lookup = load_exotic_dividend_lookup(conn, race_id)
     if include_exotics and status == "scheduled" and not exotic_lookup:

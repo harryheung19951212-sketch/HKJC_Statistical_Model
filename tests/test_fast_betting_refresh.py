@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import racing_model.app_server as app_server
 from racing_model.app_server import AppState, api_betting, api_race_dashboard
 from racing_model.model import RankingModel
 from racing_model.storage import connect, init_db, insert_rows
@@ -119,3 +120,33 @@ def test_full_betting_queues_missing_exotic_refresh_without_blocking(tmp_path: P
     assert payload["decisions"]
     assert payload["ledger"]["record_mode"] == "async"
     assert all("recommendation_id" in ticket for ticket in payload["tickets"])
+
+
+def test_full_betting_reuses_recent_dashboard_predictions(tmp_path: Path, monkeypatch) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    state = AppState(tmp_path / "model.json", 30)
+    state.calibration_gate = lambda conn, model: None  # type: ignore[method-assign]
+    with connect(db_path) as conn:
+        add_minimal_race(conn)
+        dashboard = api_race_dashboard(conn, state, "HK20990101-ST-01", 10000, "standard")
+        assert dashboard["predictions"]["predictions"]
+
+        def fail_adaptive_prediction(*args, **kwargs):
+            raise AssertionError("recent dashboard predictions should be reused")
+
+        monkeypatch.setattr(app_server, "adaptive_predict_race", fail_adaptive_prediction)
+
+        payload = api_betting(
+            conn,
+            RankingModel.new(),
+            "HK20990101-ST-01",
+            10000,
+            "standard",
+            state=state,
+            include_exotics=False,
+            record_mode="none",
+        )
+
+    assert payload["decisions"]
+    assert payload["prediction_policy"]
