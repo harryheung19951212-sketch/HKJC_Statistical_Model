@@ -120,6 +120,7 @@ def test_full_betting_queues_missing_exotic_refresh_without_blocking(tmp_path: P
     assert payload["decisions"]
     assert payload["ledger"]["record_mode"] == "async"
     assert all("recommendation_id" in ticket for ticket in payload["tickets"])
+    assert all(ticket.get("execution_status") == "confirmed" for ticket in payload["tickets"])
 
 
 def test_full_betting_reuses_recent_dashboard_predictions(tmp_path: Path, monkeypatch) -> None:

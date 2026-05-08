@@ -26,6 +26,7 @@ from .betting import build_betting_decisions
 from .calibration_gate import build_calibration_gate
 from .betting_ledger import (
     annotate_pool_choice_context,
+    auto_execution_payload,
     betting_ledger_report,
     confirm_betting_recommendation,
     recommendation_key,
@@ -1168,9 +1169,12 @@ def annotate_betting_recommendation_ids(
     if not tickets:
         return
     annotate_pool_choice_context(tickets, payload)
+    now = datetime.now(timezone.utc).isoformat()
     for ticket in tickets:
         ticket["recommendation_id"] = recommendation_key(ticket, race, payload, model_path)
-        ticket.setdefault("execution_status", "suggested")
+        execution = auto_execution_payload(ticket, now)
+        for key, value in execution.items():
+            ticket.setdefault(key, value)
 
 
 def latest_logical_settlement_items(items: list[object]) -> list[dict[str, object]]:
