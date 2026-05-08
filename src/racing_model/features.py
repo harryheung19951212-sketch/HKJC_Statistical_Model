@@ -18,6 +18,7 @@ FEATURE_NAMES = [
     "draw_outside",
     "age",
     "recent_speed",
+    "adjusted_speed_figure",
     "recent_form",
     "distance_fit",
     "going_fit",
@@ -110,6 +111,13 @@ def build_race_features(conn: sqlite3.Connection, race_id: str) -> list[RunnerFe
             "draw_outside": 1.0 if int(runner["draw"]) > max(1, all_runner_count * 2 // 3) else 0.0,
             "age": float(runner["age"] or 0),
             "recent_speed": recent_speed(conn, horse_id, race_row["date"]),
+            "adjusted_speed_figure": adjusted_speed_figure(
+                conn,
+                horse_id,
+                race_row["date"],
+                int(race_row["distance_m"]),
+                race_row["going"],
+            ),
             "recent_form": recent_form(conn, horse_id, race_row["date"]),
             "distance_fit": distance_fit(conn, horse_id, int(race_row["distance_m"]), race_row["date"]),
             "going_fit": going_fit(conn, horse_id, race_row["going"], race_row["date"]),
@@ -190,6 +198,159 @@ def recent_speed(conn: sqlite3.Connection, horse_id: str, before_date: str) -> f
         penalty = float(row["margin_lengths"] or 0) * 0.03
         scores.append(metres_per_second - penalty)
     return sum(scores) / len(scores)
+
+
+def adjusted_speed_figure(
+    conn: sqlite3.Connection,
+    horse_id: str,
+    before_date: str,
+    target_distance_m: int,
+    target_going: str,
+    limit: int = 6,
+) -> float:
+    rows = fetch_all(
+        conn,
+        """
+        SELECT
+          r.race_id,
+          r.date,
+          r.track,
+          r.course,
+          r.distance_m,
+          r.going,
+          r.class_rating,
+          x.finish_time_sec,
+          x.margin_lengths,
+          ru.weight_lbs
+        FROM results x
+        JOIN races r ON r.race_id = x.race_id
+        LEFT JOIN runners ru ON ru.race_id = x.race_id AND ru.horse_id = x.horse_id
+        WHERE x.horse_id = ? AND r.date < ?
+        ORDER BY r.date DESC
+        LIMIT ?
+        """,
+        (horse_id, before_date, limit),
+    )
+    weighted_scores: list[tuple[float, float]] = []
+    target_going_bucket = normalize_going(target_going)
+    for index, row in enumerate(rows):
+        figure = result_speed_figure(conn, row)
+        if figure is None:
+            continue
+        distance_similarity = math.exp(-abs(int(row["distance_m"] or 0) - target_distance_m) / 650)
+        going_similarity = 1.0 if normalize_going(row["going"]) == target_going_bucket else 0.86
+        recency_weight = 0.72**index
+        weight = recency_weight * distance_similarity * going_similarity
+        weighted_scores.append((figure, weight))
+    total_weight = sum(weight for _, weight in weighted_scores)
+    if total_weight <= 0:
+        return 0.0
+    return round(sum(score * weight for score, weight in weighted_scores) / total_weight, 4)
+
+
+def result_speed_figure(conn: sqlite3.Connection, row: sqlite3.Row) -> float | None:
+    distance = int(row["distance_m"] or 0)
+    finish_time = float(row["finish_time_sec"] or 0)
+    if distance <= 0 or finish_time <= 0:
+        return None
+    winner_time = race_winner_time(conn, str(row["race_id"]))
+    if winner_time is None or winner_time <= 0:
+        return None
+    effective_time = max(finish_time, winner_time + float(row["margin_lengths"] or 0.0) * length_to_seconds(distance))
+    par_time = race_par_time(
+        conn,
+        str(row["track"] or ""),
+        str(row["course"] or ""),
+        distance,
+        str(row["date"] or ""),
+        str(row["going"] or ""),
+    )
+    race_quality = ((par_time - winner_time) / max(par_time, 1.0)) * 220.0
+    beaten_penalty = ((effective_time - winner_time) / max(distance / 1000.0, 1.0)) * 6.0
+    class_bonus = class_rating_bonus(str(row["class_rating"] or ""))
+    weight_bonus = (float(row["weight_lbs"] or 120.0) - 120.0) * 0.08
+    figure = 100.0 + race_quality - beaten_penalty + class_bonus + weight_bonus
+    return round(max(0.0, min(130.0, figure)), 4)
+
+
+def race_winner_time(conn: sqlite3.Connection, race_id: str) -> float | None:
+    rows = fetch_all(
+        conn,
+        "SELECT min(finish_time_sec) AS winner_time FROM results WHERE race_id = ? AND finish_time_sec > 0",
+        (race_id,),
+    )
+    if not rows or rows[0]["winner_time"] is None:
+        return None
+    return float(rows[0]["winner_time"])
+
+
+def race_par_time(
+    conn: sqlite3.Connection,
+    track: str,
+    course: str,
+    distance_m: int,
+    before_date: str,
+    going: str,
+) -> float:
+    rows = fetch_all(
+        conn,
+        """
+        SELECT min(x.finish_time_sec) AS winner_time
+        FROM races r
+        JOIN results x ON x.race_id = r.race_id
+        WHERE r.date < ?
+          AND r.track = ?
+          AND r.course = ?
+          AND abs(r.distance_m - ?) <= 100
+          AND x.finish_time_sec > 0
+        GROUP BY r.race_id
+        ORDER BY r.date DESC
+        LIMIT 20
+        """,
+        (before_date, track, course, distance_m),
+    )
+    winner_times = sorted(float(row["winner_time"]) for row in rows if row["winner_time"] is not None)
+    if winner_times:
+        mid = len(winner_times) // 2
+        if len(winner_times) % 2:
+            return winner_times[mid]
+        return (winner_times[mid - 1] + winner_times[mid]) / 2
+    return expected_par_time(distance_m, course, going)
+
+
+def expected_par_time(distance_m: int, course: str, going: str) -> float:
+    speed = 16.85
+    course_text = (course or "").lower()
+    going_bucket = normalize_going(going)
+    if "all weather" in course_text or "awt" in course_text:
+        speed -= 0.35
+    if going_bucket in {"soft", "yielding", "wet"}:
+        speed -= 0.35
+    elif going_bucket == "firm":
+        speed += 0.12
+    return distance_m / max(speed, 1.0)
+
+
+def length_to_seconds(distance_m: int) -> float:
+    if distance_m <= 1200:
+        return 0.16
+    if distance_m <= 1600:
+        return 0.17
+    return 0.18
+
+
+def class_rating_bonus(class_rating: str) -> float:
+    text = (class_rating or "").lower()
+    match = None
+    for token in text.replace("-", " ").split():
+        if token.isdigit():
+            match = int(token)
+            break
+    if match is None:
+        if "group" in text or "g1" in text:
+            return 6.0
+        return 0.0
+    return {1: 4.0, 2: 2.0, 3: 0.5, 4: -1.0, 5: -2.5}.get(match, 0.0)
 
 
 def recent_form(conn: sqlite3.Connection, horse_id: str, before_date: str) -> float:

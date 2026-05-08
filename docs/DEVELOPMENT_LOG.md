@@ -2,6 +2,28 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-08 - Adjusted Speed Figure V1
+
+Goal:
+
+- Start roadmap item 15 with a standardized speed feature that gives every runner a race-adjusted ability baseline before market and exotic signals.
+- Avoid leaking current-race results into pre-race predictions.
+
+Changes:
+
+- Added `adjusted_speed_figure` to the core model feature set.
+- Speed figures are computed from prior results only, using race winner time, beaten lengths converted to seconds, distance, going, course, class, weight, and recency/condition weighting.
+- Prediction payloads now expose `adjusted_speed_figure` for runner inspection.
+- Updated coverage item 15 to record Adjusted Speed Figure v1 support.
+
+Verification:
+
+- `python -m compileall -q src tests`
+- `python -m pytest tests\test_speed_figure.py tests\test_smoke.py tests\test_model_compare.py tests\test_coverage.py -q`
+- `node --check src\racing_model\web\app.js`
+- `python -m pytest -q`
+- Local API check: `/api/predictions` includes `adjusted_speed_figure` in each prediction row.
+
 ## 2026-05-08 - Live Stake Summary And Adaptive Kelly
 
 Goal:
