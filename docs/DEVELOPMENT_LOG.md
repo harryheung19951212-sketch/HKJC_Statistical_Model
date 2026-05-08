@@ -2,6 +2,26 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-09 - Sliced Calibration Gate V1
+
+Goal:
+
+- Continue the 36-factor equation work by making item 30 `模型校準` less superficial: not just overall reliability bins, but track/course/distance/class/field-size/going/market-favourite slices.
+
+Changes:
+
+- `evaluate_model_evolution` now exports `calibration_slices` with reliability bins and worst-bin gaps per race segment.
+- `calibration_gate` now blocks or discounts stakes when a qualified slice is badly miscalibrated, even if the overall bins look acceptable.
+- The model analytics UI now shows the worst sliced calibration gaps beside the normal win-probability bins.
+- Updated coverage notes for factor 30 to reflect sliced calibration support and the remaining WIN/PLACE/exotic-pool calibration gap.
+
+Verification:
+
+- `python -m pytest tests\test_calibration_gate.py tests\test_model_registry.py tests\test_betting.py tests\test_coverage.py -q`
+- `python -m compileall -q src tests`
+- `node --check src\racing_model\web\app.js`
+- `python -m pytest -q`
+
 ## 2026-05-09 - Pedigree Factor Coverage V1
 
 Goal:

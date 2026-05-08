@@ -29,7 +29,9 @@ def evaluate_model_evolution(
     min_expected_value: float = 0.05,
 ) -> dict[str, Any]:
     race_ids = resulted_race_ids(conn)
+    race_rows = race_metadata(conn)
     bins = [new_calibration_bin(low, high) for low, high in CALIBRATION_BINS]
+    slice_bins: dict[str, dict[str, Any]] = {}
     diagnostics: list[dict[str, Any]] = []
     races_evaluated = 0
     runners_evaluated = 0
@@ -87,6 +89,14 @@ def evaluate_model_evolution(
                     value_wins += 1
                     value_returned += 10.0 * float(odds)
 
+        update_slice_calibration(
+            slice_bins,
+            race_slice_keys(race_rows.get(race_id, {}), known, predictions),
+            race_id,
+            predictions,
+            winner.horse_id,
+        )
+
         if top_pick_finish != 1 or winner_rank > 3:
             diagnostics.append(
                 build_race_diagnostic(
@@ -117,6 +127,7 @@ def evaluate_model_evolution(
     return {
         "metrics": metrics,
         "calibration": finalized_bins,
+        "calibration_slices": finalize_slice_calibration(slice_bins),
         "diagnostics": diagnostics[:12],
         "feature_weights": feature_weight_summary(model),
         "ideas": ideas,
@@ -137,6 +148,19 @@ def resulted_race_ids(conn: sqlite3.Connection) -> list[str]:
             """,
         )
     ]
+
+
+def race_metadata(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
+    return {
+        str(row["race_id"]): dict(row)
+        for row in fetch_all(
+            conn,
+            """
+            SELECT race_id, track, course, distance_m, going, class_rating
+            FROM races
+            """
+        )
+    }
 
 
 def new_calibration_bin(low: float, high: float) -> dict[str, Any]:
@@ -173,6 +197,128 @@ def finalize_calibration_bins(bins: list[dict[str, Any]]) -> list[dict[str, Any]
             row["gap"] = row["observed_rate"] - row["avg_prediction"]
         finalized.append(row)
     return finalized
+
+
+def race_slice_keys(
+    race: dict[str, Any],
+    runners: list[Any],
+    predictions: list[dict[str, Any]],
+) -> list[dict[str, str]]:
+    track = str(race.get("track") or "unknown")
+    course = str(race.get("course") or "unknown")
+    going = str(race.get("going") or "unknown")
+    class_rating = str(race.get("class_rating") or "unknown")
+    distance = int(race.get("distance_m") or 0)
+    field_size = len(runners)
+    market_odds = [float(row["latest_win_odds"]) for row in predictions if row.get("latest_win_odds")]
+    favourite_odds = min(market_odds) if market_odds else None
+    return [
+        slice_key("track", "馬場", track),
+        slice_key("course", "跑道", course),
+        slice_key("going", "場地狀況", going),
+        slice_key("distance", "路程", distance_bucket(distance)),
+        slice_key("class", "班次", class_rating),
+        slice_key("field_size", "馬匹數", field_size_bucket(field_size)),
+        slice_key("market_favourite", "市場熱門", odds_bucket(favourite_odds)),
+    ]
+
+
+def slice_key(dimension: str, dimension_label: str, value: str) -> dict[str, str]:
+    return {
+        "slice_id": f"{dimension}:{value}",
+        "dimension": dimension,
+        "dimension_label": dimension_label,
+        "value": value,
+        "label": f"{dimension_label}: {value}",
+    }
+
+
+def distance_bucket(distance: int) -> str:
+    if distance <= 0:
+        return "未知"
+    if distance <= 1200:
+        return "短途 <=1200米"
+    if distance <= 1600:
+        return "中短途 1400-1600米"
+    if distance <= 2000:
+        return "中長途 1800-2000米"
+    return "長途 >=2200米"
+
+
+def field_size_bucket(field_size: int) -> str:
+    if field_size <= 0:
+        return "未知"
+    if field_size <= 8:
+        return "細場 <=8匹"
+    if field_size <= 12:
+        return "中場 9-12匹"
+    return "大場 >=13匹"
+
+
+def odds_bucket(odds: float | None) -> str:
+    if odds is None:
+        return "無市場賠率"
+    if odds <= 3.0:
+        return "大熱 <=3.0"
+    if odds <= 6.0:
+        return "中熱 3.1-6.0"
+    return "冷門主導 >6.0"
+
+
+def update_slice_calibration(
+    slice_bins: dict[str, dict[str, Any]],
+    slices: list[dict[str, str]],
+    race_id: str,
+    predictions: list[dict[str, Any]],
+    winner_horse_id: str,
+) -> None:
+    for slice_data in slices:
+        item = slice_bins.setdefault(
+            slice_data["slice_id"],
+            {
+                **slice_data,
+                "race_ids": set(),
+                "bins": [new_calibration_bin(low, high) for low, high in CALIBRATION_BINS],
+            },
+        )
+        item["race_ids"].add(race_id)
+        for row in predictions:
+            outcome = 1.0 if str(row.get("horse_id")) == str(winner_horse_id) else 0.0
+            add_to_calibration(item["bins"], float(row.get("win_probability") or 0.0), outcome)
+
+
+def finalize_slice_calibration(slice_bins: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    rows = []
+    for item in slice_bins.values():
+        bins = finalize_calibration_bins(item["bins"])
+        runner_count = sum(int(row.get("count", 0) or 0) for row in bins)
+        worst_bin = max(bins, key=lambda row: abs(float(row.get("gap") or 0.0)), default=None)
+        rows.append(
+            {
+                "slice_id": item["slice_id"],
+                "dimension": item["dimension"],
+                "dimension_label": item["dimension_label"],
+                "value": item["value"],
+                "label": item["label"],
+                "races": len(item["race_ids"]),
+                "runners": runner_count,
+                "worst_bin": compact_calibration_bin(worst_bin),
+                "bins": bins,
+            }
+        )
+    return sorted(rows, key=lambda row: (str(row["dimension"]), -int(row["races"]), str(row["value"])))
+
+
+def compact_calibration_bin(row: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not row:
+        return None
+    return {
+        "label": row.get("label"),
+        "count": int(row.get("count", 0) or 0),
+        "avg_prediction": row.get("avg_prediction"),
+        "observed_rate": row.get("observed_rate"),
+        "gap": row.get("gap"),
+    }
 
 
 def build_race_diagnostic(

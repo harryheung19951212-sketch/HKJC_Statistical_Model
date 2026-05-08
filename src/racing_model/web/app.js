@@ -1736,6 +1736,7 @@ function renderEvolution(report) {
     ${gate.status ? `<div class="stat"><label>校準 Gate</label><strong>${gate.label} / ${formatPct(gate.stake_factor)}</strong></div>` : ""}
   `;
   renderCalibration(report.calibration || []);
+  renderCalibrationSlices(report.calibration_slices || []);
   renderEvolutionIdeas(report.ideas || [], report.data_quality || []);
   renderDiagnostics(report.diagnostics || []);
   if (report.model_versions) renderModelVersions(report.model_versions);
@@ -2224,6 +2225,35 @@ function renderCalibration(rows) {
         </div>
         <div class="calibration-track"><span style="width:${expectedWidth}%"></span></div>
         <div class="calibration-track observed"><span style="width:${observedWidth}%"></span></div>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderCalibrationSlices(rows) {
+  const target = $("calibration-slices");
+  if (!target) return;
+  const ranked = [...rows]
+    .filter((row) => row.worst_bin)
+    .sort((a, b) => Math.abs(Number((b.worst_bin || {}).gap) || 0) - Math.abs(Number((a.worst_bin || {}).gap) || 0))
+    .slice(0, 8);
+  if (!ranked.length) {
+    target.innerHTML = `<p class="runner-subtitle">未有足夠分片校準樣本</p>`;
+    return;
+  }
+  target.innerHTML = ranked.map((row) => {
+    const bin = row.worst_bin || {};
+    const gap = Number(bin.gap) || 0;
+    return `
+      <div class="calibration-row">
+        <div class="calibration-head">
+          <strong>${row.label}</strong>
+          <span>${row.races || 0} 場 / ${row.runners || 0} 匹</span>
+        </div>
+        <div class="calibration-head">
+          <span>${bin.label || "-"} 分桶</span>
+          <span>差距 <b class="${evClass(gap)}">${formatPct(gap)}</b></span>
+        </div>
       </div>
     `;
   }).join("");
