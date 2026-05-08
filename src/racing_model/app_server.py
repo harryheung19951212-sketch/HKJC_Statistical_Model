@@ -55,6 +55,7 @@ from .odds import (
 )
 from .pace import annotate_predictions_with_pace
 from .pool_replay import pool_replay_report
+from .promotion_scorecard import build_promotion_scorecard, promotion_scorecard
 from .storage import (
     connect,
     fetch_all,
@@ -439,6 +440,8 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(error_taxonomy_report(conn, self.app_state.model(), refresh=refresh))
             elif path == "/api/model-versions":
                 self.send_json(run_walk_forward_versions(conn))
+            elif path == "/api/promotion-scorecard":
+                self.send_json(promotion_scorecard(conn))
             elif path == "/api/model-registry":
                 self.send_json(model_registry_report(conn))
             elif path == "/api/lifecycle":
@@ -1049,15 +1052,19 @@ def api_fast_betting_preview(
 
 def api_analytics_dashboard(conn, state: AppState, include_coverage: bool = False) -> dict[str, object]:
     model = state.model()
+    model_versions = run_walk_forward_versions(conn)
+    model_registry = model_registry_report(conn)
+    pool_replay = pool_replay_report(conn)
     payload = {
         "backtest": asdict(run_backtest(conn, model)),
         "evolution": evaluate_model_evolution(conn, model),
         "dual_track": dual_model_backtest(conn, model),
         "taxonomy": error_taxonomy_report(conn, model),
-        "model_versions": run_walk_forward_versions(conn),
-        "model_registry": model_registry_report(conn),
+        "model_versions": model_versions,
+        "model_registry": model_registry,
         "calibration_gate": state.calibration_gate(conn, model),
-        "pool_replay": pool_replay_report(conn),
+        "pool_replay": pool_replay,
+        "promotion_scorecard": build_promotion_scorecard(model_versions, pool_replay, model_registry),
         "data_quality": data_quality_report(conn),
     }
     if include_coverage:

@@ -429,6 +429,7 @@ async function refreshModelReports(options = {}) {
   renderDualTrackBacktest(dashboard.dual_track || {});
   renderErrorTaxonomy(dashboard.taxonomy || {});
   renderModelVersions(dashboard.model_versions || {});
+  renderPromotionScorecard(dashboard.promotion_scorecard || {});
   renderModelRegistry(dashboard.model_registry || {});
   renderPoolReplay(dashboard.pool_replay || {});
   renderDataQuality(dashboard.data_quality || {});
@@ -1734,6 +1735,125 @@ function renderModelVersions(data) {
       </div>
     `;
   }).join("");
+}
+
+function renderPromotionScorecard(data) {
+  const summary = data.summary || {};
+  const metrics = data.overall_metrics || {};
+  if (!summary.gate) {
+    $("promotion-scorecard-summary").innerHTML = `<div class="stat"><label>狀態</label><strong>未有資料</strong></div>`;
+    $("promotion-scorecard-note").textContent = "未有足夠資料建立升級評分表。";
+    $("promotion-scorecard-sections").innerHTML = "";
+    $("promotion-scorecard-slices").innerHTML = "";
+    return;
+  }
+  $("promotion-scorecard-summary").innerHTML = `
+    <div class="stat"><label>總 Gate</label><strong>${summary.gate_label || summary.gate}</strong></div>
+    <div class="stat"><label>最佳版本</label><strong>${summary.best_label || "-"}</strong></div>
+    <div class="stat"><label>OOS folds</label><strong>${summary.folds || 0}</strong></div>
+    <div class="stat"><label>Log Loss 改善</label><strong class="${evClass(metrics.log_loss_improvement_pct)}">${metrics.log_loss_improvement_pct === null || metrics.log_loss_improvement_pct === undefined ? "-" : formatPct(metrics.log_loss_improvement_pct)}</strong></div>
+    <div class="stat"><label>Top1 差異</label><strong class="${evClass(metrics.top_pick_delta)}">${metrics.top_pick_delta === null || metrics.top_pick_delta === undefined ? "-" : formatSigned(metrics.top_pick_delta, 3)}</strong></div>
+    <div class="stat"><label>Top3 差異</label><strong class="${evClass(metrics.top3_delta)}">${metrics.top3_delta === null || metrics.top3_delta === undefined ? "-" : formatSigned(metrics.top3_delta, 3)}</strong></div>
+    <div class="stat"><label>ROI 差異</label><strong class="${evClass(metrics.roi_delta)}">${metrics.roi_delta === null || metrics.roi_delta === undefined ? "-" : formatPct(metrics.roi_delta)}</strong></div>
+    <div class="stat"><label>Sharpe-like</label><strong>${metrics.best_return_to_drawdown === null || metrics.best_return_to_drawdown === undefined ? "-" : formatNum(metrics.best_return_to_drawdown, 2)}</strong></div>
+  `;
+  $("promotion-scorecard-note").textContent = summary.message || "";
+  const sections = data.sections || [];
+  $("promotion-scorecard-sections").innerHTML = sections.map((row) => `
+    <div class="registry-card ${promotionStatusClass(row.status)}">
+      <div class="version-head">
+        <strong>${row.label}</strong>
+        <span>${row.status_label || row.status}</span>
+      </div>
+      <p>${row.message || ""}</p>
+      ${renderPromotionSectionMetrics(row)}
+    </div>
+  `).join("");
+  const slices = data.slice_scorecard || [];
+  if (!slices.length) {
+    $("promotion-scorecard-slices").innerHTML = `<p class="runner-subtitle">未有可顯示分片 scorecard</p>`;
+    return;
+  }
+  $("promotion-scorecard-slices").innerHTML = `
+    <h5>重點分片</h5>
+    <div class="promotion-slice-grid">
+      ${slices.slice(0, 8).map((row) => `
+        <div class="registry-card ${promotionStatusClass(row.status)}">
+          <div class="version-head">
+            <strong>${row.label || row.slice_id}</strong>
+            <span>${row.status_label || row.status}</span>
+          </div>
+          <div class="version-metrics">
+            <div><label>場次</label><b>${row.races || 0}</b></div>
+            <div><label>Log Loss</label><b>${formatNum(row.log_loss, 3)}</b></div>
+            <div><label>Log Loss 差異</label><b class="${evClass(-(Number(row.log_loss_delta) || 0))}">${row.log_loss_delta === null || row.log_loss_delta === undefined ? "-" : formatSigned(row.log_loss_delta, 3)}</b></div>
+            <div><label>Brier 差異</label><b class="${evClass(-(Number(row.brier_delta) || 0))}">${row.brier_delta === null || row.brier_delta === undefined ? "-" : formatSigned(row.brier_delta, 3)}</b></div>
+            <div><label>Top1 差異</label><b class="${evClass(row.top_pick_delta)}">${row.top_pick_delta === null || row.top_pick_delta === undefined ? "-" : formatSigned(row.top_pick_delta, 3)}</b></div>
+            <div><label>ROI</label><b class="${evClass(row.value_roi)}">${row.value_roi === null || row.value_roi === undefined ? "-" : formatPct(row.value_roi)}</b></div>
+          </div>
+          <span class="version-verdict">${row.message || ""}</span>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderPromotionSectionMetrics(row) {
+  const metrics = row.metrics || {};
+  const entries = {
+    accuracy: [
+      ["Log Loss 差異", metrics.log_loss_delta, "signed"],
+      ["Brier 差異", metrics.brier_delta, "signed"],
+      ["Top1 差異", metrics.top_pick_delta, "signed"],
+      ["Top3 差異", metrics.top3_delta, "signed"],
+    ],
+    calibration: [
+      ["校準點", metrics.points, "number"],
+      ["最大差距", metrics.max_abs_gap, "pct"],
+    ],
+    pool: [
+      ["建議票數", metrics.tickets, "number"],
+      ["已確認", metrics.executed, "number"],
+      ["下注時 ROI", metrics.execution_roi, "pct"],
+      ["失效率", metrics.invalid_execution_rate, "pct"],
+    ],
+    slice: [
+      ["可驗分片", metrics.eligible_slices, "number"],
+      ["阻擋分片", metrics.blocked_slices, "number"],
+      ["樣本細分片", metrics.sample_small_slices, "number"],
+    ],
+    risk: [
+      ["ROI 差異", metrics.roi_delta, "pct"],
+      ["回撤差異", metrics.drawdown_delta, "money"],
+      ["最大回撤", metrics.best_max_drawdown, "money"],
+      ["Sharpe-like", metrics.best_return_to_drawdown, "number"],
+    ],
+  }[row.section_id] || [];
+  if (!entries.length) return "";
+  return `
+    <div class="version-metrics">
+      ${entries.map(([label, value, kind]) => `
+        <div><label>${label}</label><b>${formatPromotionMetric(value, kind)}</b></div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function formatPromotionMetric(value, kind) {
+  if (value === null || value === undefined) return "-";
+  if (kind === "pct") return formatPct(value);
+  if (kind === "signed") return formatSigned(value, 3);
+  if (kind === "money") return formatMoney(value);
+  return formatNum(value, 2);
+}
+
+function promotionStatusClass(status) {
+  return {
+    pass: "candidate",
+    warn: "warn",
+    block: "risk",
+    unverified: "unverified",
+  }[status] || "";
 }
 
 function renderModelRegistry(data) {

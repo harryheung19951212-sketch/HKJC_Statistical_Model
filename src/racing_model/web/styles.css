@@ -1942,6 +1942,24 @@ td:nth-child(4), th:nth-child(4) {
   font-size: 12px;
 }
 
+.promotion-section-grid,
+.promotion-slice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.promotion-slice-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.promotion-slice-list h5 {
+  margin: 0;
+  font-size: 13px;
+}
+
 .registry-card.candidate {
   border-color: #9ed8c7;
   background: #f5fbf8;
@@ -1950,6 +1968,12 @@ td:nth-child(4), th:nth-child(4) {
 .registry-card.risk {
   border-color: #e5a7a7;
   background: #fff7f7;
+}
+
+.registry-card.warn,
+.registry-card.unverified {
+  border-color: #c8d8ee;
+  background: #f7faff;
 }
 
 .ledger-card.reconciled {

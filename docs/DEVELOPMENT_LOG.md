@@ -806,6 +806,27 @@ Verification:
 - `node --check src/racing_model/web/app.js`
 - `python -m pytest tests`
 
+## 2026-05-08 - Promotion Scorecard v1
+
+Goal:
+
+- Develop the next model-system indicator: a unified upgrade scorecard for deciding whether a candidate model is safe to promote.
+- Make the scorecard visible in analytics without rerunning expensive walk-forward work twice.
+
+Implementation:
+
+- Added `promotion_scorecard.py`, combining walk-forward Top1/Top3, log loss, Brier, calibration, ROI, execution ROI, max drawdown, Sharpe-like return-to-drawdown, pool replay, and slice OOS gates.
+- Added `/api/promotion-scorecard` and embedded `promotion_scorecard` inside `/api/analytics-dashboard` by reusing the existing `model_versions` and `pool_replay` payloads.
+- Added an analytics UI panel showing the overall promotion gate, section gates, key metric deltas, and the highest-priority slice scorecard rows.
+- Updated the 36-indicator coverage report for item 18 and item 35 to reflect Promotion Scorecard v1.
+
+Verification:
+
+- `python -m compileall -q src dashboard tests`
+- `node --check src/racing_model/web/app.js`
+- `python -m pytest tests`
+- Local smoke test against `/api/promotion-scorecard` and `/api/analytics-dashboard?include_coverage=0`
+
 ## 2026-05-08 - Fast Race Screen Betting Refresh
 
 Goal:

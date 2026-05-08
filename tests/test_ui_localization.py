@@ -93,6 +93,12 @@ def test_browser_refresh_preserves_page_and_tab_state() -> None:
     assert "現時估算" in js
     assert "新建議" in js
     assert "settings.kelly_label" in js
+    assert "promotion-scorecard-summary" in html
+    assert "promotion-scorecard-sections" in html
+    assert "promotion-scorecard-slices" in html
+    assert "function renderPromotionScorecard" in js
+    assert "renderPromotionScorecard(dashboard.promotion_scorecard || {})" in js
+    assert "function renderPromotionSectionMetrics" in js
     assert "grid-template-columns: repeat(4, minmax(0, 1fr));" in css
 
 
