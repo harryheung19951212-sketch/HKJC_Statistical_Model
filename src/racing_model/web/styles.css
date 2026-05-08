@@ -420,9 +420,9 @@ h2 {
 
 .grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 380px;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 420px);
   gap: 16px;
-  align-items: start;
+  align-items: stretch;
 }
 
 .panel {
@@ -432,14 +432,22 @@ h2 {
   overflow: hidden;
 }
 
-.predictions-panel { grid-row: auto; }
+.predictions-panel {
+  grid-column: 1;
+  grid-row: 1;
+}
 
-.predictions-panel,
+.detail-panel {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+}
+
 .betting-panel,
 .feed-panel,
 .comparison-panel,
 .situation-panel,
-.detail-panel,
 .history-panel,
 .results-panel,
 .coverage-panel,
@@ -1236,8 +1244,10 @@ td:nth-child(4), th:nth-child(4) {
 .runner-detail {
   padding: 14px 16px;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0 16px;
+  flex: 1 1 auto;
+  align-content: start;
 }
 
 .runner-title {
