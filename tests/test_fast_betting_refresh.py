@@ -172,6 +172,34 @@ def test_full_betting_reuses_recent_dashboard_predictions(tmp_path: Path, monkey
     assert payload["prediction_policy"]
 
 
+def test_full_betting_summary_uses_confirmed_ledger_stake(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    state = AppState(tmp_path / "model.json", 30)
+    state.calibration_gate = lambda conn, model: None  # type: ignore[method-assign]
+    with connect(db_path) as conn:
+        add_minimal_race(conn)
+
+        payload = api_betting(
+            conn,
+            RankingModel.new(),
+            "HK20990101-ST-01",
+            10000,
+            "standard",
+            state=state,
+            model_path=tmp_path / "model.json",
+            predictions=[prediction()],
+            include_exotics=False,
+            record_mode="sync",
+        )
+
+    assert payload["placed_summary"]["confirmed"] > 0
+    assert payload["placed_summary"]["executed_staked"] > 0
+    assert payload["placed_summary"]["display_stake"] == payload["settlement"]["summary"]["staked"]
+    assert payload["display_max_race_stake"] == payload["placed_summary"]["display_stake"]
+    assert payload["display_total_recommended_stake"] == payload["placed_summary"]["display_stake"]
+
+
 def test_live_race_odds_refresh_keeps_updating_ticks(tmp_path: Path) -> None:
     db_path = tmp_path / "racing.db"
     init_db(db_path)

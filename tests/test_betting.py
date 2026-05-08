@@ -37,6 +37,9 @@ def test_betting_decision_uses_fractional_kelly_and_race_cap() -> None:
 
     assert result["tickets"]
     assert result["total_recommended_stake"] <= result["max_race_stake"]
+    assert result["risk_settings"]["base_fractional_kelly"] == 0.25
+    assert result["risk_settings"]["fractional_kelly"] != 0.25
+    assert result["risk_settings"]["kelly_label"] in {"正常", "降注", "保守觀望"}
     assert {ticket["market"] for ticket in result["tickets"]} == {"WIN", "PLACE"}
     assert all(ticket["action"] == "有值博" for ticket in result["tickets"])
     exotic_markets = {candidate["market"] for candidate in result["exotic_candidates"]}

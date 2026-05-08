@@ -1173,8 +1173,27 @@ def api_betting(
             payload["ledger"] = record_betting_payload(conn, race, payload, model_path)
     if status == "resulted":
         reconcile_betting_ledger(conn, race_id=race_id)
-    payload["settlement"] = betting_settlement_payload(betting_ledger_report(conn, race_id=race_id))
+    ledger_report = betting_ledger_report(conn, race_id=race_id)
+    payload["placed_summary"] = placed_betting_summary(ledger_report)
+    payload["display_max_race_stake"] = payload["placed_summary"]["display_stake"]
+    payload["display_total_recommended_stake"] = payload["placed_summary"]["display_stake"]
+    payload["settlement"] = betting_settlement_payload(ledger_report)
     return payload
+
+
+def placed_betting_summary(ledger: dict[str, object]) -> dict[str, object]:
+    summary = ledger.get("summary", {}) if isinstance(ledger, dict) else {}
+    executed = float((summary or {}).get("executed_staked") or 0.0) if isinstance(summary, dict) else 0.0
+    confirmed = int((summary or {}).get("confirmed") or 0) if isinstance(summary, dict) else 0
+    reconciled = int((summary or {}).get("reconciled") or 0) if isinstance(summary, dict) else 0
+    return {
+        "confirmed": confirmed,
+        "reconciled": reconciled,
+        "executed_staked": round(executed, 2),
+        "display_stake": round(executed, 2),
+        "source": "betting_ledger_confirmed",
+        "note": "即場顯示以派彩對數內已落飛注碼加總；未落飛的新建議只在下注單列表顯示。",
+    }
 
 
 def betting_settlement_payload(ledger: dict[str, object]) -> dict[str, object]:
@@ -1194,7 +1213,7 @@ def betting_settlement_payload(ledger: dict[str, object]) -> dict[str, object]:
             "pending": len(pending),
             "profit": round(sum(float(row.get("profit") or 0) for row in settled), 2),
             "returned": round(sum(float(row.get("returned") or 0) for row in settled), 2),
-            "staked": round(sum(float(row.get("recommended_stake") or 0) for row in unique_items), 2),
+            "staked": round(sum(float(row.get("execution_stake") or row.get("recommended_stake") or 0) for row in unique_items), 2),
         },
         "items": unique_items,
         "note": "已完場會用投注留痕對照賽果及最終派彩；組合贏票未有 final dividend 時會保持待派彩。",

@@ -59,6 +59,8 @@ def build_betting_decisions(
     profile = RISK_PROFILES.get(risk_profile, RISK_PROFILES["standard"])
     bankroll = max(float(bankroll or 0), 0.0)
     pace_map = annotate_predictions_with_pace(predictions)
+    kelly_context = adaptive_kelly_context(predictions, profile, race_status, calibration_gate)
+    effective_fractional_kelly = float(kelly_context["fractional_kelly"])
     decisions = []
     for rank, prediction in enumerate(predictions, start=1):
         decisions.append(
@@ -72,6 +74,7 @@ def build_betting_decisions(
                 race_status=race_status,
                 bankroll=bankroll,
                 profile=profile,
+                fractional_kelly=effective_fractional_kelly,
             )
         )
         decisions.append(
@@ -85,11 +88,12 @@ def build_betting_decisions(
                 race_status=race_status,
                 bankroll=bankroll,
                 profile=profile,
+                fractional_kelly=effective_fractional_kelly,
             )
         )
 
     exotic_candidates = build_exotic_candidates(predictions, race_status, exotic_dividends=exotic_dividends) if include_exotics else []
-    exotic_decisions = build_exotic_decisions(exotic_candidates, race_status, bankroll, profile) if include_exotics else []
+    exotic_decisions = build_exotic_decisions(exotic_candidates, race_status, bankroll, profile, effective_fractional_kelly) if include_exotics else []
     calibration_adjustments = apply_calibration_stake_gate([*decisions, *exotic_decisions], bankroll, calibration_gate)
     active = [decision for decision in [*decisions, *exotic_decisions] if decision["recommended_stake"] > 0]
     max_race_stake = round(bankroll * profile.max_race_fraction, 2)
@@ -122,7 +126,11 @@ def build_betting_decisions(
         "bankroll": bankroll,
         "risk_profile": profile.name,
         "risk_settings": {
-            "fractional_kelly": profile.fractional_kelly,
+            "fractional_kelly": effective_fractional_kelly,
+            "base_fractional_kelly": profile.fractional_kelly,
+            "kelly_modifier": kelly_context["modifier"],
+            "kelly_label": kelly_context["label"],
+            "kelly_reasons": kelly_context["reasons"],
             "max_bet_fraction": profile.max_bet_fraction,
             "max_race_fraction": profile.max_race_fraction,
             "min_expected_value": profile.min_expected_value,
@@ -215,6 +223,7 @@ def build_market_decision(
     race_status: str,
     bankroll: float,
     profile: RiskProfile,
+    fractional_kelly: float,
 ) -> dict[str, Any]:
     probability = safe_float(prediction.get(probability_key))
     odds = safe_float(prediction.get(odds_key))
@@ -228,7 +237,7 @@ def build_market_decision(
     req_edge = required_edge(market, profile.min_edge)
     req_dividend = required_dividend(probability, market, profile.min_expected_value)
     raw_kelly = kelly_fraction(probability, odds)
-    kelly = raw_kelly * profile.fractional_kelly
+    kelly = raw_kelly * fractional_kelly
     capped_fraction = min(kelly, profile.max_bet_fraction)
     eligible, reason = decision_eligibility(
         race_status,
@@ -285,6 +294,55 @@ def build_market_decision(
         "wide_risk_label": prediction.get("wide_risk_label"),
         "pace_advantage": prediction.get("pace_advantage"),
         "pace_note": prediction.get("pace_note"),
+    }
+
+
+def adaptive_kelly_context(
+    predictions: list[dict[str, Any]],
+    profile: RiskProfile,
+    race_status: str,
+    calibration_gate: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if race_status in {"live", "resulted"}:
+        return {
+            "fractional_kelly": 0.0,
+            "base_fractional_kelly": profile.fractional_kelly,
+            "modifier": 0.0,
+            "label": "停止下注",
+            "reasons": ["賽事已開跑/完場"],
+        }
+    runners = max(len(predictions), 1)
+    live_win = sum(1 for row in predictions if row.get("latest_win_odds_source") in LIVE_ODDS_SOURCES)
+    live_place = sum(1 for row in predictions if row.get("place_odds_source") in LIVE_ODDS_SOURCES)
+    odds_coverage = (live_win + live_place) / max(runners * 2, 1)
+    ev_values = [safe_float(row.get("expected_value")) or -1.0 for row in predictions]
+    top3_ev_values = [safe_float(row.get("top3_expected_value")) or -1.0 for row in predictions]
+    best_ev = max([*ev_values, *top3_ev_values, -1.0])
+    edge_strength = clamp_value((best_ev - profile.min_expected_value) / 0.40)
+    gate_factor = calibration_factor(calibration_gate)
+    modifier = 0.48 + 0.32 * odds_coverage + 0.20 * edge_strength
+    if odds_coverage < 0.50:
+        modifier *= 0.72
+    modifier = clamp_value(modifier, 0.20, 1.20)
+    fractional = round(profile.fractional_kelly * modifier, 4)
+    if fractional >= profile.fractional_kelly * 0.95:
+        label = "正常"
+    elif fractional >= profile.fractional_kelly * 0.60:
+        label = "降注"
+    else:
+        label = "保守觀望"
+    reasons = [
+        f"即時賠率覆蓋 {odds_coverage:.0%}",
+        f"最佳EV {best_ev:.3f}" if best_ev > -1 else "未見正EV",
+    ]
+    if gate_factor < 0.999:
+        reasons.append(f"另有校準 gate {gate_factor:.0%} 降注")
+    return {
+        "fractional_kelly": fractional,
+        "base_fractional_kelly": profile.fractional_kelly,
+        "modifier": round(modifier, 4),
+        "label": label,
+        "reasons": reasons,
     }
 
 
@@ -345,6 +403,10 @@ def kelly_fraction(probability: float | None, odds: float | None) -> float:
     if edge <= 0:
         return 0.0
     return edge / (odds - 1.0)
+
+
+def clamp_value(value: float, lower: float = 0.0, upper: float = 1.0) -> float:
+    return max(lower, min(float(value), upper))
 
 
 def build_exotic_candidates(
@@ -451,6 +513,7 @@ def build_exotic_decisions(
     race_status: str,
     bankroll: float,
     profile: RiskProfile,
+    fractional_kelly: float,
 ) -> list[dict[str, Any]]:
     decisions = []
     for rank, candidate in enumerate(candidates, start=1):
@@ -465,7 +528,7 @@ def build_exotic_decisions(
         req_edge = required_edge(str(candidate["market"]), profile.min_edge)
         req_dividend = required_dividend(probability, str(candidate["market"]), profile.min_expected_value)
         raw_kelly = kelly_fraction(probability, dividend)
-        kelly = raw_kelly * profile.fractional_kelly
+        kelly = raw_kelly * fractional_kelly
         capped_fraction = min(kelly, profile.max_bet_fraction)
         eligible, reason = decision_eligibility(
             race_status,

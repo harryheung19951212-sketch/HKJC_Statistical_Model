@@ -2,6 +2,26 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-08 - Live Stake Summary And Adaptive Kelly
+
+Goal:
+
+- Make the instant betting summary show actual placed exposure from the betting ledger, not only the newly generated recommendation total.
+- Stop showing every standard race as a fixed 25% Kelly setting.
+
+Changes:
+
+- `/api/betting` now returns `placed_summary`, `display_max_race_stake`, and `display_total_recommended_stake` from confirmed ledger stake.
+- The betting header now uses the confirmed placed stake for `本場上限` and `建議總注`, while keeping new model output under `新建議`.
+- Kelly sizing now has an effective dynamic fractional Kelly based on live odds coverage and best available EV, with the original profile fraction retained as `base_fractional_kelly`.
+- The UI displays the effective Kelly plus a label such as `正常`, `降注`, or `保守觀望`.
+
+Verification:
+
+- `python -m compileall -q src tests`
+- `node --check src\racing_model\web\app.js`
+- `python -m pytest tests\test_betting.py tests\test_fast_betting_refresh.py tests\test_betting_settlement.py tests\test_ui_localization.py -q`
+
 ## 2026-05-08 - Keep Pool Prices Live Until Settlement
 
 Goal:
