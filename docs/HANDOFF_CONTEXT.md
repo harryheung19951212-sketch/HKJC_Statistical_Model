@@ -237,6 +237,18 @@ foreach ($t in $tests) {
 - UI 的「方程式覆蓋率 / 盲點報告」會在展開項目時顯示細項。
 - 現時仍未「完成 36 項」；多數項目是部分完成，血統、賽事節奏模擬及亮相圈/即時狀態仍是主要缺口。
 
+## 2026-05-08 下注組合風險控制
+
+- `build_betting_decisions()` 會在 Kelly、單注 cap、單場 cap 後再跑相關曝險控制。
+- 新增三種曝險快照：
+  - 同馬曝險：同一匹馬跨 WIN/PLACE/組合票的總 stake。
+  - 彩池曝險：同一 pool 的總 stake。
+  - 同腳位曝險：同一組馬跨 QIN/QPL/TRIO/TCE 等的總 stake。
+- 超過 cap 時會按最緊的一項自動降注；低於最低投注單位時會轉為觀望 / 不加注。
+- `/api/betting` payload 增加 `exposure_report`、`exposure_adjusted`，ticket/candidate 會有 `exposure_action`、`exposure_reason`、`exposure_adjustment_factor`。
+- UI「即場投注建議」會顯示「下注組合風險控制」開合區塊及每張飛的曝險狀態。
+- 仍未完成：要用 bankroll replay 證明 exposure graph 降低最大回撤且不破壞 ROI。
+
 ## 仍未完成 / 未做事項
 
 ### 最高優先

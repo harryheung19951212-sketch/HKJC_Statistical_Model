@@ -482,6 +482,7 @@ function renderBetting(data, options = {}) {
   `;
   const tickets = data.tickets || [];
   const settlementHtml = renderBettingSettlement(data.settlement || {});
+  const exposureHtml = renderExposureReport(data.exposure_report || {});
   const exoticHtml = renderExoticSection(data.exotic_candidates || [], data.upgrade_paths || []);
   const deferredHtml = data.exotics_deferred ? `<div class="betting-empty">複式及全投注方法建議計算中...</div>` : "";
   if (!tickets.length) {
@@ -494,11 +495,12 @@ function renderBetting(data, options = {}) {
       <div class="betting-empty">${emptyMessage}</div>
       ${top.map(renderDecisionCard).join("")}
       ${deferredHtml}
+      ${exposureHtml}
       ${exoticHtml}
     `;
     return;
   }
-  box.innerHTML = `${settlementHtml}${tickets.slice(0, 8).map(renderDecisionCard).join("")}${deferredHtml}${exoticHtml}`;
+  box.innerHTML = `${settlementHtml}${tickets.slice(0, 8).map(renderDecisionCard).join("")}${deferredHtml}${exposureHtml}${exoticHtml}`;
 }
 
 function renderDecisionCard(row) {
@@ -520,7 +522,9 @@ function renderDecisionCard(row) {
         <div><label>\u62bd\u6c34/\u566a\u97f3</label><strong>${formatPoolCost(row.pool_rule)}</strong></div>
         <div><label>注碼</label><strong>${formatMoney(row.recommended_stake)}</strong></div>
         <div><label>最低票</label><strong>${formatMoney(row.minimum_ticket_cost)}</strong></div>
+        <div><label>曝險</label><strong>${row.exposure_action || "保留"}</strong></div>
       </div>
+      <small>${row.exposure_reason || ""}</small>
       <div class="ticket-action">${row.action}</div>
     </div>
   `;
@@ -606,6 +610,61 @@ function renderExoticSection(candidates, upgradePaths) {
   `;
 }
 
+function renderExposureReport(report) {
+  const summary = report.summary || {};
+  const caps = report.caps || {};
+  const adjusted = report.adjusted_tickets || [];
+  const after = report.after || {};
+  const horseRows = (after.horse || []).slice(0, 4);
+  const poolRows = (after.pool || []).slice(0, 4);
+  const comboRows = (after.combination || []).slice(0, 4);
+  if (!horseRows.length && !poolRows.length && !comboRows.length) return "";
+  return `
+    <details class="exotic-section" ${adjusted.length ? "open" : ""}>
+      <summary class="exotic-head">
+        <strong>下注組合風險控制</strong>
+        <span>${summary.message || "未見過度集中曝險"}｜降注 ${summary.adjusted_count || 0}</span>
+      </summary>
+      <div class="upgrade-list">
+        <div class="upgrade-card">
+          <span>同馬上限 ${formatMoney(caps.horse)}｜同池上限 ${formatMoney(caps.pool)}｜同腳位上限 ${formatMoney(caps.combination)}</span>
+          <strong>${summary.status || "正常"}</strong>
+          <small>同一匹馬或同一組腳位跨多張飛時，系統會自動降注或轉為不加注。</small>
+        </div>
+        ${adjusted.slice(0, 4).map((row) => `
+          <div class="upgrade-card">
+            <span>${row.market || ""} ${row.horse_name || row.horse_id || ""}</span>
+            <strong>${formatMoney(row.original_stake)} → ${formatMoney(row.adjusted_stake)}</strong>
+            <small>${row.reason || ""}</small>
+          </div>
+        `).join("")}
+      </div>
+      <div class="exotic-grid">
+        ${renderExposureColumn("同馬曝險", horseRows, "horse_name")}
+        ${renderExposureColumn("彩池曝險", poolRows, "market_label")}
+        ${renderExposureColumn("同腳位曝險", comboRows, "label")}
+      </div>
+    </details>
+  `;
+}
+
+function renderExposureColumn(title, rows, labelKey) {
+  return `
+    <div class="exotic-card">
+      <div>
+        <span>${title}</span>
+        <strong>${rows.length ? rows[0][labelKey] || "-" : "-"}</strong>
+        <small>${rows.length ? `${formatMoney(rows[0].stake)} / ${formatMoney(rows[0].cap)}` : "未有曝險"}</small>
+      </div>
+      <div class="exotic-metrics">
+        ${rows.map((row) => `
+          <label>${row[labelKey] || row.signature || row.market || "-"} <b>${formatMoney(row.stake)}｜${row.status}</b></label>
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
+
 function renderExoticCard(row) {
   return `
     <div class="exotic-card">
@@ -628,9 +687,11 @@ function renderExoticCard(row) {
         <label>每組約 <b>${formatMoney(row.per_combination_stake)}</b></label>
         <label>組合數 <b>${row.combination_count || 1}</b></label>
         <label>最低票 <b>${formatMoney(row.minimum_ticket_cost)}</b></label>
+        <label>曝險 <b>${row.exposure_action || "保留"}</b></label>
         <label>期望值 <b class="${evClass(row.expected_value)}">${row.expected_value === null || row.expected_value === undefined ? "-" : Number(row.expected_value).toFixed(3)}</b></label>
         <label>\u6263\u6210\u672cEV <b class="${evClass(row.cost_adjusted_expected_value)}">${formatSigned(row.cost_adjusted_expected_value, 3)}</b></label>
       </div>
+      <small>${row.exposure_reason || ""}</small>
       <small>${row.stake_reason || ""}</small>
     </div>
   `;

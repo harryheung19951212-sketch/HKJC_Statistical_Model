@@ -99,6 +99,7 @@ def build_betting_decisions(
             )
             decision["stake_fraction"] = round(float(decision["recommended_stake"]) / bankroll, 6) if bankroll else 0.0
 
+    exposure_report = apply_correlated_exposure_controls([*decisions, *exotic_decisions], bankroll, profile)
     annotate_exotic_candidate_stakes(exotic_candidates, exotic_decisions)
     decisions.sort(
         key=lambda item: (
@@ -124,6 +125,8 @@ def build_betting_decisions(
         "max_race_stake": max_race_stake,
         "total_recommended_stake": round(sum(float(item["recommended_stake"]) for item in tickets), 1),
         "stake_scaled": scale < 1.0,
+        "exposure_adjusted": bool(exposure_report["adjusted_tickets"]),
+        "exposure_report": exposure_report,
         "tickets": tickets,
         "decisions": decisions,
         "exotic_decisions": exotic_decisions,
@@ -201,6 +204,9 @@ def build_market_decision(
         "recommended_stake": stake,
         "action": action,
         "reason": reason,
+        "exposure_action": "保留",
+        "exposure_reason": "未觸及相關曝險上限",
+        "exposure_adjustment_factor": 1.0,
     }
 
 
@@ -426,11 +432,207 @@ def build_exotic_decisions(
                 "recommended_stake": stake,
                 "action": action,
                 "reason": reason,
+                "exposure_action": "保留",
+                "exposure_reason": "未觸及相關曝險上限",
+                "exposure_adjustment_factor": 1.0,
                 "break_even_dividend": candidate.get("break_even_dividend"),
                 "combination_key": candidate.get("combination_key"),
             }
         )
     return decisions
+
+
+def apply_correlated_exposure_controls(
+    decisions: list[dict[str, Any]],
+    bankroll: float,
+    profile: RiskProfile,
+) -> dict[str, Any]:
+    active = [decision for decision in decisions if float(decision.get("recommended_stake") or 0.0) > 0]
+    max_race_stake = max(bankroll * profile.max_race_fraction, 0.0)
+    caps = {
+        "horse": round(max_race_stake * 0.50, 2),
+        "pool": round(max_race_stake * 0.65, 2),
+        "combination": round(max(bankroll * profile.max_bet_fraction * 1.25, 0.0), 2),
+    }
+    before = exposure_snapshot(active, caps)
+
+    adjusted: list[dict[str, Any]] = []
+    for decision in active:
+        factor, reasons = exposure_adjustment_factor(decision, before, caps)
+        if factor >= 0.999:
+            continue
+        original_stake = float(decision.get("recommended_stake") or 0.0)
+        new_stake = round_stake_to_unit(original_stake * factor, str(decision.get("market")))
+        decision["recommended_stake"] = new_stake
+        decision["stake_fraction"] = round(new_stake / bankroll, 6) if bankroll else 0.0
+        decision["exposure_adjustment_factor"] = round(factor, 4)
+        decision["exposure_action"] = "降注" if new_stake > 0 else "不加注"
+        decision["exposure_reason"] = "；".join(reasons)
+        if new_stake <= 0:
+            decision["action"] = "觀望"
+            decision["reason"] = f"{decision.get('reason') or '符合條件'}；相關曝險後低於最低投注單位"
+        else:
+            decision["reason"] = f"{decision.get('reason') or '符合條件'}；相關曝險降注"
+        adjusted.append(
+            {
+                "market": decision.get("market"),
+                "horse_id": decision.get("horse_id"),
+                "horse_name": decision.get("horse_name"),
+                "original_stake": round(original_stake, 1),
+                "adjusted_stake": round(float(new_stake), 1),
+                "factor": round(factor, 4),
+                "reason": decision["exposure_reason"],
+            }
+        )
+
+    after = exposure_snapshot(active, caps)
+    return {
+        "caps": caps,
+        "before": before,
+        "after": after,
+        "adjusted_tickets": adjusted,
+        "summary": exposure_summary(after, caps, adjusted),
+    }
+
+
+def exposure_snapshot(decisions: list[dict[str, Any]], caps: dict[str, float]) -> dict[str, Any]:
+    horse_exposure: dict[str, dict[str, Any]] = {}
+    pool_exposure: dict[str, float] = {}
+    combination_exposure: dict[str, dict[str, Any]] = {}
+
+    for decision in decisions:
+        stake = float(decision.get("recommended_stake") or 0.0)
+        if stake <= 0:
+            continue
+        market = str(decision.get("market") or "")
+        pool_exposure[market] = pool_exposure.get(market, 0.0) + stake
+        horse_ids = decision_horse_ids(decision)
+        horse_names = decision_horse_names(decision)
+        for index, horse_id in enumerate(horse_ids):
+            row = horse_exposure.setdefault(
+                horse_id,
+                {
+                    "horse_id": horse_id,
+                    "horse_name": horse_names[index] if index < len(horse_names) else horse_id,
+                    "stake": 0.0,
+                    "ticket_count": 0,
+                },
+            )
+            row["stake"] = round(float(row["stake"]) + stake, 2)
+            row["ticket_count"] = int(row["ticket_count"]) + 1
+        signature = combination_signature(decision, horse_ids)
+        if signature:
+            row = combination_exposure.setdefault(
+                signature,
+                {
+                    "signature": signature,
+                    "label": decision.get("horse_name") or " + ".join(horse_names),
+                    "stake": 0.0,
+                    "ticket_count": 0,
+                },
+            )
+            row["stake"] = round(float(row["stake"]) + stake, 2)
+            row["ticket_count"] = int(row["ticket_count"]) + 1
+
+    return {
+        "horse": top_exposures(horse_exposure.values(), caps["horse"]),
+        "pool": top_pool_exposures(pool_exposure, caps["pool"]),
+        "combination": top_exposures(combination_exposure.values(), caps["combination"]),
+    }
+
+
+def exposure_adjustment_factor(
+    decision: dict[str, Any],
+    snapshot: dict[str, Any],
+    caps: dict[str, float],
+) -> tuple[float, list[str]]:
+    factors: list[float] = []
+    reasons: list[str] = []
+    horse_ids = set(decision_horse_ids(decision))
+    for row in snapshot.get("horse", []):
+        if str(row.get("horse_id")) in horse_ids and float(row.get("stake") or 0.0) > caps["horse"] > 0:
+            factor = caps["horse"] / float(row["stake"])
+            factors.append(factor)
+            reasons.append(f"{row.get('horse_name') or row.get('horse_id')} 同馬曝險 {float(row['stake']):.1f}>{caps['horse']:.1f}")
+    market = str(decision.get("market") or "")
+    for row in snapshot.get("pool", []):
+        if str(row.get("market")) == market and float(row.get("stake") or 0.0) > caps["pool"] > 0:
+            factor = caps["pool"] / float(row["stake"])
+            factors.append(factor)
+            reasons.append(f"{row.get('market_label') or market} 彩池曝險 {float(row['stake']):.1f}>{caps['pool']:.1f}")
+    signature = combination_signature(decision, decision_horse_ids(decision))
+    for row in snapshot.get("combination", []):
+        if str(row.get("signature")) == signature and float(row.get("stake") or 0.0) > caps["combination"] > 0:
+            factor = caps["combination"] / float(row["stake"])
+            factors.append(factor)
+            reasons.append(f"同組腳位曝險 {float(row['stake']):.1f}>{caps['combination']:.1f}")
+    if not factors:
+        return 1.0, []
+    return max(min(factors), 0.0), reasons
+
+
+def exposure_summary(snapshot: dict[str, Any], caps: dict[str, float], adjusted: list[dict[str, Any]]) -> dict[str, Any]:
+    breached = []
+    for scope, rows in snapshot.items():
+        cap = caps.get(scope, 0.0)
+        for row in rows:
+            if float(row.get("stake") or 0.0) > cap > 0:
+                breached.append({"scope": scope, **row})
+    return {
+        "adjusted_count": len(adjusted),
+        "breach_count": len(breached),
+        "status": "已降注" if adjusted else "正常",
+        "message": "已按同馬/同池/同腳位曝險調整注碼" if adjusted else "未見過度集中曝險",
+    }
+
+
+def decision_horse_ids(decision: dict[str, Any]) -> list[str]:
+    if isinstance(decision.get("horse_ids"), list) and decision["horse_ids"]:
+        return [str(horse_id) for horse_id in decision["horse_ids"]]
+    horse_id = decision.get("horse_id")
+    return [str(horse_id)] if horse_id else []
+
+
+def decision_horse_names(decision: dict[str, Any]) -> list[str]:
+    if isinstance(decision.get("horse_names"), list) and decision["horse_names"]:
+        return [str(name) for name in decision["horse_names"]]
+    name = decision.get("horse_name")
+    return [str(name)] if name else []
+
+
+def combination_signature(decision: dict[str, Any], horse_ids: list[str]) -> str:
+    if len(horse_ids) <= 1:
+        return ""
+    return "+".join(sorted(str(horse_id) for horse_id in horse_ids))
+
+
+def top_exposures(rows: Any, cap: float) -> list[dict[str, Any]]:
+    sorted_rows = sorted(rows, key=lambda row: float(row.get("stake") or 0.0), reverse=True)
+    result = []
+    for row in sorted_rows[:8]:
+        stake = float(row.get("stake") or 0.0)
+        payload = dict(row)
+        payload["stake"] = round(stake, 1)
+        payload["cap"] = round(cap, 1)
+        payload["usage"] = round(stake / cap, 4) if cap > 0 else None
+        payload["status"] = "超額" if cap > 0 and stake > cap else "正常"
+        result.append(payload)
+    return result
+
+
+def top_pool_exposures(pool_exposure: dict[str, float], cap: float) -> list[dict[str, Any]]:
+    rows = []
+    for market, stake in pool_exposure.items():
+        rule = pool_rule_payload(market)
+        rows.append(
+            {
+                "market": market,
+                "market_label": rule.get("label") or market,
+                "stake": round(float(stake), 2),
+                "ticket_count": 0,
+            }
+        )
+    return top_exposures(rows, cap)
 
 
 def annotate_exotic_candidate_stakes(
@@ -450,6 +652,9 @@ def annotate_exotic_candidate_stakes(
         candidate["stake_fraction"] = decision.get("stake_fraction")
         candidate["stake_reason"] = decision.get("reason")
         candidate["stake_action"] = decision.get("action")
+        candidate["exposure_action"] = decision.get("exposure_action")
+        candidate["exposure_reason"] = decision.get("exposure_reason")
+        candidate["exposure_adjustment_factor"] = decision.get("exposure_adjustment_factor")
         combination_count = max(int(candidate.get("combination_count") or 1), 1)
         candidate["per_combination_stake"] = round(float(candidate["recommended_stake"]) / combination_count, 2)
         if float(candidate["recommended_stake"]) <= 0:

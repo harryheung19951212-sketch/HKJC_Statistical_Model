@@ -183,6 +183,61 @@ def test_exotic_dividend_turns_candidate_into_ev_ticket() -> None:
     assert qpl_candidate["per_combination_stake"] == qpl_candidate["recommended_stake"]
 
 
+def test_correlated_exposure_reduces_shared_horse_and_leg_stakes() -> None:
+    predictions = [
+        {
+            "horse_id": f"H00{index}",
+            "horse_no": index,
+            "display_name": f"馬{index}",
+            "win_probability": probability,
+            "latest_win_odds": 8.0,
+            "latest_win_odds_source": "hkjc_mqtt",
+            "top3_probability": min(probability * 3, 0.9),
+            "place_odds": 3.0,
+            "place_odds_source": "hkjc_mqtt",
+        }
+        for index, probability in enumerate([0.34, 0.24, 0.18, 0.12, 0.07, 0.05], start=1)
+    ]
+    dividends = {
+        ("QPL", "1+2"): {
+            "dividend": 30.0,
+            "dividend_status": "probable",
+            "source": "manual_test",
+        },
+        ("QIN", "1+2"): {
+            "dividend": 40.0,
+            "dividend_status": "probable",
+            "source": "manual_test",
+        },
+        ("TRIO", "1+2+3"): {
+            "dividend": 80.0,
+            "dividend_status": "probable",
+            "source": "manual_test",
+        },
+    }
+
+    result = build_betting_decisions(
+        predictions,
+        "scheduled",
+        bankroll=10000,
+        risk_profile="standard",
+        exotic_dividends=dividends,
+    )
+
+    report = result["exposure_report"]
+    assert result["exposure_adjusted"] is True
+    assert report["summary"]["adjusted_count"] > 0
+    assert report["summary"]["breach_count"] == 0
+    assert any("同馬曝險" in row["reason"] for row in report["adjusted_tickets"])
+    assert max(row["stake"] for row in report["after"]["horse"]) <= report["caps"]["horse"]
+    qpl = next(ticket for ticket in result["tickets"] if ticket["market"] == "QPL" and ticket["horse_id"] == "1+2")
+    assert qpl["exposure_action"] == "降注"
+    assert qpl["recommended_stake"] > 0
+    qpl_candidate = next(row for row in result["exotic_candidates"] if row["market"] == "QPL" and row["combination_key"] == "1+2")
+    assert qpl_candidate["exposure_action"] == "降注"
+    assert qpl_candidate["exposure_reason"]
+
+
 def test_pool_cost_gate_rejects_small_nominal_edge() -> None:
     predictions = [
         {
