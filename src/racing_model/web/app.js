@@ -1573,6 +1573,8 @@ function renderPoolReplay(data) {
     <div class="stat"><label>已結算</label><strong>${summary.reconciled || 0}</strong></div>
     <div class="stat"><label>活躍玩法</label><strong>${summary.active_markets || 0}</strong></div>
     <div class="stat"><label>整體 ROI</label><strong class="${evClass(summary.roi)}">${summary.roi === null || summary.roi === undefined ? "-" : formatPct(summary.roi)}</strong></div>
+    <div class="stat"><label>下注時 ROI</label><strong class="${evClass(summary.execution_roi)}">${summary.execution_roi === null || summary.execution_roi === undefined ? "-" : formatPct(summary.execution_roi)}</strong></div>
+    <div class="stat"><label>已確認</label><strong>${summary.executed || 0}</strong></div>
     <div class="stat"><label>整體命中率</label><strong>${summary.hit_rate === null || summary.hit_rate === undefined ? "-" : formatPct(summary.hit_rate)}</strong></div>
     <div class="stat"><label>最佳玩法</label><strong>${summary.best_market_label || "-"}</strong></div>
   `;
@@ -1591,9 +1593,13 @@ function renderPoolReplay(data) {
         <div><label>已結算</label><b>${row.reconciled || 0}</b></div>
         <div><label>命中率</label><b>${row.hit_rate === null || row.hit_rate === undefined ? "-" : formatPct(row.hit_rate)}</b></div>
         <div><label>ROI</label><b class="${evClass(row.roi)}">${row.roi === null || row.roi === undefined ? "-" : formatPct(row.roi)}</b></div>
+        <div><label>下注時ROI</label><b class="${evClass(row.execution_roi)}">${row.execution_roi === null || row.execution_roi === undefined ? "-" : formatPct(row.execution_roi)}</b></div>
         <div><label>盈虧</label><b class="${evClass(row.profit)}">${formatMoney(row.profit)}</b></div>
+        <div><label>下注盈虧</label><b class="${evClass(row.execution_profit)}">${formatMoney(row.execution_profit)}</b></div>
         <div><label>最大回撤</label><b class="${evClass(row.max_drawdown)}">${formatMoney(row.max_drawdown)}</b></div>
+        <div><label>下注回撤</label><b class="${evClass(row.execution_max_drawdown)}">${formatMoney(row.execution_max_drawdown)}</b></div>
         <div><label>平均派彩</label><b>${formatNum(row.avg_final_dividend, 2)}</b></div>
+        <div><label>下注CLV</label><b class="${evClass(row.avg_execution_clv)}">${row.avg_execution_clv === null || row.avg_execution_clv === undefined ? "-" : formatPct(row.avg_execution_clv)}</b></div>
         <div><label>薄利命中</label><b>${row.low_return_hits || 0}</b></div>
       </div>
     </div>

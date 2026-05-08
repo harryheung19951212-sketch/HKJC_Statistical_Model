@@ -14,7 +14,7 @@ def test_pool_replay_groups_settled_tickets_by_market(tmp_path: Path) -> None:
             "betting_recommendations",
             [
                 recommendation("r1-win-hit", "WIN", 10, 30, 20, 1, final_odds=3.0),
-                recommendation("r2-win-lose", "WIN", 10, 0, -10, 0, final_odds=0),
+                recommendation("r2-win-lose", "WIN", 10, 0, -10, 0, final_odds=0, executed=True, execution_stake=20, execution_odds=2.6),
                 recommendation("r3-qpl-thin", "QPL", 10, 12, 2, 1, final_odds=1.2),
                 recommendation("r4-trio-pending", "TRIO", 5, None, None, None, status="pending"),
             ],
@@ -29,9 +29,15 @@ def test_pool_replay_groups_settled_tickets_by_market(tmp_path: Path) -> None:
     markets = {row["market"]: row for row in report["markets"]}
     assert summary["tickets"] == 4
     assert summary["reconciled"] == 3
+    assert summary["executed"] == 1
+    assert summary["execution_staked"] == 20
+    assert summary["execution_profit"] == -20
+    assert summary["execution_roi"] == -1.0
     assert summary["active_markets"] == 3
     assert markets["WIN"]["reconciled"] == 2
     assert markets["WIN"]["roi"] == 0.5
+    assert markets["WIN"]["executed"] == 1
+    assert markets["WIN"]["execution_roi"] == -1.0
     assert markets["QPL"]["low_return_hits"] == 1
     assert markets["TRIO"]["pending"] == 1
     assert report["ranking"][0]["market"] == "WIN"
@@ -47,6 +53,9 @@ def recommendation(
     outcome: int | None,
     final_odds: float | None = None,
     status: str = "reconciled",
+    executed: bool = False,
+    execution_stake: float | None = None,
+    execution_odds: float | None = None,
 ) -> dict[str, object]:
     return {
         "recommendation_id": recommendation_id,
@@ -75,6 +84,13 @@ def recommendation(
         "race_status_at_recommendation": "scheduled",
         "action": "bet",
         "reason": "test",
+        "execution_status": "confirmed" if executed else "suggested",
+        "executed_at": "2026-05-06T12:30:00+00:00" if executed else None,
+        "execution_odds": execution_odds,
+        "execution_stake": execution_stake,
+        "execution_source": "unit_test" if executed else "",
+        "execution_slippage": (execution_odds - 3.0) if execution_odds is not None else None,
+        "execution_clv": None,
         "final_odds": final_odds,
         "finish_position": 1 if outcome else 4,
         "outcome_win": outcome,

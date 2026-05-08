@@ -265,6 +265,22 @@ foreach ($t in $tests) {
 - `record_betting_payload()` 會保留已確認及已對數欄位，避免 30 秒刷新重新寫入建議時覆蓋下注確認。
 - 仍未完成：未有自動下注、下注單號、取消/部分成交、以及 slippage-adjusted ROI 報告。
 
+## 2026-05-08 Execution Replay / Slippage-adjusted ROI
+
+- `pool_replay_report()` 已加入下注時 execution replay：
+  - `executed`
+  - `execution_staked`
+  - `execution_returned`
+  - `execution_profit`
+  - `execution_roi`
+  - `avg_execution_clv`
+  - `avg_execution_slippage`
+  - `execution_max_drawdown`
+- execution replay 只計 `execution_status = confirmed` 且已對數的票。
+- 計算時用 `execution_stake`、`final_odds`、`outcome_win` 重算真實返還及盈虧，而不是沿用建議注碼。
+- UI「回測 / 智能迭代中心」的 pool replay 會同時顯示原本 ROI 及下注時 ROI。
+- 仍未完成：promotion gate 未正式把 execution ROI / execution drawdown 作為硬 blocker。
+
 ## 仍未完成 / 未做事項
 
 ### 最高優先
