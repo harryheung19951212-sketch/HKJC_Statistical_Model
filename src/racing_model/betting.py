@@ -127,6 +127,7 @@ def build_betting_decisions(
         "decisions": decisions,
         "exotic_decisions": exotic_decisions,
         "exotic_candidates": exotic_candidates,
+        "banker_leg_suggestions": build_banker_leg_suggestions(predictions, exotic_candidates),
         "upgrade_paths": build_upgrade_paths(exotic_candidates),
         "exotics_deferred": not include_exotics,
     }
@@ -438,6 +439,113 @@ def build_upgrade_paths(candidates: list[dict[str, Any]]) -> list[dict[str, Any]
         )
     paths.sort(key=lambda item: float(item["trio_probability"]), reverse=True)
     return paths[:6]
+
+
+def build_banker_leg_suggestions(
+    predictions: list[dict[str, Any]],
+    candidates: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if len(predictions) < 3:
+        return []
+    ranked = sorted(predictions, key=lambda row: safe_float(row.get("win_probability")) or 0.0, reverse=True)
+    candidate_pool = ranked[: min(len(ranked), 8)]
+    bankers = candidate_pool[:2]
+    legs = candidate_pool[1: min(len(candidate_pool), 7)]
+    all_legs = candidate_pool
+    suggestions = [
+        banker_leg_payload(
+            "QPL",
+            "位置Q",
+            bankers[:1],
+            legs,
+            min_required_legs=1,
+            note="一膽拖腳，適合模型首選較穩但賠率未必夠高；用腳覆蓋第二、三名變化。",
+        ),
+        banker_leg_payload(
+            "TRIO",
+            "單T",
+            bankers[:1],
+            legs,
+            min_required_legs=2,
+            note="一膽多腳，放大同一觀點回報；腳太多會拉高成本，要用打和派彩檢查。",
+        ),
+        banker_leg_payload(
+            "TCE",
+            "三連彩",
+            bankers[:1],
+            legs[:4],
+            min_required_legs=2,
+            ordered=True,
+            note="首膽配腳，適合膽馬勝率明顯高；次序要求令風險高過單T。",
+        ),
+        banker_leg_payload(
+            "FIRST4",
+            "四連環",
+            bankers[:1],
+            all_legs,
+            min_required_legs=3,
+            all_legs=True,
+            note="一膽全腳覆蓋前四，成本高；只應在模型 edge 和派彩足夠時使用。",
+        ),
+    ]
+    suggestions = [item for item in suggestions if item["combination_count"] > 0]
+    for item in suggestions:
+        item["reference_candidates"] = [
+            row
+            for row in candidates
+            if row["market"] == item["market"] and set(str(value) for value in row["horse_ids"]) >= set(item["banker_ids"])
+        ][:3]
+    return suggestions
+
+
+def banker_leg_payload(
+    market: str,
+    market_label: str,
+    bankers: list[dict[str, Any]],
+    legs: list[dict[str, Any]],
+    min_required_legs: int,
+    note: str,
+    ordered: bool = False,
+    all_legs: bool = False,
+) -> dict[str, Any]:
+    banker_ids = [str(row.get("horse_id")) for row in bankers]
+    leg_rows = [row for row in legs if str(row.get("horse_id")) not in set(banker_ids)]
+    leg_count = len(leg_rows)
+    choose_count = max(int(min_required_legs), 0)
+    combination_count = combination_count_for_banker_leg(leg_count, choose_count, ordered)
+    return {
+        "market": market,
+        "market_label": market_label,
+        "banker_ids": banker_ids,
+        "bankers": [runner_label(row) for row in bankers],
+        "leg_ids": [str(row.get("horse_id")) for row in leg_rows],
+        "legs": [runner_label(row) for row in leg_rows],
+        "all_legs": bool(all_legs),
+        "ordered": bool(ordered),
+        "combination_count": combination_count,
+        "structure": f"{'全腳' if all_legs else '膽拖腳'}：{', '.join(runner_label(row) for row in bankers)} 做膽，拖 {leg_count} 隻腳",
+        "note": note,
+    }
+
+
+def combination_count_for_banker_leg(leg_count: int, choose_count: int, ordered: bool) -> int:
+    if leg_count < choose_count or choose_count <= 0:
+        return 0
+    count = 1
+    for index in range(choose_count):
+        count *= leg_count - index
+    if not ordered:
+        divisor = 1
+        for index in range(2, choose_count + 1):
+            divisor *= index
+        count //= divisor
+    return count
+
+
+def runner_label(row: dict[str, Any]) -> str:
+    horse_no = row.get("horse_no") or "-"
+    name = row.get("display_name") or row.get("horse_name_zh") or row.get("horse_name") or row.get("horse_id")
+    return f"{horse_no} {name}"
 
 
 def ordered_finish_probability(order: list[str], probabilities: dict[str, float]) -> float:

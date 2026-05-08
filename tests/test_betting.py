@@ -88,6 +88,36 @@ def test_trio_upgrade_path_compares_position_q_pairs() -> None:
     assert top_path["to_label"] == "單T"
     assert len(top_path["from_markets"]) == 2
     assert top_path["trio_break_even_dividend"] > 1
+    assert result["banker_leg_suggestions"]
+    trio_banker = next(row for row in result["banker_leg_suggestions"] if row["market"] == "TRIO")
+    assert trio_banker["bankers"] == ["1 馬1"]
+    assert trio_banker["combination_count"] > 0
+    assert "腳" in trio_banker["structure"]
+
+
+def test_banker_leg_suggestions_include_all_leg_cover() -> None:
+    predictions = [
+        {
+            "horse_id": f"H00{index}",
+            "horse_no": index,
+            "display_name": f"馬{index}",
+            "win_probability": probability,
+            "latest_win_odds": 3.0 + index,
+            "latest_win_odds_source": "hkjc_mqtt",
+            "top3_probability": min(probability * 3, 0.9),
+            "place_odds": 1.5,
+            "place_odds_source": "hkjc_mqtt",
+        }
+        for index, probability in enumerate([0.30, 0.22, 0.16, 0.12, 0.08, 0.06, 0.04, 0.02], start=1)
+    ]
+
+    result = build_betting_decisions(predictions, "scheduled", bankroll=10000, risk_profile="standard")
+
+    first4 = next(row for row in result["banker_leg_suggestions"] if row["market"] == "FIRST4")
+    assert first4["all_legs"] is True
+    assert first4["bankers"] == ["1 馬1"]
+    assert len(first4["legs"]) == 7
+    assert first4["combination_count"] == 35
 
 
 def test_exotic_dividend_turns_candidate_into_ev_ticket() -> None:

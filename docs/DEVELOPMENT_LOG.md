@@ -2,6 +2,28 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-08 - Betting Settlement And Banker-Leg Tickets
+
+Goal:
+
+- Make the live betting panel usable after a race has paid out, and add banker/leg structures for exotic tickets instead of only showing flat combination rankings.
+
+Changes:
+
+- `/api/betting` now attaches a `settlement` payload from the betting ledger and reconciles resulted races before returning the payload.
+- The betting panel shows settled tickets as `中`, `唔中`, or `待派彩`, including stake, returned amount, profit, final odds, and CLV.
+- WIN/PLACE winning tickets now wait for final odds before settlement; losing tickets can still settle from the official result.
+- Added `banker_leg_suggestions` to betting output for QPL, TRIO, TCE, and FIRST4.
+- Banker/leg suggestions include banker runners, leg runners, full-leg cover flag, combination count, and model-use notes.
+- UI renders a `膽 / 腳建議` section and keeps the existing combination candidate section.
+
+Verification:
+
+- `python tests\test_betting.py`
+- `python tests\test_betting_settlement.py`
+- `python tests\test_betting_ledger.py`
+- `node --check src\racing_model\web\app.js`
+
 ## 2026-05-08 - Late Market Flow Report Layer
 
 Goal:

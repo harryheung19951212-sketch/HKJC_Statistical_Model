@@ -457,19 +457,26 @@ function renderBetting(data, options = {}) {
     <div><label>狀態</label><strong>${localStatus(data.race_status)}</strong></div>
   `;
   const tickets = data.tickets || [];
+  const settlementHtml = renderBettingSettlement(data.settlement || {});
   const exoticHtml = renderExoticSection(data.exotic_candidates || [], data.upgrade_paths || []);
+  const bankerHtml = renderBankerLegSection(data.banker_leg_suggestions || []);
   const deferredHtml = data.exotics_deferred ? `<div class="betting-empty">複式及全投注方法建議計算中...</div>` : "";
   if (!tickets.length) {
     const top = (data.decisions || []).slice(0, 4);
+    const emptyMessage = (data.settlement || {}).items?.length
+      ? "已完場，以下為派彩對數及原本模型回測建議"
+      : "未有符合風險條件嘅下注建議";
     box.innerHTML = `
-      <div class="betting-empty">未有符合風險條件嘅下注建議</div>
+      ${settlementHtml}
+      <div class="betting-empty">${emptyMessage}</div>
       ${top.map(renderDecisionCard).join("")}
       ${deferredHtml}
+      ${bankerHtml}
       ${exoticHtml}
     `;
     return;
   }
-  box.innerHTML = `${tickets.slice(0, 8).map(renderDecisionCard).join("")}${deferredHtml}${exoticHtml}`;
+  box.innerHTML = `${settlementHtml}${tickets.slice(0, 8).map(renderDecisionCard).join("")}${deferredHtml}${bankerHtml}${exoticHtml}`;
 }
 
 function renderDecisionCard(row) {
@@ -501,6 +508,82 @@ function ticketClass(action) {
   if (action === "觀望") return "watch";
   if (action === "只供回測" || action === "停止下注") return "review";
   return "avoid";
+}
+
+function renderBettingSettlement(settlement) {
+  const summary = settlement.summary || {};
+  const items = settlement.items || [];
+  if (!items.length) return "";
+  return `
+    <div class="settlement-section">
+      <div class="exotic-head">
+        <strong>派彩對數</strong>
+        <span>中 ${summary.hit || 0}｜唔中 ${summary.miss || 0}｜待派彩 ${summary.pending || 0}｜盈虧 ${formatMoney(summary.profit)}</span>
+      </div>
+      <div class="settlement-grid">
+        ${items.slice(0, 10).map(renderSettlementCard).join("")}
+      </div>
+      <small>${settlement.note || ""}</small>
+    </div>
+  `;
+}
+
+function renderSettlementCard(row) {
+  const status = settlementStatus(row);
+  return `
+    <div class="settlement-card ${status.className}">
+      <div>
+        <span>${row.market_label || row.market}</span>
+        <strong>${row.horse_no || "-"} ${row.horse_name || row.horse_id}</strong>
+      </div>
+      <div class="settlement-metrics">
+        <label>結果 <b>${status.label}</b></label>
+        <label>注碼 <b>${formatMoney(row.recommended_stake)}</b></label>
+        <label>派彩 <b>${formatMoney(row.returned)}</b></label>
+        <label>盈虧 <b class="${evClass(row.profit)}">${formatMoney(row.profit)}</b></label>
+        <label>最後賠率 <b>${formatNum(row.final_odds, 2)}</b></label>
+        <label>CLV <b class="${evClass(row.clv)}">${row.clv === null || row.clv === undefined ? "-" : formatPct(row.clv)}</b></label>
+      </div>
+    </div>
+  `;
+}
+
+function settlementStatus(row) {
+  if (row.reconciliation_status !== "reconciled") return { label: "待派彩", className: "pending" };
+  if (Number(row.outcome_win || 0) === 1) return { label: "中", className: "hit" };
+  return { label: "唔中", className: "miss" };
+}
+
+function renderBankerLegSection(suggestions) {
+  if (!suggestions.length) return "";
+  return `
+    <div class="banker-section">
+      <div class="exotic-head">
+        <strong>膽 / 腳建議</strong>
+        <span>按模型排序產生結構，落注前仍要用派彩、成本同風險上限篩選</span>
+      </div>
+      <div class="banker-grid">
+        ${suggestions.map(renderBankerLegCard).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderBankerLegCard(row) {
+  const references = row.reference_candidates || [];
+  return `
+    <div class="banker-card">
+      <span>${row.market_label}${row.all_legs ? "｜全腳" : "｜膽拖腳"}</span>
+      <strong>${row.structure}</strong>
+      <div class="banker-lines">
+        <div><label>膽</label><b>${(row.bankers || []).join(" / ") || "-"}</b></div>
+        <div><label>腳</label><b>${(row.legs || []).join(" / ") || "-"}</b></div>
+        <div><label>組合數</label><b>${row.combination_count || 0}</b></div>
+      </div>
+      <small>${row.note || ""}</small>
+      ${references.length ? `<small>參考組合：${references.map((item) => `${item.combination} ${formatPct(item.probability)}`).join("｜")}</small>` : ""}
+    </div>
+  `;
 }
 
 function renderExoticSection(candidates, upgradePaths) {

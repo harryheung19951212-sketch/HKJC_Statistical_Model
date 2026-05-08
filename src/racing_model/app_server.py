@@ -917,7 +917,32 @@ def api_betting(
     payload["prediction_policy"] = policy or {}
     if model_path is not None:
         payload["ledger"] = record_betting_payload(conn, race, payload, model_path)
+    if status == "resulted":
+        reconcile_betting_ledger(conn, race_id=race_id)
+    payload["settlement"] = betting_settlement_payload(betting_ledger_report(conn, race_id=race_id))
     return payload
+
+
+def betting_settlement_payload(ledger: dict[str, object]) -> dict[str, object]:
+    items = list(ledger.get("items", [])) if isinstance(ledger, dict) else []
+    settled = [row for row in items if row.get("reconciliation_status") == "reconciled"]
+    hits = [row for row in settled if int(row.get("outcome_win") or 0) == 1]
+    misses = [row for row in settled if int(row.get("outcome_win") or 0) == 0]
+    pending = [row for row in items if row.get("reconciliation_status") != "reconciled"]
+    return {
+        "summary": {
+            "tickets": len(items),
+            "settled": len(settled),
+            "hit": len(hits),
+            "miss": len(misses),
+            "pending": len(pending),
+            "profit": round(sum(float(row.get("profit") or 0) for row in settled), 2),
+            "returned": round(sum(float(row.get("returned") or 0) for row in settled), 2),
+            "staked": round(sum(float(row.get("recommended_stake") or 0) for row in items), 2),
+        },
+        "items": items,
+        "note": "已完場會用投注留痕對照賽果及最終派彩；組合贏票未有 final dividend 時會保持待派彩。",
+    }
 
 
 def api_results(

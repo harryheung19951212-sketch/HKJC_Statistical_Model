@@ -99,6 +99,70 @@ def test_betting_ledger_records_active_ticket_once_and_reconciles(tmp_path: Path
     assert after["items"][0]["clv"] > 0
 
 
+def test_winning_win_ticket_waits_for_final_odds(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    with connect(db_path) as conn:
+        insert_rows(
+            conn,
+            "races",
+            [
+                {
+                    "race_id": "HK20260506-ST-01",
+                    "date": "2026/05/06",
+                    "track": "Sha Tin",
+                    "course": "Turf",
+                    "distance_m": 1200,
+                    "going": "Good",
+                    "class_rating": "Class 4",
+                    "prize": 1000000,
+                }
+            ],
+        )
+        insert_rows(conn, "results", [simple_result("HK20260506-ST-01", "H001", 1)])
+        race = {"race_id": "HK20260506-ST-01", "date": "2026/05/06"}
+        payload = simple_win_payload("H001", 1, "測試馬", 100)
+        record_betting_payload(conn, race, payload, "models/baseline.json")
+        reconciled = reconcile_betting_ledger(conn, "HK20260506-ST-01")
+        ledger = betting_ledger_report(conn, "HK20260506-ST-01")
+
+    assert reconciled["updated"] == 0
+    assert reconciled["pending"] == 1
+    assert ledger["items"][0]["reconciliation_status"] == "pending"
+
+
+def test_losing_win_ticket_settles_without_final_odds(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    with connect(db_path) as conn:
+        insert_rows(
+            conn,
+            "races",
+            [
+                {
+                    "race_id": "HK20260506-ST-01",
+                    "date": "2026/05/06",
+                    "track": "Sha Tin",
+                    "course": "Turf",
+                    "distance_m": 1200,
+                    "going": "Good",
+                    "class_rating": "Class 4",
+                    "prize": 1000000,
+                }
+            ],
+        )
+        insert_rows(conn, "results", [simple_result("HK20260506-ST-01", "H001", 4)])
+        race = {"race_id": "HK20260506-ST-01", "date": "2026/05/06"}
+        payload = simple_win_payload("H001", 1, "測試馬", 100)
+        record_betting_payload(conn, race, payload, "models/baseline.json")
+        reconciled = reconcile_betting_ledger(conn, "HK20260506-ST-01")
+        ledger = betting_ledger_report(conn, "HK20260506-ST-01")
+
+    assert reconciled["updated"] == 1
+    assert ledger["items"][0]["outcome_win"] == 0
+    assert ledger["items"][0]["profit"] == -100
+
+
 def test_betting_ledger_reconciles_exotic_ticket(tmp_path: Path) -> None:
     db_path = tmp_path / "racing.db"
     init_db(db_path)
@@ -288,6 +352,47 @@ def result(horse_id: str, position: int) -> dict[str, object]:
         "sectional_400_sec": None,
         "sectional_800_sec": None,
         "comment": "",
+    }
+
+
+def simple_result(race_id: str, horse_id: str, position: int) -> dict[str, object]:
+    return {
+        "race_id": race_id,
+        "horse_id": horse_id,
+        "finish_position": position,
+        "finish_time_sec": 70.0 + position,
+        "margin_lengths": max(position - 1, 0),
+        "sectional_400_sec": None,
+        "sectional_800_sec": None,
+        "comment": "",
+    }
+
+
+def simple_win_payload(horse_id: str, horse_no: int, horse_name: str, stake: float) -> dict[str, object]:
+    return {
+        "race_status": "scheduled",
+        "risk_profile": "standard",
+        "bankroll": 10000,
+        "tickets": [
+            {
+                "market": "WIN",
+                "market_label": "獨贏",
+                "horse_id": horse_id,
+                "horse_no": horse_no,
+                "horse_name": horse_name,
+                "model_rank": 1,
+                "probability": 0.4,
+                "odds": 4.0,
+                "odds_source": "hkjc_mqtt",
+                "fair_odds": 2.5,
+                "market_probability": 0.25,
+                "edge": 0.15,
+                "expected_value": 0.6,
+                "recommended_stake": stake,
+                "action": "有值博",
+                "reason": "符合 Kelly 下注條件",
+            }
+        ],
     }
 
 

@@ -190,6 +190,8 @@ def result_for_recommendation(conn: sqlite3.Connection, row: dict[str, Any]) -> 
     finish_position = int(result_rows[0]["finish_position"])
     market = str(row["market"])
     outcome = finish_position == 1 if market == "WIN" else finish_position <= 3
+    if outcome and final_odds is None:
+        return None
     stake = float(row["recommended_stake"] or 0)
     returned = stake * final_odds if outcome and final_odds else 0.0
     profit = returned - stake
