@@ -2,6 +2,21 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-09 - Refresh Codex Handoff Notes
+
+Goal:
+
+- Make the latest betting, settlement, production cleanup, and deployment context easy for another Codex agent to pick up.
+
+Changes:
+
+- Updated `docs/HANDOFF_CONTEXT.md` with a clean ASCII latest-handoff section.
+- Documented the current branch, production app path, recent betting-ledger behavior changes, 30-second live price refresh rule, model-gated execution, pre-post training-fill rule, production settlement cleanup, relevant files, verification commands, and deployment pattern.
+
+Verification:
+
+- Documentation-only change; reviewed with `git diff`.
+
 ## 2026-05-09 - Clear Current Settlement Tickets
 
 Goal:

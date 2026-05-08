@@ -1,6 +1,77 @@
 # Codex 接手上下文
 
-Last updated: 2026-05-07
+Last updated: 2026-05-09
+
+## Latest Handoff - 2026-05-09
+
+This is the current handoff note for the next Codex agent. Treat this section as the authoritative recent context even if older Chinese text below appears mojibake/garbled because of encoding.
+
+### Current Branch And Deployment
+
+- Repo: `https://github.com/harryheung19951212-sketch/HKJC_Statistical_Model`
+- Branch: `codex/horse-racing-model`
+- Latest pushed commit before this handoff note: `96e03b7 Log settlement ticket cleanup`
+- Production server: `43.228.125.192`
+- Production app path: `/opt/hkjc-model`
+- Public app URL: `http://43.228.125.192:8765/`
+- Production app uses Docker Compose with PostgreSQL. Do not commit `.env`, `.env.production`, data DBs, raw data, model snapshots, reports, passwords, tokens, or server secrets.
+
+### Recent Betting And Settlement Changes
+
+- Payout reconciliation is now limited to rows whose `betting_recommendations.execution_status` is `confirmed`.
+- Positive-stake model recommendations are not automatically treated as bought tickets anymore. They remain `suggested` unless they pass the execution model gate.
+- The execution model gate checks model action, official live price source, required dividend, EV, edge, cost-adjusted EV, calibration, exposure, and pool-choice verdict.
+- Manual confirmation also goes through the same gate. Stale or estimated prices must not be forced into settlement.
+- Same logical ticket dedupe is enforced by race, market, horse/combination, risk profile, and model path. Refreshes reuse the existing row and must not reduce recorded stake.
+- Open confirmed tickets are refreshed every 30 seconds from the latest official HKJC WIN/PLACE odds or official probable exotic dividends. Estimated exotic dividends are ignored for live betting.
+- The UI wording was changed away from "estimated/current estimate" language toward latest pool price/live pool wording.
+- Settlement replay, betting-slip state, pool-choice scoring, and exotic candidate handling should all use the latest official pool price, not a locked bet-time estimate.
+
+### Pre-Post Training Fill Rule
+
+- Normal operation: no edge means no bet. A good horse at a bad price is still no bet.
+- In the final 5 minutes before estimated post time only, if a race has fewer than 5 confirmed settlement tickets, the ledger supplements up to 5 tickets for training.
+- Supplemental fill requires at least 2 exotic-pool tickets when candidates are available.
+- Fill selection is closest-to-gate, but win/top-3/hit probability is more important than odds. Do not select extreme high-odds low-hit candidates just because the payout is large.
+- Training-fill tickets are marked with `execution_value_status='pre_post_training_fill'`.
+
+### Production Data Maintenance Done
+
+- On 2026-05-09, the user asked to clear all current payout reconciliation tickets.
+- Production backup was created at `/opt/hkjc-model/data/backups/betting_recommendations_clear_20260509_070310.sql`.
+- All production rows with `execution_status='confirmed'` were reset to `suggested`.
+- Execution odds, stake, settlement result, return, profit/loss, CLV, slippage, and reconciliation fields were cleared for those rows.
+- Cleared rows were marked with `execution_value_status='cleared_from_settlement'`.
+- Verified production confirmed ticket count: `194 -> 0`.
+- Verified production `/api/state` returned `ok` after deployment.
+
+### Files Most Relevant To Recent Work
+
+- `src/racing_model/betting_ledger.py`: betting recommendation persistence, execution gate, live price refresh, logical ticket dedupe, pre-post training fill.
+- `src/racing_model/betting.py`: betting decision generation, staking, EV and pool decision inputs.
+- `src/racing_model/fast_betting.py`: fast betting payload and refresh flow.
+- `src/racing_model/web/app.js`: UI labels, settlement filters, betting display behavior.
+- `src/racing_model/coverage.py`: 36-factor coverage/support status; update this when behavior changes.
+- `tests/test_betting_ledger.py`, `tests/test_fast_betting_refresh.py`, `tests/test_betting.py`, `tests/test_betting_settlement.py`, `tests/test_ui_localization.py`, `tests/test_coverage.py`: focused regression coverage for the recent changes.
+
+### Verification Recently Used
+
+- `python -m pytest tests\test_betting_ledger.py tests\test_fast_betting_refresh.py tests\test_betting.py tests\test_betting_settlement.py tests\test_coverage.py -q`
+- `python -m pytest -q`
+- `python -m compileall -q src tests`
+- `node --check src\racing_model\web\app.js`
+- Production checks: SQL count of confirmed rows and `curl http://127.0.0.1:8765/api/state`.
+
+### Deployment Pattern
+
+After code, docs, data behavior, feature, fix, or cleanup work:
+
+1. Commit locally on `codex/horse-racing-model`.
+2. Push to GitHub.
+3. Deploy to production by archiving local `HEAD`, uploading it to the server, extracting into `/opt/hkjc-model`, running `docker compose -f docker-compose.prod.yml build app`, then `docker compose -f docker-compose.prod.yml up -d`.
+4. Verify the app with `/api/state` and any relevant SQL/API checks.
+
+Do not place SSH passwords or tokens in repo files or logs.
 
 ## 專案定位
 
