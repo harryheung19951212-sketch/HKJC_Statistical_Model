@@ -35,6 +35,21 @@ def test_betting_settlement_payload_dedupes_logical_ticket_to_latest() -> None:
     assert settlement["items"][0]["recommended_stake"] == 40
 
 
+def test_betting_settlement_payload_dedupes_across_risk_profiles() -> None:
+    standard = item("QPL", "位置Q", "2 + 7", None, 20, None, status="pending", created_at="2026-05-08T10:00:00+00:00")
+    aggressive = item("QPL", "位置Q", "2 + 7", None, 40, None, status="pending", created_at="2026-05-08T10:05:00+00:00")
+    aggressive["risk_profile"] = "aggressive"
+    ledger = {"items": [standard, aggressive]}
+
+    settlement = betting_settlement_payload(ledger)
+
+    assert settlement["summary"]["raw_tickets"] == 2
+    assert settlement["summary"]["tickets"] == 1
+    assert settlement["summary"]["pending"] == 1
+    assert settlement["summary"]["staked"] == 40
+    assert settlement["items"][0]["risk_profile"] == "aggressive"
+
+
 def item(
     market: str,
     market_label: str,

@@ -16,17 +16,21 @@ Changes:
 - Refreshes no longer reduce the stored recommended stake or execution stake; lower later recommendations preserve the higher existing stake, while higher later recommendations are treated as add-stake.
 - Added a database unique index on the logical ticket key as a final duplicate-prevention guard.
 - Updated the 36-factor coverage report item 32 to include the storage-level ledger guard.
+- Corrected the logical ticket key after production review: risk profile and model path do not define a separate physical ticket; only race, market, and horse/combination do.
+- Settlement display dedupe now uses the same physical-ticket key, so `standard` and `aggressive` versions of the same ticket do not both appear in payout reconciliation.
 
 Production data maintenance:
 
 - Backed up production `betting_recommendations` before changing data.
 - Removed all remaining duplicate logical ticket rows across production, not just selected races.
 - For each duplicate group, kept one row and preserved the highest stake so cleanup acts like same-ticket add-stake rather than stake reduction.
+- Re-ran the production cleanup with the corrected physical-ticket key, removing standard/aggressive duplicates such as Sha Tin race 2 `QPL 2+7`.
 
 Verification:
 
 - `python -m pytest tests\test_betting_ledger.py tests\test_betting_settlement.py tests\test_fast_betting_refresh.py -q`
 - `python -m pytest tests\test_db_migrate.py tests\test_smoke.py -q`
+- `python -m pytest tests\test_betting_ledger.py tests\test_betting_settlement.py tests\test_fast_betting_refresh.py tests\test_db_migrate.py tests\test_smoke.py tests\test_coverage.py -q`
 - `python -m compileall -q src tests`
 - Production PostgreSQL duplicate-group verification query.
 

@@ -251,6 +251,48 @@ def test_legacy_same_ticket_id_is_reused_instead_of_duplicated(tmp_path: Path) -
     assert ledger["items"][0]["execution_stake"] == 120
 
 
+def test_same_ticket_across_risk_profiles_adds_stake_without_duplicate(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    with connect(db_path) as conn:
+        insert_rows(
+            conn,
+            "races",
+            [
+                {
+                    "race_id": "HK20260506-ST-01",
+                    "date": "2026/05/06",
+                    "track": "Sha Tin",
+                    "course": "Turf",
+                    "distance_m": 1200,
+                    "going": "Good",
+                    "class_rating": "Class 4",
+                    "prize": 1000000,
+                }
+            ],
+        )
+        conn.commit()
+
+        race = {"race_id": "HK20260506-ST-01", "date": "2026/05/06"}
+        payload = exotic_payload("QPL", "位置Q", "2+7", 20.0, 20)
+        payload["risk_profile"] = "standard"
+        record_betting_payload(conn, race, payload, "models/baseline.json")
+
+        payload = exotic_payload("QPL", "位置Q", "2+7", 20.0, 40)
+        payload["risk_profile"] = "aggressive"
+        record_betting_payload(conn, race, payload, "models/baseline.json")
+
+        ledger = betting_ledger_report(conn, "HK20260506-ST-01")
+        raw_count = fetch_all(conn, "SELECT count(*) AS n FROM betting_recommendations")[0]["n"]
+
+    assert raw_count == 1
+    assert ledger["summary"]["recommendations"] == 1
+    assert ledger["items"][0]["market"] == "QPL"
+    assert ledger["items"][0]["horse_id"] == "2+7"
+    assert ledger["items"][0]["recommended_stake"] == 40
+    assert ledger["items"][0]["execution_stake"] == 40
+
+
 def test_confirmed_ticket_keeps_live_pool_price_until_settlement(tmp_path: Path) -> None:
     db_path = tmp_path / "racing.db"
     init_db(db_path)

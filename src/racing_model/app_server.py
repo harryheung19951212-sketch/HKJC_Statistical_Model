@@ -1263,8 +1263,6 @@ def latest_logical_settlement_items(items: list[object]) -> list[dict[str, objec
             str(item.get("race_id") or ""),
             str(item.get("market") or ""),
             str(item.get("horse_id") or ""),
-            str(item.get("risk_profile") or ""),
-            str(item.get("model_path") or ""),
         )
         current = latest.get(key)
         if current is None or str(item.get("created_at") or "") >= str(current.get("created_at") or ""):

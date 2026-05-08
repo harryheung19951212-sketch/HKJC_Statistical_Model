@@ -219,7 +219,7 @@ CREATE TABLE IF NOT EXISTS betting_recommendations (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_betting_recommendations_logical_ticket
-ON betting_recommendations (race_id, market, horse_id, risk_profile, model_path);
+ON betting_recommendations (race_id, market, horse_id);
 
 CREATE TABLE IF NOT EXISTS exotic_dividends (
   race_id TEXT NOT NULL,
@@ -486,10 +486,11 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
         )
         """
     )
+    conn.execute("DROP INDEX IF EXISTS idx_betting_recommendations_logical_ticket")
     conn.execute(
         """
         CREATE UNIQUE INDEX IF NOT EXISTS idx_betting_recommendations_logical_ticket
-        ON betting_recommendations (race_id, market, horse_id, risk_profile, model_path)
+        ON betting_recommendations (race_id, market, horse_id)
         """
     )
     conn.execute(

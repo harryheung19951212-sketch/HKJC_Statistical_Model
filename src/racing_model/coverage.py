@@ -568,7 +568,7 @@ def coverage_items() -> list[dict[str, Any]]:
             STATUS_PARTIAL,
             ["投注候選", "資金設定", "派彩"],
             ["src/racing_model/betting.py", "src/racing_model/betting_ledger.py", "src/racing_model/storage.py", "src/racing_model/pool_replay.py"],
-            "已有單注/單場 caps、同一候選建議注碼、同飛刷新/同飛加注防重覆、膽拖腳/複式結構、horse/pool/combination exposure graph 自動降注，以及 bankroll replay 風控 audit。",
+            "已有單注/單場 caps、同一候選建議注碼、同飛刷新/同飛加注防重覆、同一場同一彩池同一馬/組合的 ledger unique guard、膽拖腳/複式結構、horse/pool/combination exposure graph 自動降注，以及 bankroll replay 風控 audit。",
             "bankroll replay 已能檢查 race/horse/pool/combination cap breach；仍未有跨賽事相關曝險及降注前後 A/B 回放。",
             "把 exposure graph 做成降注前/後 A/B replay，驗證最大回撤下降並保留 ROI，並追蹤同飛加注是否改善入飛效率。",
             ["每場總風險", "同一匹馬曝險", "相關組合曝險", "複式/膽拖腳風險"],

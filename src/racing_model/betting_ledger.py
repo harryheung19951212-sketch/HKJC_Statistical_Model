@@ -245,8 +245,6 @@ def recommendation_key(
         str(race.get("race_id") or ""),
         str(ticket.get("market") or ""),
         str(ticket.get("horse_id") or ""),
-        str(payload.get("risk_profile") or ""),
-        str(model_path),
     ]
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:32]
 
@@ -284,8 +282,6 @@ def dedupe_logical_recommendations(items: list[dict[str, Any]]) -> list[dict[str
             item.get("race_id"),
             item.get("market"),
             item.get("horse_id"),
-            item.get("risk_profile"),
-            item.get("model_path"),
         )
         current = latest.get(key)
         if current is None or str(item.get("updated_at") or item.get("created_at") or "") >= str(
@@ -324,10 +320,9 @@ def existing_logical_recommendations(conn: sqlite3.Connection, rows: list[dict[s
             WHERE race_id = ?
               AND market = ?
               AND horse_id = ?
-              AND risk_profile = ?
-              AND model_path = ?
             ORDER BY
               CASE WHEN execution_status = 'confirmed' THEN 0 ELSE 1 END,
+              COALESCE(execution_stake, recommended_stake, 0) DESC,
               created_at DESC,
               updated_at DESC,
               recommendation_id DESC
@@ -337,8 +332,6 @@ def existing_logical_recommendations(conn: sqlite3.Connection, rows: list[dict[s
                 row.get("race_id"),
                 row.get("market"),
                 row.get("horse_id"),
-                row.get("risk_profile"),
-                row.get("model_path"),
             ),
         )
         if matches:
