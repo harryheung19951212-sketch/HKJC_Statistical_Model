@@ -440,7 +440,7 @@ def infer_gear_from_tokens(tokens: list[str], start: int) -> str:
 def parse_chinese_racecard_runner_tokens(tokens: list[str], race_id: str) -> list[dict[str, Any]]:
     rows = []
     index = 0
-    while index < len(tokens) - 12:
+    while index <= len(tokens) - 8:
         if not (
             is_int(tokens[index])
             and looks_like_last6(tokens[index + 1])

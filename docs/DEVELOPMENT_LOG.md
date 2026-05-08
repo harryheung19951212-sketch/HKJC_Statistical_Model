@@ -2,6 +2,28 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-08 - Sync Remote Latest And Fix Ledger Slippage Precision
+
+Goal:
+
+- Pull the latest `codex/horse-racing-model` work from the other development machine, audit the new model-gating and market-flow changes, and make the local workspace ready to continue.
+
+Changes:
+
+- Fast-forwarded local branch to remote commit `4e877e9 Add calibration hard gate`.
+- Installed local `pytest` runner for proper cross-device verification.
+- Fixed betting ledger slippage calculations so execution/final odds deltas are rounded consistently instead of storing floating-point artifacts such as `-0.3999999999999999`.
+- Fixed deterministic active-race clock handling so focused scheduled races remain refreshable in tests while production still uses monotonic TTL expiry.
+- Fixed short Chinese HKJC racecard token parsing so Chinese horse, jockey, and trainer names merge correctly.
+- Restored the sample smoke dataset to two coherent races by adding a second race result block and removing an unused unresulted sample race.
+
+Verification:
+
+- `python -m pytest`
+- `python -m pytest tests\test_betting.py tests\test_market_flow.py tests\test_model_registry.py tests\test_pool_replay.py tests\test_betting_ledger.py tests\test_betting_settlement.py tests\test_coverage.py tests\test_ui_localization.py`
+- `node --check src\racing_model\web\app.js`
+- `python -m compileall -q src dashboard tests`
+
 ## 2026-05-08 - Clarify Odds Tick And Exotic Dividend Counts
 
 Goal:

@@ -257,7 +257,7 @@ def confirm_betting_recommendation(
             "execution_odds": resolved_odds,
             "execution_stake": stake,
             "execution_source": resolved_source,
-            "execution_slippage": (resolved_odds - recommended_odds) if recommended_odds else None,
+            "execution_slippage": odds_delta(resolved_odds, recommended_odds),
             "execution_clv": (resolved_odds / final_odds - 1.0) if resolved_odds and final_odds and final_odds > 0 else None,
         }
     )
@@ -333,7 +333,7 @@ def result_for_recommendation(conn: sqlite3.Connection, row: dict[str, Any]) -> 
         "profit": profit,
         "clv": clv,
         "execution_clv": (execution_odds / final_odds - 1.0) if execution_odds and final_odds and final_odds > 0 else None,
-        "slippage": (final_odds - recommended_odds) if recommended_odds and final_odds else None,
+        "slippage": odds_delta(final_odds, recommended_odds),
     }
 
 
@@ -374,7 +374,7 @@ def result_for_exotic_recommendation(conn: sqlite3.Connection, row: dict[str, An
         "profit": profit,
         "clv": clv,
         "execution_clv": (execution_odds / final_odds - 1.0) if execution_odds and final_odds and final_odds > 0 else None,
-        "slippage": (final_odds - recommended_odds) if recommended_odds and final_odds else None,
+        "slippage": odds_delta(final_odds, recommended_odds),
     }
 
 
@@ -479,6 +479,14 @@ def optional_float(value: object) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def odds_delta(new_odds: object, base_odds: object) -> float | None:
+    new_value = optional_float(new_odds)
+    base_value = optional_float(base_odds)
+    if new_value is None or base_value is None:
+        return None
+    return round(new_value - base_value, 6)
 
 
 def stable_number(value: object) -> str:

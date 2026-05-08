@@ -78,6 +78,7 @@ class AppState:
         self.jobs_lock = threading.Lock()
         self.active_race_id: str | None = None
         self.active_race_seen_at = 0.0
+        self.active_race_external_clock = False
         self.active_race_ttl_seconds = max(90, odds_interval_seconds * 3)
         self.active_race_lock = threading.Lock()
         self.policy_cache: dict[str, object] = {"expires_at": 0.0, "policy": None, "refreshing": False}
@@ -138,6 +139,7 @@ class AppState:
         with self.active_race_lock:
             self.active_race_id = race_id
             self.active_race_seen_at = timestamp
+            self.active_race_external_clock = now is not None
         return {
             "active_race_id": race_id,
             "expires_in_seconds": self.active_race_ttl_seconds,
@@ -148,26 +150,35 @@ class AppState:
             if race_id is None or race_id == self.active_race_id:
                 self.active_race_id = None
                 self.active_race_seen_at = 0.0
+                self.active_race_external_clock = False
         return {"active_race_id": self.active_race_id}
 
     def active_race(self, now: float | None = None) -> str | None:
-        timestamp = time.monotonic() if now is None else now
         with self.active_race_lock:
+            timestamp = self.active_race_timestamp(now)
             if not self.active_race_id:
                 return None
             if timestamp - self.active_race_seen_at > self.active_race_ttl_seconds:
                 self.active_race_id = None
                 self.active_race_seen_at = 0.0
+                self.active_race_external_clock = False
                 return None
             return self.active_race_id
 
     def active_race_expires_in(self, now: float | None = None) -> int:
-        timestamp = time.monotonic() if now is None else now
         with self.active_race_lock:
+            timestamp = self.active_race_timestamp(now)
             if not self.active_race_id:
                 return 0
             remaining = self.active_race_ttl_seconds - (timestamp - self.active_race_seen_at)
             return max(0, int(remaining))
+
+    def active_race_timestamp(self, now: float | None = None) -> float:
+        if now is not None:
+            return now
+        if self.active_race_external_clock:
+            return self.active_race_seen_at
+        return time.monotonic()
 
     def start_refresh_loop(self) -> None:
         if self.thread and self.thread.is_alive():
