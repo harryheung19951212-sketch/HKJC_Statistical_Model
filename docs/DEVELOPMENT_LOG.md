@@ -2,6 +2,24 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-08 - Fix Zero-Padded HKJC Odds Runner Mapping
+
+Goal:
+
+- Fix production live odds refresh where HKJC official WIN/PLACE odds were only saved for horse 10 because GraphQL returned runner numbers as `01`-`09` while local runners used `1`-`9`.
+
+Changes:
+
+- Added runner-number normalization for HKJC GraphQL odds and MQTT odds payloads.
+- Extracted GraphQL WIN/PLACE odds payload parsing into a testable helper.
+- Added regression tests proving zero-padded official runner numbers map to all local runners.
+
+Verification:
+
+- `python -m pytest tests\test_odds_provider.py tests\test_feed_health.py tests\test_market_flow.py`
+- `python -m pytest`
+- `python -m compileall -q src dashboard tests`
+
 ## 2026-05-08 - Bet Slip Execution Optimizer
 
 Goal:

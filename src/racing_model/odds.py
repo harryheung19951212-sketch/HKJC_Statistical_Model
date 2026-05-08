@@ -126,7 +126,7 @@ class HKJCGraphQLOddsProvider:
             """,
             (race_id,),
         )
-        horse_id_by_no = {str(row["horse_no"]): row["horse_id"] for row in runners}
+        horse_id_by_no = {normalize_runner_no(row["horse_no"]): row["horse_id"] for row in runners}
         payload = {
             "operationName": "racing",
             "query": HORSE_ODDS_QUERY,
@@ -173,49 +173,8 @@ class HKJCGraphQLOddsProvider:
         if not meetings:
             raise RuntimeError("HKJC GraphQL returned no race meeting data.")
 
-        pools = meetings[0].get("pmPools") or []
-        win_by_no: dict[str, float] = {}
-        place_by_no: dict[str, float] = {}
-        last_update = None
-        for pool in pools:
-            odds_type = pool.get("oddsType")
-            last_update = pool.get("lastUpdateTime") or last_update
-            for node in pool.get("oddsNodes") or []:
-                runner_no = str(node.get("combString") or "").strip()
-                odds_value = parse_odds_value(node.get("oddsValue"))
-                if not runner_no or odds_value is None:
-                    continue
-                if odds_type == "WIN":
-                    win_by_no[runner_no] = odds_value
-                elif odds_type == "PLA":
-                    place_by_no[runner_no] = odds_value
-
-        timestamp = last_update or datetime.now(timezone.utc).isoformat()
-        rows = []
         latest_existing = latest_raw_odds_by_race(conn, race_id)
-        for runner_no in sorted(
-            set(win_by_no) | set(place_by_no),
-            key=lambda value: (0, int(value)) if value.isdigit() else (1, value),
-        ):
-            horse_id = horse_id_by_no.get(runner_no)
-            if not horse_id:
-                continue
-            win_odds = win_by_no.get(runner_no)
-            if win_odds is None:
-                existing = latest_existing.get(horse_id)
-                win_odds = float(existing["win_odds"]) if existing and existing["win_odds"] is not None else None
-            if win_odds is None:
-                continue
-            rows.append(
-                {
-                    "race_id": race_id,
-                    "horse_id": horse_id,
-                    "timestamp": timestamp,
-                    "win_odds": win_odds,
-                    "place_odds": place_by_no.get(runner_no),
-                    "source": self.source_name,
-                }
-            )
+        rows = graphql_odds_payload_to_rows(data, race_id, horse_id_by_no, self.source_name, latest_existing)
         if not rows:
             raise RuntimeError("HKJC GraphQL returned no WIN/PLA odds rows.")
         self.last_error = None
@@ -296,7 +255,7 @@ class HKJCMQTTOddsProvider:
             "SELECT horse_id, horse_no FROM runners WHERE race_id = ? AND horse_no IS NOT NULL",
             (race_id,),
         )
-        horse_id_by_no = {str(row["horse_no"]): row["horse_id"] for row in runners}
+        horse_id_by_no = {normalize_runner_no(row["horse_no"]): row["horse_id"] for row in runners}
         race_no = f"{ref.race_no:02d}"
         date_token = ref.race_date.replace("/", "")
         venue = ref.venue.lower()
@@ -530,6 +489,67 @@ def parse_odds_value(value: object) -> float | None:
         return None
 
 
+def graphql_odds_payload_to_rows(
+    data: dict[str, object],
+    race_id: str,
+    horse_id_by_no: dict[str, str],
+    source_name: str,
+    latest_existing: dict[str, dict[str, object]] | None = None,
+) -> list[dict[str, object]]:
+    meetings = (data.get("data") or {}).get("raceMeetings") if isinstance(data.get("data"), dict) else []
+    meetings = meetings or []
+    pools = meetings[0].get("pmPools") if meetings and isinstance(meetings[0], dict) else []
+    win_by_no: dict[str, float] = {}
+    place_by_no: dict[str, float] = {}
+    last_update = None
+    for pool in pools or []:
+        odds_type = pool.get("oddsType")
+        last_update = pool.get("lastUpdateTime") or last_update
+        for node in pool.get("oddsNodes") or []:
+            runner_no = normalize_runner_no(node.get("combString"))
+            odds_value = parse_odds_value(node.get("oddsValue"))
+            if not runner_no or odds_value is None:
+                continue
+            if odds_type == "WIN":
+                win_by_no[runner_no] = odds_value
+            elif odds_type == "PLA":
+                place_by_no[runner_no] = odds_value
+
+    timestamp = last_update or datetime.now(timezone.utc).isoformat()
+    rows = []
+    for runner_no in sorted(
+        set(win_by_no) | set(place_by_no),
+        key=lambda value: (0, int(value)) if value.isdigit() else (1, value),
+    ):
+        horse_id = horse_id_by_no.get(normalize_runner_no(runner_no))
+        if not horse_id:
+            continue
+        win_odds = win_by_no.get(runner_no)
+        if win_odds is None:
+            existing = (latest_existing or {}).get(horse_id)
+            win_odds = float(existing["win_odds"]) if existing and existing.get("win_odds") is not None else None
+        if win_odds is None:
+            continue
+        rows.append(
+            {
+                "race_id": race_id,
+                "horse_id": horse_id,
+                "timestamp": timestamp,
+                "win_odds": win_odds,
+                "place_odds": place_by_no.get(runner_no),
+                "source": source_name,
+            }
+        )
+    return rows
+
+
+def normalize_runner_no(value: object) -> str:
+    text = str(value or "").strip()
+    if text.isdigit():
+        return str(int(text))
+    return text
+
+
 def browser_compatible_user_agent(user_agent: str) -> str:
     if "Mozilla/" in user_agent:
         return user_agent
@@ -571,7 +591,7 @@ def mqtt_messages_to_rows(
             odds_value = item.get("oddsValue") or item.get("odds") or item.get("winOdds") or item.get("currentOdds")
             if runner_no is None or odds_value is None:
                 continue
-            runner_no = str(runner_no).strip()
+            runner_no = normalize_runner_no(runner_no)
             odds = parse_odds_value(odds_value)
             if not odds:
                 continue
