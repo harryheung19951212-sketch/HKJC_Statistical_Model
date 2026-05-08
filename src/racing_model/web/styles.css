@@ -930,7 +930,6 @@ h2 {
 }
 
 .exotic-section,
-.banker-section,
 .settlement-section {
   grid-column: 1 / -1;
   display: grid;
@@ -989,7 +988,6 @@ h2 {
 }
 
 .exotic-grid,
-.banker-grid,
 .settlement-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -997,7 +995,6 @@ h2 {
 }
 
 .exotic-card,
-.banker-card,
 .settlement-card {
   display: grid;
   gap: 8px;
@@ -1022,7 +1019,6 @@ h2 {
 }
 
 .exotic-card span,
-.banker-card span,
 .settlement-card span {
   display: inline-block;
   color: var(--blue);
@@ -1031,7 +1027,6 @@ h2 {
 }
 
 .exotic-metrics,
-.banker-lines,
 .settlement-metrics {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1039,14 +1034,12 @@ h2 {
 }
 
 .exotic-metrics label,
-.banker-lines label,
 .settlement-metrics label {
   color: var(--muted);
   font-size: 11px;
 }
 
 .exotic-metrics b,
-.banker-lines b,
 .settlement-metrics b {
   display: block;
   margin-top: 2px;
@@ -1055,11 +1048,27 @@ h2 {
   overflow-wrap: anywhere;
 }
 
-.banker-card small,
 .settlement-section small {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.35;
+}
+
+.candidate-structure {
+  border: 1px solid #d6dce6;
+  border-radius: 6px;
+  padding: 8px;
+  background: #f7f9fb;
+}
+
+.candidate-structure.banker_leg {
+  border-color: #9ed8c7;
+  background: #f5fbf8;
+}
+
+.candidate-structure.none {
+  border-color: #ead0cb;
+  background: #fffafa;
 }
 
 .panel-head {
@@ -1913,7 +1922,6 @@ td:nth-child(4), th:nth-child(4) {
   }
 
   .exotic-grid,
-  .banker-grid,
   .settlement-grid,
   .upgrade-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1974,7 +1982,6 @@ td:nth-child(4), th:nth-child(4) {
     justify-self: stretch;
   }
   .exotic-grid,
-  .banker-grid,
   .settlement-grid,
   .upgrade-list {
     grid-template-columns: 1fr;

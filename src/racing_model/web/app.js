@@ -459,7 +459,6 @@ function renderBetting(data, options = {}) {
   const tickets = data.tickets || [];
   const settlementHtml = renderBettingSettlement(data.settlement || {});
   const exoticHtml = renderExoticSection(data.exotic_candidates || [], data.upgrade_paths || []);
-  const bankerHtml = renderBankerLegSection(data.banker_leg_suggestions || []);
   const deferredHtml = data.exotics_deferred ? `<div class="betting-empty">複式及全投注方法建議計算中...</div>` : "";
   if (!tickets.length) {
     const top = (data.decisions || []).slice(0, 4);
@@ -471,12 +470,11 @@ function renderBetting(data, options = {}) {
       <div class="betting-empty">${emptyMessage}</div>
       ${top.map(renderDecisionCard).join("")}
       ${deferredHtml}
-      ${bankerHtml}
       ${exoticHtml}
     `;
     return;
   }
-  box.innerHTML = `${settlementHtml}${tickets.slice(0, 8).map(renderDecisionCard).join("")}${deferredHtml}${bankerHtml}${exoticHtml}`;
+  box.innerHTML = `${settlementHtml}${tickets.slice(0, 8).map(renderDecisionCard).join("")}${deferredHtml}${exoticHtml}`;
 }
 
 function renderDecisionCard(row) {
@@ -555,42 +553,6 @@ function settlementStatus(row) {
   return { label: "唔中", className: "miss" };
 }
 
-function renderBankerLegSection(suggestions) {
-  if (!suggestions.length) return "";
-  return `
-    <div class="banker-section">
-      <div class="exotic-head">
-        <strong>膽 / 腳建議</strong>
-        <span>按模型排序產生結構，落注前仍要用派彩、成本同風險上限篩選</span>
-      </div>
-      <div class="banker-grid">
-        ${suggestions.map(renderBankerLegCard).join("")}
-      </div>
-    </div>
-  `;
-}
-
-function renderBankerLegCard(row) {
-  const references = row.reference_candidates || [];
-  return `
-    <div class="banker-card">
-      <span>${row.market_label}${row.all_legs ? "｜全腳" : "｜膽拖腳"}</span>
-      <strong>${row.structure}</strong>
-      <div class="banker-lines">
-        <div><label>膽</label><b>${(row.bankers || []).join(" / ") || "-"}</b></div>
-        <div><label>腳</label><b>${(row.legs || []).join(" / ") || "-"}</b></div>
-        <div><label>組合數</label><b>${row.combination_count || 0}</b></div>
-        <div><label>最低成本</label><b>${formatMoney(row.minimum_ticket_cost)}</b></div>
-        <div><label>建議總注</label><b>${formatMoney(row.recommended_stake)}</b></div>
-        <div><label>每組約</label><b>${formatMoney(row.per_combination_stake)}</b></div>
-      </div>
-      <small>${row.stake_reason || ""}</small>
-      <small>${row.note || ""}</small>
-      ${references.length ? `<small>參考組合：${references.map((item) => `${item.combination} ${formatPct(item.probability)}`).join("｜")}</small>` : ""}
-    </div>
-  `;
-}
-
 function renderExoticSection(candidates, upgradePaths) {
   if (!candidates.length) return "";
   const markets = ["QPL", "TRIO", "QIN", "FCT", "TCE", "FIRST4", "QUARTET"];
@@ -628,12 +590,19 @@ function renderExoticCard(row) {
         <strong>${row.combination}</strong>
         <small>${row.reason}</small>
       </div>
+      <div class="candidate-structure ${row.structure_mode || "none"}">
+        <span>投注結構｜${row.structure_label || "不做膽腳"}</span>
+        <strong>${row.structure || "-"}</strong>
+        <small>${row.structure_reason || ""}</small>
+      </div>
       <div class="exotic-metrics">
         <label>中獎率 <b>${formatPct(row.probability)}</b></label>
         <label>打和派彩 <b>${formatNum(row.break_even_dividend, 2)}x</b></label>
         <label>\u6240\u9700\u6d3e\u5f69 <b>${formatNum(row.required_dividend, 2)}x</b></label>
         <label>官方/估算 <b>${formatNum(row.dividend, 2)}x</b></label>
         <label>建議注碼 <b>${formatMoney(row.recommended_stake)}</b></label>
+        <label>每組約 <b>${formatMoney(row.per_combination_stake)}</b></label>
+        <label>組合數 <b>${row.combination_count || 1}</b></label>
         <label>最低票 <b>${formatMoney(row.minimum_ticket_cost)}</b></label>
         <label>期望值 <b class="${evClass(row.expected_value)}">${row.expected_value === null || row.expected_value === undefined ? "-" : Number(row.expected_value).toFixed(3)}</b></label>
         <label>\u6263\u6210\u672cEV <b class="${evClass(row.cost_adjusted_expected_value)}">${formatSigned(row.cost_adjusted_expected_value, 3)}</b></label>

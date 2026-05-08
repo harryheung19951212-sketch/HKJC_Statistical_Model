@@ -100,7 +100,6 @@ def build_betting_decisions(
             decision["stake_fraction"] = round(float(decision["recommended_stake"]) / bankroll, 6) if bankroll else 0.0
 
     annotate_exotic_candidate_stakes(exotic_candidates, exotic_decisions)
-    banker_leg_suggestions = build_banker_leg_suggestions(predictions, exotic_candidates, bankroll, profile, race_status)
     decisions.sort(
         key=lambda item: (
             float(item["recommended_stake"]),
@@ -129,7 +128,6 @@ def build_betting_decisions(
         "decisions": decisions,
         "exotic_decisions": exotic_decisions,
         "exotic_candidates": exotic_candidates,
-        "banker_leg_suggestions": banker_leg_suggestions,
         "upgrade_paths": build_upgrade_paths(exotic_candidates),
         "exotics_deferred": not include_exotics,
     }
@@ -303,6 +301,19 @@ def build_exotic_candidates(
             expected_value = probability * dividend - 1.0 if dividend else None
             adjusted_ev = cost_adjusted_expected_value(expected_value, code)
             req_dividend = required_dividend(probability, code, RISK_PROFILES["standard"].min_expected_value)
+            structure = exotic_structure_payload(
+                code,
+                str(product["label"]),
+                horse_ids,
+                runner_by_id,
+                probabilities,
+                bool(product["ordered"]),
+                race_status,
+                dividend,
+                expected_value,
+                adjusted_ev,
+            )
+            unit = float(pool_rule_payload(code)["min_unit"])
             product_candidates.append(
                 {
                     "market": code,
@@ -326,13 +337,15 @@ def build_exotic_candidates(
                     "dividend_source": dividend_row.get("source") if dividend_row else None,
                     "expected_value": round(expected_value, 6) if expected_value is not None else None,
                     "cost_adjusted_expected_value": round(adjusted_ev, 6) if adjusted_ev is not None else None,
-                    "combination_count": 1,
-                    "minimum_ticket_cost": pool_rule_payload(code)["min_unit"],
+                    "combination_count": structure["combination_count"],
+                    "minimum_ticket_cost": round(unit * int(structure["combination_count"]), 1),
                     "recommended_stake": 0.0,
+                    "per_combination_stake": 0.0,
                     "stake_reason": "未有官方派彩或未過EV門檻，建議不下注",
                     "action": exotic_action(race_status),
                     "reason": exotic_reason(race_status),
                     "pool_rule": pool_rule_payload(code),
+                    **structure,
                 }
             )
         product_candidates.sort(key=lambda item: float(item["probability"]), reverse=True)
@@ -405,7 +418,7 @@ def build_exotic_decisions(
                 "required_edge": round(req_edge, 6),
                 "required_dividend": round(req_dividend, 3) if req_dividend else None,
                 "pool_rule": pool_rule_payload(str(candidate["market"])),
-                "combination_count": 1,
+                "combination_count": candidate.get("combination_count", 1),
                 "minimum_ticket_cost": candidate.get("minimum_ticket_cost", pool_rule_payload(str(candidate["market"]))["min_unit"]),
                 "kelly_fraction": round(max(raw_kelly, 0.0), 6),
                 "fractional_kelly": round(max(kelly, 0.0), 6),
@@ -437,6 +450,22 @@ def annotate_exotic_candidate_stakes(
         candidate["stake_fraction"] = decision.get("stake_fraction")
         candidate["stake_reason"] = decision.get("reason")
         candidate["stake_action"] = decision.get("action")
+        combination_count = max(int(candidate.get("combination_count") or 1), 1)
+        candidate["per_combination_stake"] = round(float(candidate["recommended_stake"]) / combination_count, 2)
+        if float(candidate["recommended_stake"]) <= 0:
+            candidate["structure_label"] = "不做膽腳"
+            candidate["structure_mode"] = "none"
+            candidate["bankers"] = []
+            candidate["banker_ids"] = []
+            candidate["legs"] = []
+            candidate["leg_ids"] = []
+            candidate["structure"] = "不做膽腳：未達下注門檻"
+            candidate["structure_reason"] = f"{decision.get('reason') or '未有edge'}，建議 $0"
+        else:
+            candidate["structure_reason"] = (
+                f"{candidate.get('structure_reason') or '候選組合已過門檻'}；"
+                f"建議總注 {candidate['recommended_stake']:.1f}，每組約 {candidate['per_combination_stake']:.2f}"
+            )
 
 
 def build_upgrade_paths(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -470,137 +499,71 @@ def build_upgrade_paths(candidates: list[dict[str, Any]]) -> list[dict[str, Any]
     return paths[:6]
 
 
-def build_banker_leg_suggestions(
-    predictions: list[dict[str, Any]],
-    candidates: list[dict[str, Any]],
-    bankroll: float,
-    profile: RiskProfile,
-    race_status: str,
-) -> list[dict[str, Any]]:
-    if len(predictions) < 3:
-        return []
-    ranked = sorted(predictions, key=lambda row: safe_float(row.get("win_probability")) or 0.0, reverse=True)
-    candidate_pool = ranked[: min(len(ranked), 8)]
-    bankers = candidate_pool[:2]
-    legs = candidate_pool[1: min(len(candidate_pool), 7)]
-    all_legs = candidate_pool
-    suggestions = [
-        banker_leg_payload(
-            "QPL",
-            "位置Q",
-            bankers[:1],
-            legs,
-            min_required_legs=1,
-            bankroll=bankroll,
-            profile=profile,
-            race_status=race_status,
-            note="一膽拖腳，適合模型首選較穩但賠率未必夠高；用腳覆蓋第二、三名變化。",
-        ),
-        banker_leg_payload(
-            "TRIO",
-            "單T",
-            bankers[:1],
-            legs,
-            min_required_legs=2,
-            bankroll=bankroll,
-            profile=profile,
-            race_status=race_status,
-            note="一膽多腳，放大同一觀點回報；腳太多會拉高成本，要用打和派彩檢查。",
-        ),
-        banker_leg_payload(
-            "TCE",
-            "三連彩",
-            bankers[:1],
-            legs[:4],
-            min_required_legs=2,
-            ordered=True,
-            bankroll=bankroll,
-            profile=profile,
-            race_status=race_status,
-            note="首膽配腳，適合膽馬勝率明顯高；次序要求令風險高過單T。",
-        ),
-        banker_leg_payload(
-            "FIRST4",
-            "四連環",
-            bankers[:1],
-            all_legs,
-            min_required_legs=3,
-            all_legs=True,
-            bankroll=bankroll,
-            profile=profile,
-            race_status=race_status,
-            note="一膽全腳覆蓋前四，成本高；只應在模型 edge 和派彩足夠時使用。",
-        ),
-    ]
-    suggestions = [item for item in suggestions if item["combination_count"] > 0]
-    for item in suggestions:
-        item["reference_candidates"] = [
-            row
-            for row in candidates
-            if row["market"] == item["market"] and set(str(value) for value in row["horse_ids"]) >= set(item["banker_ids"])
-        ][:3]
-        item["recommended_stake"] = round(sum(float(row.get("recommended_stake") or 0.0) for row in item["reference_candidates"]), 1)
-        if item["recommended_stake"] > 0 and int(item.get("combination_count") or 0) > 0:
-            item["per_combination_stake"] = round(float(item["recommended_stake"]) / int(item["combination_count"]), 2)
-            item["stake_reason"] = "按已過門檻參考組合加總，落注前仍要核對實際派彩"
-        else:
-            item["stake_reason"] = "未有足夠派彩/edge，建議 $0；只列最低票成本作成本參考"
-    return suggestions
-
-
-def banker_leg_payload(
+def exotic_structure_payload(
     market: str,
     market_label: str,
-    bankers: list[dict[str, Any]],
-    legs: list[dict[str, Any]],
-    min_required_legs: int,
-    note: str,
-    bankroll: float,
-    profile: RiskProfile,
+    horse_ids: list[str],
+    runner_by_id: dict[str, dict[str, Any]],
+    probabilities: dict[str, float],
+    ordered: bool,
     race_status: str,
-    ordered: bool = False,
-    all_legs: bool = False,
+    dividend: float | None,
+    expected_value: float | None,
+    adjusted_ev: float | None,
 ) -> dict[str, Any]:
-    banker_ids = [str(row.get("horse_id")) for row in bankers]
-    leg_rows = [row for row in legs if str(row.get("horse_id")) not in set(banker_ids)]
-    leg_count = len(leg_rows)
-    choose_count = max(int(min_required_legs), 0)
-    combination_count = combination_count_for_banker_leg(leg_count, choose_count, ordered)
-    unit = float(pool_rule_payload(market)["min_unit"])
-    minimum_ticket_cost = round(unit * combination_count, 1)
-    return {
-        "market": market,
-        "market_label": market_label,
-        "banker_ids": banker_ids,
-        "bankers": [runner_label(row) for row in bankers],
-        "leg_ids": [str(row.get("horse_id")) for row in leg_rows],
-        "legs": [runner_label(row) for row in leg_rows],
-        "all_legs": bool(all_legs),
-        "ordered": bool(ordered),
-        "combination_count": combination_count,
-        "minimum_unit": unit,
-        "minimum_ticket_cost": minimum_ticket_cost,
-        "recommended_stake": 0.0,
-        "per_combination_stake": 0.0,
-        "max_race_stake": round(float(bankroll or 0.0) * profile.max_race_fraction, 2),
-        "stake_reason": "已完場/已開跑，停止下注" if race_status in {"resulted", "live"} else "等待官方派彩及edge確認",
-        "structure": f"{'全腳' if all_legs else '膽拖腳'}：{', '.join(runner_label(row) for row in bankers)} 做膽，拖 {leg_count} 隻腳",
-        "note": note,
+    base = {
+        "structure_mode": "none",
+        "structure_label": "不做膽腳",
+        "structure": "不做膽腳：只列為觀察候選",
+        "structure_reason": "未有足夠派彩/edge，建議 $0",
+        "banker_ids": [],
+        "bankers": [],
+        "leg_ids": [],
+        "legs": [],
+        "combination_count": 1,
     }
+    if race_status in {"resulted", "live"}:
+        base["structure_reason"] = "已完場/已開跑，停止下注；只作回測觀察"
+        return base
+    if not dividend or expected_value is None or adjusted_ev is None:
+        return base
+    if expected_value <= 0 or adjusted_ev < 0:
+        base["structure_reason"] = "派彩未能覆蓋抽水及風險緩衝，建議 $0"
+        return base
 
+    rows = [runner_by_id[str(horse_id)] for horse_id in horse_ids if str(horse_id) in runner_by_id]
+    ranked_rows = sorted(rows, key=lambda row: probabilities.get(str(row.get("horse_id")), 0.0), reverse=True)
+    top = ranked_rows[0] if ranked_rows else None
+    second_strength = probabilities.get(str(ranked_rows[1].get("horse_id")), 0.0) if len(ranked_rows) > 1 else 0.0
+    top_strength = probabilities.get(str(top.get("horse_id")), 0.0) if top else 0.0
+    leg_rows = [row for row in ranked_rows if top and str(row.get("horse_id")) != str(top.get("horse_id"))]
+    leg_count = len(leg_rows)
+    clear_banker = bool(top and not ordered and leg_count in {2, 3} and top_strength >= second_strength * 1.2)
+    if clear_banker:
+        return {
+            "structure_mode": "banker_leg",
+            "structure_label": "膽拖腳",
+            "structure": f"{market_label}：{runner_label(top)} 做膽，拖 {leg_count} 腳（只限本候選，不加全腳）",
+            "structure_reason": "候選內首選馬優勢明顯，膽腳只覆蓋呢一條候選組合，避免拖太多腳拉高成本",
+            "banker_ids": [str(top.get("horse_id"))],
+            "bankers": [runner_label(top)],
+            "leg_ids": [str(row.get("horse_id")) for row in leg_rows],
+            "legs": [runner_label(row) for row in leg_rows],
+            "combination_count": 1,
+        }
 
-def combination_count_for_banker_leg(leg_count: int, choose_count: int, ordered: bool) -> int:
-    if leg_count < choose_count or choose_count <= 0:
-        return 0
-    count = 1
-    for index in range(choose_count):
-        count *= leg_count - index
-    if not ordered:
-        divisor = 1
-        for index in range(2, choose_count + 1):
-            divisor *= index
-        count //= divisor
-    return count
+    separator = " > " if ordered else " + "
+    return {
+        "structure_mode": "box",
+        "structure_label": "複式",
+        "structure": f"{market_label}：{separator.join(runner_label(row) for row in rows)}",
+        "structure_reason": "未有足夠清晰單膽優勢，保持候選複式/單組合，唔額外拖腳",
+        "banker_ids": [],
+        "bankers": [],
+        "leg_ids": [str(row.get("horse_id")) for row in rows],
+        "legs": [runner_label(row) for row in rows],
+        "combination_count": 1,
+    }
 
 
 def runner_label(row: dict[str, Any]) -> str:

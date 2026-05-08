@@ -43,6 +43,8 @@ def test_betting_decision_uses_fractional_kelly_and_race_cap() -> None:
     assert {"QPL", "TRIO", "QIN", "FCT", "TCE", "FIRST4", "QUARTET"}.issubset(exotic_markets)
     assert all("recommended_stake" in candidate for candidate in result["exotic_candidates"])
     assert all(candidate["minimum_ticket_cost"] > 0 for candidate in result["exotic_candidates"])
+    assert all(candidate["structure_label"] for candidate in result["exotic_candidates"])
+    assert "banker_leg_suggestions" not in result
 
 
 def test_resulted_race_is_review_only() -> None:
@@ -90,14 +92,13 @@ def test_trio_upgrade_path_compares_position_q_pairs() -> None:
     assert top_path["to_label"] == "單T"
     assert len(top_path["from_markets"]) == 2
     assert top_path["trio_break_even_dividend"] > 1
-    assert result["banker_leg_suggestions"]
-    trio_banker = next(row for row in result["banker_leg_suggestions"] if row["market"] == "TRIO")
-    assert trio_banker["bankers"] == ["1 馬1"]
-    assert trio_banker["combination_count"] > 0
-    assert "腳" in trio_banker["structure"]
+    trio_candidate = next(row for row in result["exotic_candidates"] if row["market"] == "TRIO")
+    assert trio_candidate["structure_label"] == "不做膽腳"
+    assert trio_candidate["recommended_stake"] == 0.0
+    assert "banker_leg_suggestions" not in result
 
 
-def test_banker_leg_suggestions_include_all_leg_cover() -> None:
+def test_exotic_candidate_structure_does_not_drag_too_many_legs() -> None:
     predictions = [
         {
             "horse_id": f"H00{index}",
@@ -112,16 +113,29 @@ def test_banker_leg_suggestions_include_all_leg_cover() -> None:
         }
         for index, probability in enumerate([0.30, 0.22, 0.16, 0.12, 0.08, 0.06, 0.04, 0.02], start=1)
     ]
+    dividends = {
+        ("FIRST4", "1+2+3+4"): {
+            "dividend": 40.0,
+            "dividend_status": "probable",
+            "source": "manual_test",
+        }
+    }
 
-    result = build_betting_decisions(predictions, "scheduled", bankroll=10000, risk_profile="standard")
+    result = build_betting_decisions(
+        predictions,
+        "scheduled",
+        bankroll=10000,
+        risk_profile="standard",
+        exotic_dividends=dividends,
+    )
 
-    first4 = next(row for row in result["banker_leg_suggestions"] if row["market"] == "FIRST4")
-    assert first4["all_legs"] is True
-    assert first4["bankers"] == ["1 馬1"]
-    assert len(first4["legs"]) == 7
-    assert first4["combination_count"] == 35
-    assert first4["minimum_ticket_cost"] == 35.0
-    assert first4["recommended_stake"] == 0.0
+    first4 = next(row for row in result["exotic_candidates"] if row["market"] == "FIRST4" and row["combination_key"] == "1+2+3+4")
+    assert first4["structure_label"] in {"膽拖腳", "複式", "不做膽腳"}
+    assert len(first4["legs"]) <= 4
+    assert len(first4["legs"]) <= 3 if first4["structure_label"] == "膽拖腳" else True
+    assert first4["combination_count"] == 1
+    assert first4["minimum_ticket_cost"] == 1.0
+    assert first4["recommended_stake"] >= 0.0
 
 
 def test_exotic_dividend_turns_candidate_into_ev_ticket() -> None:
@@ -165,6 +179,8 @@ def test_exotic_dividend_turns_candidate_into_ev_ticket() -> None:
     qpl_candidate = next(row for row in result["exotic_candidates"] if row["market"] == "QPL" and row["combination_key"] == "1+2")
     assert qpl_candidate["recommended_stake"] == qpl["recommended_stake"]
     assert qpl_candidate["stake_action"] == "有值博"
+    assert qpl_candidate["structure_label"] in {"複式", "膽拖腳"}
+    assert qpl_candidate["per_combination_stake"] == qpl_candidate["recommended_stake"]
 
 
 def test_pool_cost_gate_rejects_small_nominal_edge() -> None:

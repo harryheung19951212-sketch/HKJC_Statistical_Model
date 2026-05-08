@@ -2,6 +2,32 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-08 - Candidate-Level Exotic Ticket Structure
+
+Goal:
+
+- Fix the combination betting UX so structure advice lives inside each `組合投注候選`, not in a separate `膽 / 腳建議` panel.
+- Prevent cost-heavy broad cover suggestions such as `1 膽拖 7 腳`.
+
+Changes:
+
+- Removed the standalone `banker_leg_suggestions` API payload and UI section.
+- Each exotic candidate now carries `structure_label`, `structure`, `bankers`, `legs`, `combination_count`, `minimum_ticket_cost`, `recommended_stake`, and `per_combination_stake`.
+- Candidate structure is conservative:
+  - no official/probable dividend or no cost-adjusted edge => `不做膽腳` and `$0`;
+  - clear single-banker edge inside a 3- or 4-runner candidate => `膽拖腳`, capped to that candidate only;
+  - otherwise => `複式` without adding extra legs.
+- UI now shows the candidate structure and stake in each `組合投注候選` card.
+
+Verification:
+
+- `python tests\test_betting.py`
+- `python tests\test_betting_ledger.py`
+- `python tests\test_betting_settlement.py`
+- `node --check src\racing_model\web\app.js`
+- `python -m compileall -q src dashboard tests`
+- `Get-ChildItem tests -Filter 'test_*.py' | ForEach-Object { python $_.FullName }`
+
 ## 2026-05-08 - Betting Settlement And Banker-Leg Tickets
 
 Goal:
