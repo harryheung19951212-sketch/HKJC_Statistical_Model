@@ -96,21 +96,26 @@ def test_full_betting_queues_missing_exotic_refresh_without_blocking(tmp_path: P
     init_db(db_path)
     state = AppState(tmp_path / "model.json", 30)
     state.start_exotic_refresh_job = lambda race_id: True  # type: ignore[method-assign]
+    state.start_betting_record_job = lambda race, payload, model_path: True  # type: ignore[method-assign]
     state.calibration_gate = lambda conn, model: None  # type: ignore[method-assign]
     with connect(db_path) as conn:
         add_minimal_race(conn)
 
-        payload = api_betting(
+    payload = api_betting(
             conn,
             RankingModel.new(),
             "HK20990101-ST-01",
             10000,
             "standard",
             state=state,
+            model_path=tmp_path / "model.json",
             predictions=[prediction()],
             include_exotics=True,
+            record_mode="async",
         )
 
     assert payload["exotic_refresh"]["status"] == "queued"
     assert payload["exotic_refresh"]["cached_dividends"] == 0
     assert payload["decisions"]
+    assert payload["ledger"]["record_mode"] == "async"
+    assert all("recommendation_id" in ticket for ticket in payload["tickets"])

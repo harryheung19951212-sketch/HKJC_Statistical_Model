@@ -24,8 +24,10 @@ from .backfill import (
 from .betting import build_betting_decisions
 from .calibration_gate import build_calibration_gate
 from .betting_ledger import (
+    annotate_pool_choice_context,
     betting_ledger_report,
     confirm_betting_recommendation,
+    recommendation_key,
     reconcile_betting_ledger,
     record_betting_payload,
 )
@@ -83,6 +85,8 @@ class AppState:
         self.active_race_lock = threading.Lock()
         self.exotic_refreshing_races: set[str] = set()
         self.exotic_refresh_lock = threading.Lock()
+        self.betting_recording_races: set[str] = set()
+        self.betting_record_lock = threading.Lock()
         self.policy_cache: dict[str, object] = {"expires_at": 0.0, "policy": None, "refreshing": False}
         self.policy_lock = threading.Lock()
         self.calibration_cache: dict[str, object] = {"expires_at": 0.0, "gate": None}
@@ -206,6 +210,32 @@ class AppState:
             finally:
                 with self.exotic_refresh_lock:
                     self.exotic_refreshing_races.discard(race_id)
+
+        threading.Thread(target=worker, daemon=True).start()
+        return True
+
+    def start_betting_record_job(self, race: dict[str, object], payload: dict[str, object], model_path: Path | str) -> bool:
+        race_id = str(race.get("race_id") or "")
+        if not race_id:
+            return False
+        with self.betting_record_lock:
+            if race_id in self.betting_recording_races:
+                return False
+            self.betting_recording_races.add(race_id)
+
+        race_copy = dict(race)
+        payload_copy = dict(payload)
+        payload_copy["tickets"] = [dict(ticket) for ticket in payload.get("tickets", []) if isinstance(ticket, dict)]
+
+        def worker() -> None:
+            try:
+                with connect(self.settings.db_path) as conn:
+                    record_betting_payload(conn, race_copy, payload_copy, model_path)
+            except Exception:
+                pass
+            finally:
+                with self.betting_record_lock:
+                    self.betting_recording_races.discard(race_id)
 
         threading.Thread(target=worker, daemon=True).start()
         return True
@@ -432,6 +462,7 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
                 bankroll = query_float(query, "bankroll", 10000.0)
                 risk = query.get("risk", ["standard"])[0] or "standard"
                 include_exotics = query_bool(query, "include_exotics", True)
+                record_mode = query.get("record_mode", ["async"])[0] or "async"
                 model = self.app_state.model()
                 policy = self.app_state.prediction_policy(conn, model)
                 self.send_json(
@@ -445,6 +476,7 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
                         state=self.app_state,
                         policy=policy,
                         include_exotics=include_exotics,
+                        record_mode=record_mode,
                     )
                 )
             elif path == "/api/exotic-dividends":
@@ -1016,6 +1048,7 @@ def api_betting(
     predictions: list[dict[str, object]] | None = None,
     policy: dict[str, object] | None = None,
     include_exotics: bool = True,
+    record_mode: str = "sync",
 ) -> dict[str, object]:
     race_rows = fetch_all(conn, "SELECT * FROM races WHERE race_id = ?", (race_id,))
     if not race_rows:
@@ -1045,7 +1078,12 @@ def api_betting(
         "cached_dividends": len(exotic_lookup),
     }
     if model_path is not None:
-        payload["ledger"] = record_betting_payload(conn, race, payload, model_path)
+        if record_mode == "async" and state is not None:
+            annotate_betting_recommendation_ids(race, payload, model_path)
+            queued_record = state.start_betting_record_job(race, payload, model_path)
+            payload["ledger"] = {"record_mode": "async", "queued": queued_record}
+        elif record_mode != "none":
+            payload["ledger"] = record_betting_payload(conn, race, payload, model_path)
     if status == "resulted":
         reconcile_betting_ledger(conn, race_id=race_id)
     payload["settlement"] = betting_settlement_payload(betting_ledger_report(conn, race_id=race_id))
@@ -1074,6 +1112,20 @@ def betting_settlement_payload(ledger: dict[str, object]) -> dict[str, object]:
         "items": unique_items,
         "note": "已完場會用投注留痕對照賽果及最終派彩；組合贏票未有 final dividend 時會保持待派彩。",
     }
+
+
+def annotate_betting_recommendation_ids(
+    race: dict[str, object],
+    payload: dict[str, object],
+    model_path: Path | str,
+) -> None:
+    tickets = [ticket for ticket in payload.get("tickets", []) if isinstance(ticket, dict) and float(ticket.get("recommended_stake") or 0) > 0]
+    if not tickets:
+        return
+    annotate_pool_choice_context(tickets, payload)
+    for ticket in tickets:
+        ticket["recommendation_id"] = recommendation_key(ticket, race, payload, model_path)
+        ticket.setdefault("execution_status", "suggested")
 
 
 def latest_logical_settlement_items(items: list[object]) -> list[dict[str, object]]:

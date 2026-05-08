@@ -625,6 +625,7 @@ Implementation:
 - Added an `exotic_refresh` payload so the UI can state when official combination odds are syncing in the background.
 - Added frontend protection against overlapping betting refreshes; if a 30-second refresh arrives while betting is still updating, the next update is queued and applied afterward.
 - The existing 30-second race refresh now refreshes the fast betting preview from latest WIN/PLA odds and then replaces it with the full betting engine output once ready.
+- Changed live `/api/betting` ledger recording to async mode by default, annotating deterministic recommendation IDs immediately while writing the training/ledger row in the background.
 
 Verification:
 
