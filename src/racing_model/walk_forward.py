@@ -121,6 +121,20 @@ def run_walk_forward_versions(
     recommendation = build_recommendation(best, baseline)
     oos_gate = build_oos_slice_gate(best, baseline)
     candidate_calibration_gate = build_oos_calibration_gate(best)
+    experiment_manifest = build_experiment_manifest(
+        variants=variants,
+        versions=versions,
+        baseline=baseline,
+        best=best,
+        min_train_races=min_train_races,
+        epochs=epochs,
+        min_expected_value=min_expected_value,
+        stake=stake,
+        folds=len(fold_rows),
+        race_count=len(race_ids),
+        oos_gate=oos_gate,
+        candidate_calibration_gate=candidate_calibration_gate,
+    )
     return {
         "summary": {
             "race_count": len(race_ids),
@@ -144,6 +158,7 @@ def run_walk_forward_versions(
             "slice_gate": oos_gate,
             "calibration_gate": candidate_calibration_gate,
         },
+        "experiment_manifest": experiment_manifest,
         "candidate_calibration_artifact": {
             "artifact_type": "walk_forward_oos_candidate_reliability",
             "best_variant_id": best["variant_id"] if best else None,
@@ -391,6 +406,138 @@ def public_fold_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
         for key, value in metrics.items()
         if key not in {"calibration_points", "slice_keys"}
     }
+
+
+def build_experiment_manifest(
+    variants: list[ModelVariant],
+    versions: list[dict[str, Any]],
+    baseline: dict[str, Any] | None,
+    best: dict[str, Any] | None,
+    min_train_races: int,
+    epochs: int,
+    min_expected_value: float,
+    stake: float,
+    folds: int,
+    race_count: int,
+    oos_gate: dict[str, Any],
+    candidate_calibration_gate: dict[str, Any],
+) -> dict[str, Any]:
+    baseline_variant = next((variant for variant in variants if variant.variant_id == "baseline"), None)
+    baseline_features = set(baseline_variant.feature_names if baseline_variant else FEATURE_NAMES)
+    version_by_id = {str(row.get("variant_id")): row for row in versions}
+    baseline_metrics = (baseline or {}).get("metrics", {}) if isinstance(baseline, dict) else {}
+    variant_rows = []
+    ablation_rows = []
+    for variant in variants:
+        version = version_by_id.get(variant.variant_id, {})
+        metrics = version.get("metrics", {}) if isinstance(version, dict) else {}
+        removed_features = sorted(baseline_features - set(variant.feature_names))
+        added_features = sorted(set(variant.feature_names) - baseline_features)
+        row = {
+            "variant_id": variant.variant_id,
+            "label": variant.label,
+            "description": variant.description,
+            "feature_count": len(variant.feature_names),
+            "temperature": variant.temperature,
+            "features": list(variant.feature_names),
+            "removed_features": removed_features,
+            "added_features": added_features,
+            "metrics": compact_manifest_metrics(metrics),
+            "deltas_vs_baseline": metric_deltas(metrics, baseline_metrics),
+        }
+        variant_rows.append(row)
+        if variant.variant_id != "baseline":
+            ablation_rows.append(
+                {
+                    "variant_id": variant.variant_id,
+                    "label": variant.label,
+                    "change_type": ablation_change_type(removed_features, added_features, variant.temperature),
+                    "removed_features": removed_features,
+                    "added_features": added_features,
+                    "temperature": variant.temperature,
+                    "feature_count_delta": len(variant.feature_names) - len(baseline_features),
+                    "metrics": compact_manifest_metrics(metrics),
+                    "deltas_vs_baseline": metric_deltas(metrics, baseline_metrics),
+                    "verdict": version.get("verdict") if isinstance(version, dict) else None,
+                }
+            )
+    ablation_rows.sort(
+        key=lambda row: (
+            manifest_sort_value(row["deltas_vs_baseline"].get("log_loss_delta")),
+            manifest_sort_value(row["deltas_vs_baseline"].get("brier_score_delta")),
+        )
+    )
+    return {
+        "artifact_type": "walk_forward_experiment_manifest",
+        "schema_version": 1,
+        "purpose": "Track every walk-forward candidate, feature ablation, calibration setting, and promotion gate input for reproducible model changes.",
+        "parameters": {
+            "min_train_races": min_train_races,
+            "epochs": epochs,
+            "min_expected_value": min_expected_value,
+            "stake": stake,
+            "folds": folds,
+            "race_count": race_count,
+        },
+        "feature_universe_count": len(baseline_features),
+        "baseline_variant_id": "baseline",
+        "best_variant_id": best.get("variant_id") if isinstance(best, dict) else None,
+        "best_label": best.get("label") if isinstance(best, dict) else None,
+        "promotion_gate_inputs": {
+            "oos_slice_gate": oos_gate,
+            "candidate_calibration_gate": candidate_calibration_gate,
+        },
+        "variants": variant_rows,
+        "ablation_trail": ablation_rows,
+    }
+
+
+def compact_manifest_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: optional_metric(metrics, key)
+        for key in [
+            "races",
+            "runners",
+            "log_loss",
+            "brier_score",
+            "top_pick_hit_rate",
+            "top3_hit_rate",
+            "value_roi",
+            "max_drawdown",
+        ]
+        if key in metrics
+    }
+
+
+def metric_deltas(metrics: dict[str, Any], baseline_metrics: dict[str, Any]) -> dict[str, float | None]:
+    deltas: dict[str, float | None] = {}
+    for key in ["log_loss", "brier_score", "top_pick_hit_rate", "top3_hit_rate", "value_roi", "max_drawdown"]:
+        value = optional_metric(metrics, key)
+        baseline_value = optional_metric(baseline_metrics, key)
+        deltas[f"{key}_delta"] = value - baseline_value if value is not None and baseline_value is not None else None
+    return deltas
+
+
+def optional_metric(metrics: dict[str, Any], key: str) -> float | None:
+    value = metrics.get(key)
+    if value is None:
+        return None
+    return float(value)
+
+
+def manifest_sort_value(value: object) -> float:
+    return float(value) if value is not None else 999.0
+
+
+def ablation_change_type(removed_features: list[str], added_features: list[str], temperature: float) -> str:
+    changes = []
+    if removed_features:
+        changes.append("feature_ablation")
+    if added_features:
+        changes.append("feature_addition")
+    if abs(float(temperature) - 1.0) >= 0.000001:
+        changes.append("temperature_calibration")
+    return "+".join(changes) if changes else "parameter_control"
 
 
 def slice_keys_for_race(

@@ -45,12 +45,17 @@ def test_model_registry_records_walk_forward_gate(tmp_path: Path) -> None:
     assert registry["clv_status"]
     assert recorded["report"]["candidate_artifact"]["artifact_type"] == "walk_forward_candidate_oos_evidence"
     assert recorded["report"]["candidate_calibration_artifact"]["artifact_type"] == "walk_forward_oos_candidate_reliability"
+    assert recorded["report"]["experiment_manifest"]["artifact_type"] == "walk_forward_experiment_manifest"
+    assert recorded["report"]["experiment_manifest"]["variants"]
+    assert recorded["report"]["experiment_manifest"]["ablation_trail"]
     assert recorded["report"]["candidate_calibration_gate"]["gate"]
     assert recorded["report"]["oos_gate"]["gate"]
     assert recorded["report"]["versions"][0]["slice_scorecard"]
     assert recorded["report"]["versions"][0]["calibration_bins"]
     assert registry["latest_oos_gate"]["gate"]
     assert registry["latest_candidate_calibration_gate"]["gate"]
+    assert registry["latest_experiment_manifest"]["artifact_type"] == "walk_forward_experiment_manifest"
+    assert registry["latest_experiment_manifest"]["ablation_trail"][0]["deltas_vs_baseline"]
 
 
 def test_slice_oos_gate_blocks_regressed_upgrade_candidate() -> None:

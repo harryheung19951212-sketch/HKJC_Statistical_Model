@@ -2,6 +2,26 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-09 - Walk Forward Experiment Manifest
+
+Goal:
+
+- Continue factor 31 `避免過度擬合` by saving a reproducible experiment manifest and ablation trail inside every walk-forward/model-registry report.
+
+Changes:
+
+- Walk-forward reports now include `experiment_manifest` with the tested variants, feature lists, removed/added features, temperature settings, compact metrics, baseline deltas, and promotion gate inputs.
+- Model registry reports now expose `latest_experiment_manifest`, so saved OOS evaluations carry their experiment trail instead of only the final best score.
+- The registry UI now displays the manifest coverage, ablation count, best variant, and top ablation deltas.
+- Updated factor 31 coverage notes to mark experiment manifests / ablation trails as supported, with commit-level notes and data-version hashes left as the next gap.
+
+Verification:
+
+- `python -m pytest tests\test_model_registry.py tests\test_coverage.py -q`
+- `python -m compileall -q src tests`
+- `node --check src\racing_model\web\app.js`
+- `python -m pytest -q`
+
 ## 2026-05-09 - Temperature Calibrated Model Promotion
 
 Goal:

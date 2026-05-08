@@ -100,6 +100,7 @@ def model_registry_report(conn: sqlite3.Connection, limit: int = 12) -> dict[str
         "latest_report": latest_report,
         "latest_oos_gate": latest_report.get("oos_gate") if isinstance(latest_report, dict) else None,
         "latest_candidate_calibration_gate": latest_report.get("candidate_calibration_gate") if isinstance(latest_report, dict) else None,
+        "latest_experiment_manifest": latest_report.get("experiment_manifest") if isinstance(latest_report, dict) else None,
         "clv_status": "升級 gate 已加入下注時 execution ROI / 回撤。未有足夠已確認下注樣本時，任何候選只可列為研究，不能正式替換模型。",
     }
 

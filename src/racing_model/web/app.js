@@ -1897,6 +1897,8 @@ function renderModelRegistry(data) {
   const summary = data.summary || {};
   const oosGate = data.latest_oos_gate || {};
   const calibrationGate = data.latest_candidate_calibration_gate || {};
+  const manifest = data.latest_experiment_manifest || {};
+  const ablationTrail = manifest.ablation_trail || [];
   const blockedSlices = (oosGate.slices || []).filter((row) => row.gate === "blocked");
   const blockedBins = (calibrationGate.bins || []).filter((row) => row.gate === "blocked");
   $("model-registry-summary").innerHTML = `
@@ -1905,9 +1907,29 @@ function renderModelRegistry(data) {
     <div class="stat"><label>升級候選</label><strong>${summary.upgrade_candidates || 0}</strong></div>
     <div class="stat"><label>分片 OOS</label><strong>${oosGate.label || "-"}</strong></div>
     <div class="stat"><label>候選校準</label><strong>${calibrationGate.label || "-"}</strong></div>
+    <div class="stat"><label>實驗 Manifest</label><strong>${(manifest.variants || []).length || 0}</strong></div>
   `;
   $("model-registry-clv").innerHTML = `
     <p>${data.clv_status || ""}</p>
+    ${manifest.artifact_type ? `
+      <div class="registry-card">
+        <div class="version-head">
+          <strong>Experiment Manifest</strong>
+          <span>Variants ${(manifest.variants || []).length || 0}｜Ablation ${ablationTrail.length || 0}｜特徵全集 ${manifest.feature_universe_count || 0}</span>
+        </div>
+        <p>最佳版本：${manifest.best_label || manifest.best_variant_id || "-"}｜折數 ${(manifest.parameters || {}).folds || 0}｜賽事 ${(manifest.parameters || {}).race_count || 0}</p>
+        ${ablationTrail.length ? `
+          <div class="version-metrics">
+            ${ablationTrail.slice(0, 4).map((row) => `
+              <div>
+                <label>${row.label || row.variant_id}</label>
+                <b>${row.change_type || "-"}｜Log Loss ${formatSigned((row.deltas_vs_baseline || {}).log_loss_delta, 3)}｜ROI ${formatSigned((row.deltas_vs_baseline || {}).value_roi_delta, 3)}</b>
+              </div>
+            `).join("")}
+          </div>
+        ` : ""}
+      </div>
+    ` : ""}
     ${calibrationGate.gate ? `
       <div class="registry-card ${calibrationGate.gate === "blocked" ? "risk" : calibrationGate.gate === "pass" ? "candidate" : "unverified"}">
         <div class="version-head">
