@@ -365,7 +365,8 @@ def refresh_odds(
     provider: OddsProvider | None = None,
 ) -> int:
     status = race_status(conn, race_id)
-    if status and status["status"] != "scheduled":
+    current_status = str(status["status"]) if status else "scheduled"
+    if current_status not in {"scheduled", "live"}:
         return 0
     provider = provider or SnapshotJitterOddsProvider()
     rows = provider.fetch_odds(conn, race_id)
@@ -377,7 +378,7 @@ def refresh_odds(
         note += f"; error={error[:180]}"
     runner_count = fetch_all(conn, "SELECT count(*) AS n FROM runners WHERE race_id = ?", (race_id,))[0]["n"]
     result_count = fetch_all(conn, "SELECT count(*) AS n FROM results WHERE race_id = ?", (race_id,))[0]["n"]
-    status = "resulted" if runner_count and result_count >= runner_count else "live"
+    status = "resulted" if runner_count and result_count >= runner_count else current_status
     upsert_race_status(
         conn,
         race_id,

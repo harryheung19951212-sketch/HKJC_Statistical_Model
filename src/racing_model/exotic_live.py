@@ -244,7 +244,8 @@ def refresh_exotic_dividends(
     provider: ExoticDividendProvider | None = None,
 ) -> dict[str, object]:
     status = race_status(conn, race_id)
-    if status and status["status"] != "scheduled":
+    current_status = str(status["status"]) if status else "scheduled"
+    if current_status not in {"scheduled", "live"}:
         return {"race_id": race_id, "inserted": 0, "status": "frozen", "source": None}
     if provider is None:
         from .config import get_settings

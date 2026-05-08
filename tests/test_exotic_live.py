@@ -146,3 +146,32 @@ def test_refresh_exotic_dividends_upserts_live_rows(tmp_path: Path) -> None:
     assert ("QPL", "1+2") in lookup
     assert ("TRIO", "1+2+3") in lookup
     assert lookup[("QPL", "1+2")]["source"] == "hkjc_graphql"
+
+
+def test_refresh_exotic_dividends_continues_while_race_is_live(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    with connect(db_path) as conn:
+        insert_rows(
+            conn,
+            "races",
+            [
+                {
+                    "race_id": "HK20260506-ST-09",
+                    "date": "2026-05-06",
+                    "track": "Sha Tin",
+                    "course": "AWT",
+                    "distance_m": 1200,
+                    "going": "GOOD",
+                    "class_rating": "Class 3",
+                    "prize": 1000000,
+                    "race_name": "Live Test",
+                }
+            ],
+        )
+        upsert_race_status(conn, "HK20260506-ST-09", "live")
+
+        result = refresh_exotic_dividends(conn, "HK20260506-ST-09", FakeExoticProvider())
+
+    assert result["status"] == "ok"
+    assert result["inserted"] == 2

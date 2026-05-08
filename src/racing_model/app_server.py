@@ -207,7 +207,7 @@ class AppState:
         def worker() -> None:
             try:
                 with connect(self.settings.db_path) as conn:
-                    if race_lifecycle_status(conn, race_id) == "scheduled":
+                    if race_lifecycle_status(conn, race_id) in {"scheduled", "live"}:
                         refresh_exotic_dividends(conn, race_id, build_exotic_dividend_provider(self.settings))
             except Exception:
                 pass
@@ -486,6 +486,7 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
                 bankroll = query_float(query, "bankroll", 10000.0)
                 risk = query.get("risk", ["standard"])[0] or "standard"
                 include_exotics = query_bool(query, "include_exotics", True)
+                refresh_odds_live = query_bool(query, "refresh_odds", False)
                 refresh_exotics = query_bool(query, "refresh_exotics", False)
                 record_mode = query.get("record_mode", ["async"])[0] or "async"
                 model = self.app_state.model()
@@ -501,6 +502,7 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
                         state=self.app_state,
                         policy=policy,
                         include_exotics=include_exotics,
+                        refresh_odds_live=refresh_odds_live,
                         refresh_exotics=refresh_exotics,
                         record_mode=record_mode,
                     )
@@ -522,13 +524,13 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
             if path == "/api/refresh-odds":
                 race_id = required_query(query, "race_id")
                 status = race_lifecycle_status(conn, race_id)
-                if status != "scheduled":
+                if status not in {"scheduled", "live"}:
                     self.send_json(
                         {
                             "race_id": race_id,
                             "inserted": 0,
                             "status": "frozen",
-                            "message": "race_not_scheduled_last_live_odds_preserved",
+                            "message": "race_resulted_last_live_odds_preserved",
                         }
                     )
                     return
@@ -548,13 +550,13 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
             elif path == "/api/refresh-exotic-dividends":
                 race_id = required_query(query, "race_id")
                 status = race_lifecycle_status(conn, race_id)
-                if status != "scheduled":
+                if status not in {"scheduled", "live"}:
                     self.send_json(
                         {
                             "race_id": race_id,
                             "inserted": 0,
                             "status": "frozen",
-                            "message": "race_not_scheduled_last_live_dividends_preserved",
+                            "message": "race_resulted_last_live_dividends_preserved",
                         }
                     )
                     return
@@ -1086,14 +1088,26 @@ def api_betting(
     predictions: list[dict[str, object]] | None = None,
     policy: dict[str, object] | None = None,
     include_exotics: bool = True,
+    refresh_odds_live: bool = False,
     refresh_exotics: bool = False,
     record_mode: str = "sync",
 ) -> dict[str, object]:
     race_rows = fetch_all(conn, "SELECT * FROM races WHERE race_id = ?", (race_id,))
     if not race_rows:
         return {"race": None, "tickets": [], "decisions": []}
+    status = race_lifecycle_status(conn, race_id)
+    odds_refresh_status = "not_requested"
+    odds_refresh_error = ""
+    odds_refresh_inserted = 0
+    if refresh_odds_live and status in {"scheduled", "live"} and state is not None:
+        try:
+            odds_refresh_inserted = refresh_odds(conn, race_id, build_odds_provider(state.settings))
+            odds_refresh_status = "refreshed"
+        except Exception as exc:
+            odds_refresh_status = "error"
+            odds_refresh_error = str(exc)
     if predictions is None:
-        cached = state.cached_race_predictions(race_id, state.odds_interval_seconds + 5) if state is not None else None
+        cached = None if refresh_odds_live else state.cached_race_predictions(race_id, state.odds_interval_seconds + 5) if state is not None else None
         if cached:
             predictions = cached["predictions"]
             if policy is None:
@@ -1107,7 +1121,7 @@ def api_betting(
     status = race_lifecycle_status(conn, race_id)
     exotic_refresh_status = "not_requested"
     exotic_refresh_error = ""
-    if include_exotics and refresh_exotics and status == "scheduled" and state is not None:
+    if include_exotics and refresh_exotics and status in {"scheduled", "live"} and state is not None:
         try:
             refresh_exotic_dividends(conn, race_id, build_exotic_dividend_provider(state.settings))
             exotic_refresh_status = "refreshed"
@@ -1115,7 +1129,7 @@ def api_betting(
             exotic_refresh_status = "error"
             exotic_refresh_error = str(exc)
     exotic_lookup = load_exotic_dividend_lookup(conn, race_id)
-    if include_exotics and status == "scheduled" and not exotic_lookup:
+    if include_exotics and status in {"scheduled", "live"} and not exotic_lookup:
         queued = state.start_exotic_refresh_job(race_id) if state is not None else False
     else:
         queued = False
@@ -1135,6 +1149,11 @@ def api_betting(
         "status": exotic_refresh_status if exotic_refresh_status != "not_requested" else "queued" if queued else "cached" if exotic_lookup else "not_available",
         "cached_dividends": len(exotic_lookup),
         "error": exotic_refresh_error,
+    }
+    payload["odds_refresh"] = {
+        "status": odds_refresh_status,
+        "inserted": odds_refresh_inserted,
+        "error": odds_refresh_error,
     }
     if model_path is not None:
         if record_mode == "async" and state is not None:

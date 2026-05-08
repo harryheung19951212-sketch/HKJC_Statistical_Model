@@ -372,7 +372,7 @@ async function refreshFullBetting(raceKey) {
   bettingRefreshQueued = false;
   const expectedRaceId = selectedRaceId;
   try {
-    const betting = await api(`/api/betting?race_id=${raceKey}&bankroll=${encodeURIComponent(bettingBankroll())}&risk=${encodeURIComponent(bettingRisk())}&include_exotics=1&refresh_exotics=1`);
+    const betting = await api(`/api/betting?race_id=${raceKey}&bankroll=${encodeURIComponent(bettingBankroll())}&risk=${encodeURIComponent(bettingRisk())}&include_exotics=1&refresh_odds=1&refresh_exotics=1`);
     if (selectedRaceId !== expectedRaceId) return;
     renderBetting(betting);
     const ledger = await api(`/api/betting-ledger?race_id=${raceKey}`);

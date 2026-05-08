@@ -2,6 +2,27 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-08 - Betting Tab Refreshes All Live Odds
+
+Goal:
+
+- Ensure every betting market shown in the betting tab uses its matching live odds/dividend and refreshes every 30 seconds.
+
+Changes:
+
+- Betting full refresh now calls `/api/betting` with `refresh_odds=1` as well as `refresh_exotics=1`.
+- `/api/betting` refreshes WIN/PLACE odds before recalculating decisions and bypasses the short-lived prediction cache when live odds are requested.
+- WIN/PLACE odds refresh and exotic dividend refresh now continue for both `scheduled` and `live` races, freezing only after a race is resulted.
+- Added regression coverage for live race odds refresh, full betting cache bypass, live exotic dividend refresh, and the frontend refresh query.
+
+Verification:
+
+- `python -m compileall -q src tests`
+- `node --check src\racing_model\web\app.js`
+- `python -m pytest tests\test_fast_betting_refresh.py tests\test_exotic_live.py tests\test_ui_localization.py -q`
+- `python -m pytest -q`
+- Browser check on `http://127.0.0.1:8766/`: betting panel rendered after the frontend refresh change.
+
 ## 2026-05-08 - HKJC Horse Profile Last Six Runs
 
 Goal:

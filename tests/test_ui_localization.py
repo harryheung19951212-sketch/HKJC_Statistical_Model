@@ -70,6 +70,7 @@ def test_auto_refresh_preserves_existing_race_panels() -> None:
     assert "preserveDeferred: preservePanels" in js
     assert "function preservePanelDuringRefresh" in js
     assert "raceRefreshInFlight" in js
+    assert "refresh_odds=1" in js
     assert "refresh_exotics=1" in js
     assert 'folder.open = Boolean(raceFolderState[key] ?? (key === "upcoming"))' in js
 

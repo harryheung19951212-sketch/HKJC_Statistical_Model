@@ -3,7 +3,26 @@ from pathlib import Path
 import racing_model.app_server as app_server
 from racing_model.app_server import AppState, api_betting, api_race_dashboard
 from racing_model.model import RankingModel
-from racing_model.storage import connect, init_db, insert_rows
+from racing_model.odds import refresh_odds
+from racing_model.storage import connect, init_db, insert_rows, upsert_race_status
+
+
+class FakeOddsProvider:
+    source_name = "hkjc_graphql"
+    active_source = "hkjc_graphql"
+    last_error = None
+
+    def fetch_odds(self, conn, race_id: str):
+        return [
+            {
+                "race_id": race_id,
+                "horse_id": "H001",
+                "timestamp": "2099-01-01T10:00:30+00:00",
+                "win_odds": 8.0,
+                "place_odds": 3.0,
+                "source": self.source_name,
+            }
+        ]
 
 
 def add_minimal_race(conn) -> None:
@@ -151,3 +170,52 @@ def test_full_betting_reuses_recent_dashboard_predictions(tmp_path: Path, monkey
 
     assert payload["decisions"]
     assert payload["prediction_policy"]
+
+
+def test_live_race_odds_refresh_keeps_updating_ticks(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    with connect(db_path) as conn:
+        add_minimal_race(conn)
+        upsert_race_status(conn, "HK20990101-ST-01", "live")
+
+        inserted = refresh_odds(conn, "HK20990101-ST-01", FakeOddsProvider())
+
+    assert inserted == 1
+
+
+def test_full_betting_refreshes_win_place_odds_and_bypasses_cache(tmp_path: Path, monkeypatch) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    state = AppState(tmp_path / "model.json", 30)
+    state.calibration_gate = lambda conn, model: None  # type: ignore[method-assign]
+    state.start_betting_record_job = lambda race, payload, model_path: True  # type: ignore[method-assign]
+    calls = []
+
+    def fake_refresh_odds(conn, race_id, provider):
+        calls.append(race_id)
+        return refresh_odds(conn, race_id, FakeOddsProvider())
+
+    monkeypatch.setattr(app_server, "refresh_odds", fake_refresh_odds)
+    with connect(db_path) as conn:
+        add_minimal_race(conn)
+        api_race_dashboard(conn, state, "HK20990101-ST-01", 10000, "standard")
+
+        payload = api_betting(
+            conn,
+            RankingModel.new(),
+            "HK20990101-ST-01",
+            10000,
+            "standard",
+            state=state,
+            include_exotics=False,
+            refresh_odds_live=True,
+            record_mode="none",
+        )
+
+    win = next(row for row in payload["decisions"] if row["market"] == "WIN")
+    place = next(row for row in payload["decisions"] if row["market"] == "PLACE")
+    assert calls == ["HK20990101-ST-01"]
+    assert payload["odds_refresh"]["status"] == "refreshed"
+    assert win["odds"] == 8.0
+    assert place["odds"] == 3.0
