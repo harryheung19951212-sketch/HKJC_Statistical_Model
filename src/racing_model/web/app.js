@@ -367,7 +367,7 @@ async function refreshModelReports(options = {}) {
   const includeCoverage = options.includeCoverage !== false;
   const dashboard = await api(`/api/analytics-dashboard?include_coverage=${includeCoverage ? "1" : "0"}`);
   renderBacktest(dashboard.backtest || {});
-  renderEvolution(dashboard.evolution || {});
+  renderEvolution({ ...(dashboard.evolution || {}), calibration_gate: dashboard.calibration_gate });
   renderDualTrackBacktest(dashboard.dual_track || {});
   renderErrorTaxonomy(dashboard.taxonomy || {});
   renderModelVersions(dashboard.model_versions || {});
@@ -471,11 +471,13 @@ function renderBetting(data, options = {}) {
   }
   summary.classList.remove("refreshing");
   const settings = data.risk_settings || {};
+  const gate = data.calibration_gate || {};
   const poolCount = Object.keys(data.pool_rules || {}).length;
   summary.innerHTML = `
     <div><label>本場上限</label><strong>${formatMoney(data.max_race_stake)}</strong></div>
     <div><label>建議總注</label><strong>${formatMoney(data.total_recommended_stake)}</strong></div>
     <div><label>Kelly</label><strong>${formatPct(settings.fractional_kelly)}</strong></div>
+    <div><label>校準 Gate</label><strong>${gate.label || "-"} / ${formatPct(gate.stake_factor ?? 1)}</strong></div>
     <div><label>\u5f69\u6c60\u6210\u672c\u6a21\u578b</label><strong>${poolCount || "-"} \u500b</strong></div>
     <div><label>期望值門檻</label><strong>${formatPct(settings.min_expected_value)}</strong></div>
     <div><label>狀態</label><strong>${localStatus(data.race_status)}</strong></div>
@@ -1433,6 +1435,7 @@ function renderBacktest(data) {
 
 function renderEvolution(report) {
   const metrics = report.metrics || {};
+  const gate = report.calibration_gate || {};
   $("evolution-summary").innerHTML = `
     <div class="stat"><label>已評估場次</label><strong>${metrics.races || 0}</strong></div>
     <div class="stat"><label>首選命中率</label><strong>${formatPct(metrics.top_pick_hit_rate)}</strong></div>
@@ -1440,6 +1443,7 @@ function renderEvolution(report) {
     <div class="stat"><label>對數損失</label><strong>${formatNum(metrics.log_loss, 3)}</strong></div>
     <div class="stat"><label>布萊爾分數</label><strong>${formatNum(metrics.brier_score, 3)}</strong></div>
     <div class="stat"><label>價值回報率</label><strong class="${evClass(metrics.value_roi)}">${formatPct(metrics.value_roi)}</strong></div>
+    ${gate.status ? `<div class="stat"><label>校準 Gate</label><strong>${gate.label} / ${formatPct(gate.stake_factor)}</strong></div>` : ""}
   `;
   renderCalibration(report.calibration || []);
   renderEvolutionIdeas(report.ideas || [], report.data_quality || []);

@@ -22,6 +22,7 @@ from .backfill import (
     train_model_if_requested,
 )
 from .betting import build_betting_decisions
+from .calibration_gate import build_calibration_gate
 from .betting_ledger import (
     betting_ledger_report,
     confirm_betting_recommendation,
@@ -81,6 +82,8 @@ class AppState:
         self.active_race_lock = threading.Lock()
         self.policy_cache: dict[str, object] = {"expires_at": 0.0, "policy": None, "refreshing": False}
         self.policy_lock = threading.Lock()
+        self.calibration_cache: dict[str, object] = {"expires_at": 0.0, "gate": None}
+        self.calibration_lock = threading.Lock()
 
     def model(self) -> RankingModel:
         if self.model_path.exists():
@@ -109,6 +112,26 @@ class AppState:
             self.policy_cache["refreshing"] = False
             if policy:
                 self.policy_cache = {"expires_at": time.monotonic() + 300.0, "policy": dict(policy), "refreshing": False}
+
+    def calibration_gate(self, conn, model: RankingModel) -> dict[str, object]:
+        now = time.monotonic()
+        with self.calibration_lock:
+            cached = self.calibration_cache.get("gate")
+            if cached and now < float(self.calibration_cache.get("expires_at") or 0):
+                return dict(cached)
+        try:
+            gate = build_calibration_gate(conn, model)
+        except Exception as exc:
+            gate = {
+                "status": "unverified",
+                "label": "校準暫未確認",
+                "message": f"校準 gate 暫時未能計算：{str(exc)[:160]}。注碼先減半。",
+                "stake_factor": 0.5,
+                "promote_allowed": False,
+            }
+        with self.calibration_lock:
+            self.calibration_cache = {"expires_at": now + 300.0, "gate": dict(gate)}
+        return dict(gate)
 
     def focus_race(self, race_id: str, now: float | None = None) -> dict[str, object]:
         timestamp = time.monotonic() if now is None else now
@@ -393,6 +416,7 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
                         bankroll,
                         risk,
                         self.app_state.model_path,
+                        state=self.app_state,
                         policy=policy,
                         include_exotics=include_exotics,
                     )
@@ -889,6 +913,7 @@ def api_analytics_dashboard(conn, state: AppState, include_coverage: bool = Fals
         "taxonomy": error_taxonomy_report(conn, model),
         "model_versions": run_walk_forward_versions(conn),
         "model_registry": model_registry_report(conn),
+        "calibration_gate": state.calibration_gate(conn, model),
         "pool_replay": pool_replay_report(conn),
         "data_quality": data_quality_report(conn),
     }
@@ -917,6 +942,7 @@ def api_betting(
     bankroll: float,
     risk: str,
     model_path: Path | str | None = None,
+    state: AppState | None = None,
     predictions: list[dict[str, object]] | None = None,
     policy: dict[str, object] | None = None,
     include_exotics: bool = True,
@@ -935,6 +961,7 @@ def api_betting(
         risk_profile=risk,
         exotic_dividends=exotic_lookup,
         include_exotics=include_exotics,
+        calibration_gate=None if status == "resulted" or state is None else state.calibration_gate(conn, model),
     )
     race = dict(race_rows[0])
     payload["race"] = race

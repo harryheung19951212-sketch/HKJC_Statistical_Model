@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .calibration_gate import build_calibration_gate
 from .features import build_training_races
 from .pool_replay import pool_replay_report
 from .storage import fetch_all, insert_rows
@@ -98,6 +99,7 @@ def promote_latest_model(
     model_path: Path | str,
     epochs: int = 400,
     backup: bool = True,
+    enforce_calibration: bool = True,
 ) -> dict[str, Any]:
     latest = latest_registry_row(conn)
     if not latest:
@@ -149,9 +151,20 @@ def promote_latest_model(
         }
 
     target = Path(model_path)
-    backup_path = backup_model_file(target) if backup else None
     model = new_model_for_variant(variant)
     model.fit(races, epochs=epochs)
+    calibration = build_calibration_gate(conn, model)
+    if enforce_calibration and not calibration.get("promote_allowed"):
+        return {
+            "status": "refused",
+            "reason": f"候選模型未通過校準 gate：{calibration.get('message')}",
+            "run": public_registry_row(latest),
+            "variant_id": variant.variant_id,
+            "variant_label": variant.label,
+            "calibration_gate": calibration,
+        }
+
+    backup_path = backup_model_file(target) if backup else None
     model.save(target)
     return {
         "status": "promoted",
@@ -163,6 +176,7 @@ def promote_latest_model(
         "variant_id": variant.variant_id,
         "variant_label": variant.label,
         "feature_count": len(variant.feature_names),
+        "calibration_gate": calibration,
         "run": public_registry_row(latest),
     }
 

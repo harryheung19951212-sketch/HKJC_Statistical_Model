@@ -108,7 +108,7 @@ def test_promote_latest_model_trains_candidate_and_backups_current_file(tmp_path
         insert_rows(conn, "model_registry_runs", [registry_row("upgrade_candidate", best_variant_id="no_market")])
         conn.commit()
 
-        result = promote_latest_model(conn, model_path, epochs=1)
+        result = promote_latest_model(conn, model_path, epochs=1, enforce_calibration=False)
 
     promoted = RankingModel.load(model_path)
     assert result["status"] == "promoted"
@@ -118,6 +118,31 @@ def test_promote_latest_model_trains_candidate_and_backups_current_file(tmp_path
     assert result["backup_path"]
     assert Path(str(result["backup_path"])).exists()
     assert "market_implied" not in promoted.feature_names
+
+
+def test_promote_latest_model_refuses_when_calibration_gate_is_unverified(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    model_path = tmp_path / "baseline.json"
+    init_db(db_path)
+    sample_dir = Path("data/sample")
+    with connect(db_path) as conn:
+        for table, filename in {
+            "races": "races.csv",
+            "runners": "runners.csv",
+            "results": "results.csv",
+            "workouts": "workouts.csv",
+            "odds_ticks": "odds.csv",
+        }.items():
+            import_csv(conn, table, sample_dir / filename)
+        RankingModel.new().save(model_path)
+        insert_rows(conn, "model_registry_runs", [registry_row("upgrade_candidate", best_variant_id="no_market")])
+        conn.commit()
+
+        result = promote_latest_model(conn, model_path, epochs=1)
+
+    assert result["status"] == "refused"
+    assert result["calibration_gate"]["status"] == "unverified"
+    assert result["calibration_gate"]["promote_allowed"] is False
 
 
 def registry_row(gate: str, best_variant_id: str = "no_market") -> dict[str, object]:
@@ -214,6 +239,7 @@ if __name__ == "__main__":
         test_execution_gate_requires_confirmed_sample_before_upgrade,
         test_promote_latest_model_refuses_without_upgrade_gate,
         test_promote_latest_model_trains_candidate_and_backups_current_file,
+        test_promote_latest_model_refuses_when_calibration_gate_is_unverified,
     ]
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         base = Path(tmp)

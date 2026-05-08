@@ -52,6 +52,7 @@ def build_betting_decisions(
     risk_profile: str = "standard",
     exotic_dividends: dict[tuple[str, str], dict[str, Any]] | None = None,
     include_exotics: bool = True,
+    calibration_gate: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     profile = RISK_PROFILES.get(risk_profile, RISK_PROFILES["standard"])
     bankroll = max(float(bankroll or 0), 0.0)
@@ -86,6 +87,7 @@ def build_betting_decisions(
 
     exotic_candidates = build_exotic_candidates(predictions, race_status, exotic_dividends=exotic_dividends) if include_exotics else []
     exotic_decisions = build_exotic_decisions(exotic_candidates, race_status, bankroll, profile) if include_exotics else []
+    calibration_adjustments = apply_calibration_stake_gate([*decisions, *exotic_decisions], bankroll, calibration_gate)
     active = [decision for decision in [*decisions, *exotic_decisions] if decision["recommended_stake"] > 0]
     max_race_stake = round(bankroll * profile.max_race_fraction, 2)
     raw_total = sum(float(item["recommended_stake"]) for item in active)
@@ -120,7 +122,10 @@ def build_betting_decisions(
             "max_race_fraction": profile.max_race_fraction,
             "min_expected_value": profile.min_expected_value,
             "min_edge": profile.min_edge,
+            "calibration_stake_factor": calibration_factor(calibration_gate),
         },
+        "calibration_gate": calibration_gate or default_calibration_gate(),
+        "calibration_adjustments": calibration_adjustments,
         "pool_rules": all_pool_rules_payload(),
         "max_race_stake": max_race_stake,
         "total_recommended_stake": round(sum(float(item["recommended_stake"]) for item in tickets), 1),
@@ -133,6 +138,62 @@ def build_betting_decisions(
         "exotic_candidates": exotic_candidates,
         "upgrade_paths": build_upgrade_paths(exotic_candidates),
         "exotics_deferred": not include_exotics,
+    }
+
+
+def apply_calibration_stake_gate(
+    decisions: list[dict[str, Any]],
+    bankroll: float,
+    gate: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    factor = calibration_factor(gate)
+    if factor >= 0.999:
+        return []
+    adjustments = []
+    for decision in decisions:
+        original_stake = float(decision.get("recommended_stake") or 0.0)
+        decision["calibration_gate_status"] = (gate or {}).get("status", "pass")
+        decision["calibration_gate_label"] = (gate or {}).get("label", "校準通過")
+        decision["calibration_stake_factor"] = factor
+        if original_stake <= 0:
+            continue
+        market = str(decision.get("market") or "WIN")
+        new_stake = round_stake_to_unit(original_stake * factor, market)
+        decision["recommended_stake"] = new_stake
+        decision["stake_fraction"] = round(new_stake / bankroll, 6) if bankroll else 0.0
+        decision["reason"] = f"{decision.get('reason') or '符合條件'}；{(gate or {}).get('message', '校準 gate 降注')}"
+        if new_stake <= 0:
+            decision["action"] = "觀望"
+        adjustments.append(
+            {
+                "market": decision.get("market"),
+                "horse_id": decision.get("horse_id"),
+                "horse_name": decision.get("horse_name"),
+                "original_stake": round(original_stake, 1),
+                "adjusted_stake": round(new_stake, 1),
+                "factor": factor,
+                "reason": (gate or {}).get("message", "校準 gate 降注"),
+            }
+        )
+    return adjustments
+
+
+def calibration_factor(gate: dict[str, Any] | None) -> float:
+    if not gate:
+        return 1.0
+    try:
+        return max(0.0, min(float(gate.get("stake_factor", 1.0) or 1.0), 1.0))
+    except (TypeError, ValueError):
+        return 1.0
+
+
+def default_calibration_gate() -> dict[str, Any]:
+    return {
+        "status": "pass",
+        "label": "校準通過",
+        "message": "未提供額外校準 gate，按原本風險設定計注。",
+        "stake_factor": 1.0,
+        "promote_allowed": True,
     }
 
 

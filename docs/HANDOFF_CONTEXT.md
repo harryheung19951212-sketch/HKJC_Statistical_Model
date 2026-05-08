@@ -357,8 +357,10 @@ foreach ($t in $tests) {
    - 仍未保存溫度校準候選的執行策略，所以該類候選會被拒絕。
 
 17. Calibration hard gate
-   - 目前 calibration 是報告。
-   - 未成為 stake sizing / promotion 的硬性 gate。
+   - 已加入 `src/racing_model/calibration_gate.py`。
+   - 投注建議會按校準 gate 的 `stake_factor` 降注；樣本不足減半，明顯失準降至四分之一。
+   - `promote_latest_model` 會在正式寫入模型檔前檢查候選模型校準 gate，未過關就拒絕替換。
+   - 仍未做到候選模型的 out-of-sample reliability artifact，也未按彩池/場地/距離分片做校準 gate。
 
 18. Error taxonomy deeper loop
    - 已有 persistent error reviews。
@@ -376,7 +378,7 @@ foreach ($t in $tests) {
 
 下一個 Codex 不應再先加 UI。建議集中做：
 
-1. `calibration hard gate for staking / model promotion`
+1. `candidate OOS calibration artifact + sliced calibration gate`
 2. `pool takeout + pool efficiency cost table`
 3. `final exotic dividend settlement`
 4. `exotic betting ledger reconciliation`

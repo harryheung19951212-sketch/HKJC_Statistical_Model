@@ -262,6 +262,44 @@ def test_pool_cost_gate_rejects_small_nominal_edge() -> None:
     assert win["cost_adjusted_expected_value"] == win["expected_value"] - POOL_RULES["WIN"].efficiency_buffer
 
 
+def test_calibration_gate_reduces_recommended_stakes() -> None:
+    predictions = [
+        {
+            "horse_id": "H001",
+            "horse_no": 1,
+            "display_name": "校準馬",
+            "win_probability": 0.35,
+            "latest_win_odds": 4.0,
+            "latest_win_odds_source": "hkjc_mqtt",
+            "top3_probability": 0.62,
+            "place_odds": 2.2,
+            "place_odds_source": "hkjc_mqtt",
+        }
+    ]
+
+    full = build_betting_decisions(predictions, "scheduled", bankroll=10000, risk_profile="standard", include_exotics=False)
+    gated = build_betting_decisions(
+        predictions,
+        "scheduled",
+        bankroll=10000,
+        risk_profile="standard",
+        include_exotics=False,
+        calibration_gate={
+            "status": "blocked",
+            "label": "校準未過關",
+            "message": "測試校準偏差，注碼降至四分之一。",
+            "stake_factor": 0.25,
+            "promote_allowed": False,
+        },
+    )
+
+    assert gated["calibration_gate"]["status"] == "blocked"
+    assert gated["calibration_adjustments"]
+    assert gated["total_recommended_stake"] < full["total_recommended_stake"]
+    assert all(ticket["calibration_stake_factor"] == 0.25 for ticket in gated["tickets"])
+    assert all("校準偏差" in ticket["reason"] for ticket in gated["tickets"])
+
+
 def test_pool_rules_cover_all_betting_markets() -> None:
     assert set(POOL_RULES) == {"WIN", "PLACE", "QIN", "QPL", "FCT", "TRIO", "TCE", "FIRST4", "QUARTET"}
     assert POOL_RULES["WIN"].payout_rate == 0.825
