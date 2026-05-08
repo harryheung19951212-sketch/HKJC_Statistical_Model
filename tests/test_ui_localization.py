@@ -78,12 +78,12 @@ def test_race_page_prioritizes_prediction_betting_and_collapsible_diagnostics() 
 
     prediction_pos = html.index('<div class="panel predictions-panel">')
     detail_pos = html.index('<div class="panel detail-panel">')
-    betting_pos = html.index('<div class="panel betting-panel">')
     situation_pos = html.index('<div class="panel situation-panel">')
+    betting_pos = html.index('<div class="panel betting-panel">')
     feed_pos = html.index('<details class="panel feed-panel fold-panel">')
     comparison_pos = html.index('<details class="panel comparison-panel fold-panel">')
 
-    assert prediction_pos < detail_pos < betting_pos < situation_pos < feed_pos < comparison_pos
+    assert prediction_pos < detail_pos < situation_pos < betting_pos < feed_pos < comparison_pos
     assert '<h3>馬匹詳情 / 單匹賠率走勢</h3>' in html
     assert 'aria-label="單匹賠率走勢圖"' in html
     assert '<div class="panel odds-panel">' not in html
