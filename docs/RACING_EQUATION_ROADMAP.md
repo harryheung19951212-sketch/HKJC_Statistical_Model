@@ -167,12 +167,13 @@ Roadmap item 35 is now further implemented:
 - The score uses Log Loss, Brier, Top1 hit rate, Top3 hit rate, value ROI, and maximum drawdown.
 - Candidate ordering, model registry promotion gate, experiment manifest, promotion scorecard, and UI now expose/use the multi-objective score.
 - The promotion gate can now block a candidate with `multi_objective_blocked` when total score is not enough or ROI / Top3 / risk deteriorates.
+- Pool choice optimizer now feeds the staking layer: passed replay can slightly increase stake when ROI improves and drawdown/retention are acceptable; reduce/block policies cut stake or suspend the pool.
 - Coverage item 35 has been updated so the 方程式覆蓋率 / 盲點報告 score moves with this real model-layer progress.
 
 Remaining work for item 35:
 
 1. Feed the multi-objective score into candidate feature-search automation.
-2. Add pool-level ROI / volatility as weighted objectives.
-3. Let stake strategy tuning optimize the same objective set.
+2. Add pool-level volatility and CLV as weighted objectives.
+3. Let stake strategy tuning learn its thresholds from replay rather than fixed factors.
 4. Keep walk-forward / OOS gates as hard blockers before model promotion.
 

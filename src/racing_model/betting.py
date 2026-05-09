@@ -221,10 +221,13 @@ def apply_pool_replay_stake_gate(
         market = str(decision.get("market") or "")
         market_gate = pool_replay_market_context(gate, market)
         factor = pool_replay_stake_factor(market_gate)
+        optimizer_factor, optimizer_factor_reason = pool_choice_optimizer_stake_adjustment(market_gate)
         decision["pool_replay_gate_status"] = market_gate.get("status", "unverified")
         decision["pool_replay_gate_label"] = market_gate.get("label", "Replay 未驗證")
         decision["pool_replay_gate_reason"] = market_gate.get("reason", "未有分池 replay 校準。")
         decision["pool_replay_stake_factor"] = factor
+        decision["pool_choice_optimizer_stake_factor"] = optimizer_factor
+        decision["pool_choice_optimizer_stake_reason"] = optimizer_factor_reason
         decision["pool_replay_sample_size"] = market_gate.get("reconciled", 0)
         decision["pool_replay_min_samples"] = market_gate.get("min_samples")
         decision["pool_replay_roi"] = market_gate.get("roi")
@@ -238,15 +241,21 @@ def apply_pool_replay_stake_gate(
         decision["pool_choice_optimizer_policy"] = market_gate.get("optimizer_policy")
         decision["pool_choice_optimizer_reason"] = market_gate.get("optimizer_reason")
         decision["pool_choice_optimizer_delta_roi"] = market_gate.get("optimizer_delta_roi")
+        decision["pool_choice_optimizer_baseline_max_drawdown"] = market_gate.get("optimizer_baseline_max_drawdown")
+        decision["pool_choice_optimizer_gated_max_drawdown"] = market_gate.get("optimizer_gated_max_drawdown")
+        decision["pool_choice_optimizer_retention_rate"] = market_gate.get("optimizer_retention_rate")
         original_stake = float(decision.get("recommended_stake") or 0.0)
-        if original_stake <= 0 or factor >= 0.999:
+        if original_stake <= 0 or abs(factor - 1.0) <= 0.001:
             continue
         new_stake = round_stake_to_unit(original_stake * factor, market)
         if factor <= 0.0:
             new_stake = 0.0
         decision["recommended_stake"] = new_stake
         decision["stake_fraction"] = round(new_stake / bankroll, 6) if bankroll else 0.0
-        decision["reason"] = f"{decision.get('reason') or '符合條件'}；{decision['pool_replay_gate_reason']}"
+        reason_parts = [decision["pool_replay_gate_reason"]]
+        if optimizer_factor_reason:
+            reason_parts.append(optimizer_factor_reason)
+        decision["reason"] = f"{decision.get('reason') or '符合條件'}；{'；'.join(reason_parts)}"
         if new_stake <= 0:
             decision["action"] = "觀望"
         adjustments.append(
@@ -257,8 +266,9 @@ def apply_pool_replay_stake_gate(
                 "original_stake": round(original_stake, 1),
                 "adjusted_stake": round(new_stake, 1),
                 "factor": factor,
+                "optimizer_factor": optimizer_factor,
                 "status": market_gate.get("status", "unverified"),
-                "reason": decision["pool_replay_gate_reason"],
+                "reason": "；".join(reason_parts),
             }
         )
     return adjustments
@@ -280,9 +290,45 @@ def pool_replay_stake_factor(market_gate: dict[str, Any] | None) -> float:
         return 1.0
     try:
         value = market_gate.get("stake_factor", 1.0)
-        return max(0.0, min(float(1.0 if value is None else value), 1.0))
+        base = max(0.0, min(float(1.0 if value is None else value), 1.0))
     except (TypeError, ValueError):
-        return 1.0
+        base = 1.0
+    optimizer_factor, _ = pool_choice_optimizer_stake_adjustment(market_gate)
+    return round(max(0.0, min(base * optimizer_factor, 1.15)), 4)
+
+
+def pool_choice_optimizer_stake_adjustment(market_gate: dict[str, Any] | None) -> tuple[float, str]:
+    if not market_gate:
+        return 1.0, ""
+    status = str(market_gate.get("optimizer_status") or "no_sample")
+    policy = str(market_gate.get("optimizer_policy") or "collect")
+    if policy == "block":
+        return 0.0, "walk-forward 彩池 optimizer 封池，注碼降至 0。"
+    if policy == "reduce":
+        return 0.5, "walk-forward 彩池 optimizer 要求降注。"
+    if status != "pass" or policy not in {"pass", "watch"}:
+        return 1.0, ""
+    delta_roi = safe_float(market_gate.get("optimizer_delta_roi"))
+    retention = safe_float(market_gate.get("optimizer_retention_rate"))
+    baseline_drawdown = safe_float(market_gate.get("optimizer_baseline_max_drawdown"))
+    gated_drawdown = safe_float(market_gate.get("optimizer_gated_max_drawdown"))
+    if delta_roi is None or delta_roi <= 0:
+        return 1.0, ""
+    drawdown_ok = drawdown_not_worse(gated_drawdown, baseline_drawdown)
+    retention_ok = retention is None or retention >= 0.55
+    if not drawdown_ok or not retention_ok:
+        return 1.0, ""
+    factor = 1.0 + min(delta_roi, 0.30) * 0.5
+    factor = round(min(factor, 1.15), 4)
+    if factor <= 1.001:
+        return 1.0, ""
+    return factor, f"walk-forward 彩池 optimizer ROI 改善 {delta_roi:.1%}，回撤未惡化，注碼係數 {factor:.2f}。"
+
+
+def drawdown_not_worse(value: float | None, baseline: float | None) -> bool:
+    if value is None or baseline is None:
+        return True
+    return abs(value) <= abs(baseline) * 1.10 + 1e-9
 
 
 def default_pool_replay_gate() -> dict[str, Any]:
@@ -826,6 +872,7 @@ def pool_choice_market_row(
     sources = [*decisions, *candidates]
     rule = pool_rule_payload(market)
     replay_gate = replay_gate or {}
+    optimizer_factor, optimizer_factor_reason = pool_choice_optimizer_stake_adjustment(replay_gate)
     if not sources:
         return {
             "market": market,
@@ -872,7 +919,11 @@ def pool_choice_market_row(
             "optimizer_delta_roi": replay_gate.get("optimizer_delta_roi"),
             "optimizer_baseline_roi": replay_gate.get("optimizer_baseline_roi"),
             "optimizer_gated_roi": replay_gate.get("optimizer_gated_roi"),
+            "optimizer_baseline_max_drawdown": replay_gate.get("optimizer_baseline_max_drawdown"),
+            "optimizer_gated_max_drawdown": replay_gate.get("optimizer_gated_max_drawdown"),
             "optimizer_retention_rate": replay_gate.get("optimizer_retention_rate"),
+            "optimizer_stake_factor": optimizer_factor,
+            "optimizer_stake_reason": optimizer_factor_reason,
             "leverage_index": 0.0,
             "efficiency_gap": None,
             "risk_penalty": 0.0,
@@ -955,7 +1006,11 @@ def pool_choice_market_row(
         "optimizer_delta_roi": replay_gate.get("optimizer_delta_roi"),
         "optimizer_baseline_roi": replay_gate.get("optimizer_baseline_roi"),
         "optimizer_gated_roi": replay_gate.get("optimizer_gated_roi"),
+        "optimizer_baseline_max_drawdown": replay_gate.get("optimizer_baseline_max_drawdown"),
+        "optimizer_gated_max_drawdown": replay_gate.get("optimizer_gated_max_drawdown"),
         "optimizer_retention_rate": replay_gate.get("optimizer_retention_rate"),
+        "optimizer_stake_factor": optimizer_factor,
+        "optimizer_stake_reason": optimizer_factor_reason,
         "leverage_index": round(leverage, 3),
         "efficiency_gap": round(efficiency_gap, 3) if efficiency_gap is not None else None,
         "risk_penalty": round(risk_penalty + replay_penalty, 4),
@@ -1381,6 +1436,8 @@ def slip_ticket_payload(ticket: dict[str, Any]) -> dict[str, Any]:
         "pool_replay_gate_label",
         "pool_replay_gate_reason",
         "pool_replay_stake_factor",
+        "pool_choice_optimizer_stake_factor",
+        "pool_choice_optimizer_stake_reason",
         "pool_replay_sample_size",
         "pool_replay_min_samples",
         "pool_replay_roi",

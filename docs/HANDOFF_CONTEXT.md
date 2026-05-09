@@ -463,8 +463,9 @@ foreach ($t in $tests) {
 19. 多目標優化
    - 已加入 walk-forward 多目標候選排序：Log Loss、Brier、Top1、Top3、ROI、最大回撤會用固定權重合成 `multi_objective_score`，候選版本唔再只靠 Log Loss / Brier 排第一。
    - Model Registry 升級 gate 已接入多目標分；即使總分高，如果 ROI、Top3、Log Loss、Brier 或最大回撤有明顯退化，都會回傳 `multi_objective_blocked`。
+   - Pool choice optimizer 已接入注碼策略：當 walk-forward replay 顯示 ROI 改善、回撤未惡化、retention 足夠，該 pool 可小幅加注；optimizer 要求 reduce / block 時會降注或封池。
    - Promotion Scorecard / UI 會顯示多目標分及多目標 gate。
-   - 仍未把多目標權重自動反饋到特徵搜尋、訓練 loss、注碼策略調參及分彩池 ROI 權重。
+   - 仍未把多目標權重自動反饋到特徵搜尋、訓練 loss 及 CLV/volatility 權重。
 
 20. 真實落注執行層
    - 未做自動下注。
@@ -487,6 +488,7 @@ foreach ($t in $tests) {
 
 - `src/racing_model/walk_forward.py` 新增 OOS 多目標候選排序，權重覆蓋 Log Loss、Brier、Top1、Top3、ROI、最大回撤。
 - `src/racing_model/model_registry.py` 已把多目標分接入正式 promotion gate，避免候選排序與升級批准用兩套標準。
+- `src/racing_model/betting.py` 已把 pool choice optimizer 接入注碼策略，按 replay ROI 改善、回撤及 retention 做小幅加注 / 降注 / 封池。
 - `src/racing_model/promotion_scorecard.py` 及 UI 顯示 `multi_objective_score` / 多目標 gate，方便判斷最佳版本是否只是命中率好、但 ROI 或回撤差。
-- `src/racing_model/coverage.py` 已更新第 35 項「多目標優化」maturity，覆蓋分應由 52.8% 推高到約 53.1%，狀態進度分亦會跟住郁。
-- 下一步建議：把多目標分數接入特徵實驗搜尋及注碼策略調參，並加入分池 ROI / volatility 權重。
+- `src/racing_model/coverage.py` 已更新第 35 項「多目標優化」maturity，覆蓋分應由 52.8% 推高到約 53.1% 以上，狀態進度分亦會跟住郁。
+- 下一步建議：把多目標分數接入特徵實驗搜尋，並加入分池 volatility / CLV 權重。

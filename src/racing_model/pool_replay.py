@@ -115,6 +115,8 @@ def attach_pool_choice_optimizer(gate: dict[str, Any], optimizer: dict[str, Any]
             "optimizer_delta_roi": optimizer.get("delta_roi"),
             "optimizer_baseline_roi": optimizer.get("baseline_roi"),
             "optimizer_gated_roi": optimizer.get("gated_roi"),
+            "optimizer_baseline_max_drawdown": optimizer.get("baseline_max_drawdown"),
+            "optimizer_gated_max_drawdown": optimizer.get("gated_max_drawdown"),
             "optimizer_retention_rate": optimizer.get("retention_rate"),
         }
     )

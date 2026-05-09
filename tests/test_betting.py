@@ -1,4 +1,4 @@
-from racing_model.betting import build_betting_decisions, market_label
+from racing_model.betting import build_betting_decisions, market_label, pool_replay_stake_factor
 from racing_model.pool_rules import POOL_RULES, required_expected_value
 
 
@@ -406,6 +406,78 @@ def test_pool_replay_gate_blocks_exotic_ticket_after_poor_replay() -> None:
     assert all(ticket["market"] != "QPL" for ticket in result["tickets"])
     assert qpl_pool["verdict"] == "replay_blocked"
     assert any(item["title"] == "Replay 封鎖彩池" for item in result["pool_choice"]["recommendations"])
+
+
+def test_pool_optimizer_tunes_stake_after_walk_forward_replay() -> None:
+    predictions = [
+        {
+            "horse_id": "H001",
+            "horse_no": 1,
+            "display_name": "測試馬",
+            "win_probability": 0.42,
+            "latest_win_odds": 4.2,
+            "latest_win_odds_source": "hkjc_mqtt",
+            "top3_probability": 0.70,
+            "place_odds": 2.2,
+            "place_odds_source": "hkjc_mqtt",
+        }
+    ]
+    replay_gate = {
+        "status": "pass",
+        "markets": {
+            "WIN": {
+                "market": "WIN",
+                "status": "pass",
+                "label": "Replay 通過",
+                "reason": "獨贏 replay 通過。",
+                "stake_factor": 1.0,
+                "reconciled": 20,
+                "min_samples": 10,
+                "roi": 0.08,
+                "optimizer_status": "pass",
+                "optimizer_policy": "pass",
+                "optimizer_reason": "optimizer 通過",
+                "optimizer_delta_roi": 0.30,
+                "optimizer_retention_rate": 0.80,
+                "optimizer_baseline_max_drawdown": -80,
+                "optimizer_gated_max_drawdown": -70,
+            }
+        },
+    }
+
+    tuned = build_betting_decisions(
+        predictions,
+        "scheduled",
+        bankroll=10000,
+        risk_profile="standard",
+        include_exotics=False,
+        pool_replay_gate=replay_gate,
+    )
+    tuned_win = next(row for row in tuned["decisions"] if row["market"] == "WIN")
+    market = next(row for row in tuned["pool_choice"]["markets"] if row["market"] == "WIN")
+    adjustment = next(row for row in tuned["pool_replay_adjustments"] if row["market"] == "WIN")
+
+    assert pool_replay_stake_factor(replay_gate["markets"]["WIN"]) == 1.15
+    assert adjustment["adjusted_stake"] > adjustment["original_stake"]
+    assert tuned_win["pool_choice_optimizer_stake_factor"] == 1.15
+    assert "ROI 改善" in tuned_win["pool_choice_optimizer_stake_reason"]
+    assert market["optimizer_stake_factor"] == 1.15
+
+
+def test_pool_optimizer_can_reduce_or_block_stakes() -> None:
+    reduce_gate = {
+        "stake_factor": 1.0,
+        "optimizer_status": "pass",
+        "optimizer_policy": "reduce",
+    }
+    block_gate = {
+        "stake_factor": 1.0,
+        "optimizer_status": "pass",
+        "optimizer_policy": "block",
+    }
+
+    assert pool_replay_stake_factor(reduce_gate) == 0.5
+    assert pool_replay_stake_factor(block_gate) == 0.0
 
 
 def test_ordered_exotic_box_counts_all_permutation_tickets() -> None:
