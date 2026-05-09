@@ -89,9 +89,10 @@ def test_uniform_prediction_safeguard_uses_market_signal() -> None:
     assert stabilized[0]["raw_model_win_probability"] == 0.25
     assert stabilized[0]["win_probability"] > stabilized[-1]["win_probability"]
     assert stabilized[0]["top3_probability"] > stabilized[-1]["top3_probability"]
-    assert all(row["expected_value"] is None for row in stabilized)
-    assert all(row["value_gap"] == 0 for row in stabilized)
+    assert all(row["expected_value"] is not None for row in stabilized)
     assert all(row["market_fallback_no_edge"] for row in stabilized)
+    assert all(row["model_edge_available"] is False for row in stabilized)
+    assert all(row["expected_value_source"] == "market_fair_probability_fallback" for row in stabilized)
 
 
 def test_uniform_prediction_safeguard_does_not_fire_without_market_spread() -> None:

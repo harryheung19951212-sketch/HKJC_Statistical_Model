@@ -136,16 +136,13 @@ def stabilize_uniform_probabilities(rows: list[dict[str, Any]]) -> tuple[list[di
                 model_weight * original_top3 + market_weight * place_market.get(horse_id, original_top3),
             )
         recalculate_value_fields(item)
-        if use_win_market:
-            item["value_gap"] = 0.0
-            item["expected_value"] = None
-        if use_place_market:
-            item["top3_value_gap"] = 0.0
-            item["top3_expected_value"] = None
         item["market_fallback_no_edge"] = True
+        item["model_edge_available"] = False
+        item["expected_value_source"] = "market_fair_probability_fallback"
+        item["top3_expected_value_source"] = "market_fair_probability_fallback"
         stabilized.append(item)
 
-    reason = "模型即場輸出全馬同分，已改用最新獨贏/位置市場公平機率，避免顯示假平均勝率或製造假正 EV。"
+    reason = "模型即場輸出全馬同分，已改用最新獨贏/位置市場公平機率計算概率及EV；此EV只反映市場水位/抽水，未視為模型edge。"
     return (
         sorted(stabilized, key=lambda row: float(row.get("win_probability") or 0.0), reverse=True),
         {

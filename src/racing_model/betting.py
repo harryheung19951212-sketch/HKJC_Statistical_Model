@@ -358,6 +358,7 @@ def build_market_decision(
     probability = safe_float(prediction.get(probability_key))
     odds = safe_float(prediction.get(odds_key))
     source = prediction.get(source_key)
+    market_fallback_no_edge = bool(prediction.get("market_fallback_no_edge"))
     fair_odds = (1.0 / probability) if probability and probability > 0 else None
     market_probability = (1.0 / odds) if odds and odds > 1 else None
     edge = probability - market_probability if market_probability is not None else None
@@ -380,6 +381,9 @@ def build_market_decision(
         req_ev,
         req_edge,
     )
+    if market_fallback_no_edge and market in {"WIN", "PLACE"}:
+        eligible = False
+        reason = "同分熔斷只計市場公平EV，未有模型edge"
     action = action_label(eligible, expected_value, edge, profile, reason)
     stake_fraction = capped_fraction if action == "有值博" else 0.0
     stake = stake_from_fraction(bankroll, stake_fraction, market) if stake_fraction > 0 else 0.0
@@ -399,6 +403,7 @@ def build_market_decision(
         "market_probability": round(market_probability, 6) if market_probability is not None else None,
         "edge": round(edge, 6) if edge is not None else None,
         "expected_value": round(expected_value, 6) if expected_value is not None else None,
+        "expected_value_source": prediction.get("expected_value_source") or "model_probability",
         "cost_adjusted_expected_value": round(adjusted_ev, 6) if adjusted_ev is not None else None,
         "required_expected_value": round(req_ev, 6),
         "required_edge": round(req_edge, 6),
@@ -412,6 +417,10 @@ def build_market_decision(
         "recommended_stake": stake,
         "action": action,
         "reason": reason,
+        "model_edge_available": not market_fallback_no_edge,
+        "prediction_safeguard": prediction.get("prediction_safeguard"),
+        "prediction_safeguard_reason": prediction.get("prediction_safeguard_reason"),
+        "market_fallback_no_edge": market_fallback_no_edge,
         "exposure_action": "保留",
         "exposure_reason": "未觸及相關曝險上限",
         "exposure_adjustment_factor": 1.0,

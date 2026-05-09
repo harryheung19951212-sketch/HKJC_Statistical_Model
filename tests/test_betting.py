@@ -52,6 +52,43 @@ def test_betting_decision_uses_fractional_kelly_and_reports_base_race_cap() -> N
     assert "banker_leg_suggestions" not in result
 
 
+def test_market_fallback_ev_is_reported_but_not_actionable() -> None:
+    predictions = [
+        {
+            "horse_id": "H001",
+            "horse_no": 1,
+            "display_name": "市場校準馬",
+            "win_probability": 0.35,
+            "latest_win_odds": 4.0,
+            "latest_win_odds_source": "hkjc_mqtt",
+            "top3_probability": 0.70,
+            "place_odds": 2.0,
+            "place_odds_source": "hkjc_mqtt",
+            "market_fallback_no_edge": True,
+            "model_edge_available": False,
+            "expected_value_source": "market_fair_probability_fallback",
+            "prediction_safeguard": "uniform_probability_market_fallback",
+        }
+    ]
+
+    result = build_betting_decisions(
+        predictions,
+        "scheduled",
+        bankroll=10000,
+        risk_profile="standard",
+        include_exotics=False,
+    )
+
+    assert result["tickets"] == []
+    win_decision = next(row for row in result["decisions"] if row["market"] == "WIN")
+    assert win_decision["expected_value"] == 0.4
+    assert win_decision["expected_value_source"] == "market_fair_probability_fallback"
+    assert win_decision["model_edge_available"] is False
+    assert win_decision["recommended_stake"] == 0.0
+    assert win_decision["action"] == "觀望"
+    assert win_decision["reason"] == "同分熔斷只計市場公平EV，未有模型edge"
+
+
 def test_resulted_race_is_review_only() -> None:
     predictions = [
         {
