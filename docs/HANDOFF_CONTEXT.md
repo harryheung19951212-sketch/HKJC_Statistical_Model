@@ -23,6 +23,8 @@ This is the current handoff note for the next Codex agent. Treat this section as
 - Only HKJC GraphQL/MQTT `probable` exotic dividends can pass the live betting gate. Final result dividends are replay/settlement only; manual/unverified prices are watch-only even when EV is positive.
 - Pool-choice rows now expose official price coverage, price quality, and `need_official_dividend` verdicts so another Codex can continue with real pool replay and final-dividend calibration.
 - UI candidate cards show dividend quality and the exact price-gate reason.
+- Pool replay now includes `final_dividend_audit`, splitting pending confirmed exotic tickets into no-results, known-loss ready-to-settle, winning tickets waiting for final dividend, and winning tickets with final dividend ready but not yet reconciled.
+- Next best step: wire the audit to automatic final-dividend backfill/reconciliation, then use settled final dividends to calibrate QPL/TRIO/TCE/FIRST4/QUARTET pool-specific ROI.
 
 ### Recent Betting And Settlement Changes
 

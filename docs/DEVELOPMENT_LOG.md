@@ -2,6 +2,28 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-09 - Final Dividend Audit For Pool Replay
+
+Goal:
+
+- Continue indicator 25 組合派彩預測 by making pending exotic settlements explainable.
+- Show which combination tickets are waiting for final dividends before their ROI is trusted.
+- Help pool-choice replay avoid counting unresolved winning exotic tickets as missing or losing data.
+
+Changes:
+
+- Added `final_dividend_audit` to `pool_replay_report`.
+- The audit splits pending confirmed exotic tickets into no results, known losses ready to settle, winning tickets waiting for final dividend, and winning tickets whose final dividend is already available.
+- Pool-level replay rows now expose final-dividend waiting hits, final-ready hits, and known-loss unsettled exotic tickets.
+- The analytics UI now shows final dividend wait counts in the pool replay summary and per-pool cards.
+- Updated the 36-indicator coverage report for items 24 and 25.
+
+Verification:
+
+- `py -3.12 -m compileall -q src dashboard tests`
+- `node --check src\racing_model\web\app.js`
+- `$env:PYTHONPATH='src'; py -3.12 -m pytest tests\test_pool_replay.py tests\test_betting_ledger.py tests\test_betting_settlement.py -q`
+
 ## 2026-05-09 - Official Exotic Dividend Gate For Pool Choice
 
 Goal:

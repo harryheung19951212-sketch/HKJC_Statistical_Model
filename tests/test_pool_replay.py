@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from racing_model.pool_replay import pool_replay_report
+from racing_model.exotic_dividends import upsert_exotic_dividends
 from racing_model.storage import connect, init_db, insert_rows
 
 
@@ -80,6 +81,72 @@ def test_pool_replay_audits_bankroll_exposure_breaches(tmp_path: Path) -> None:
     assert audit["combination_breaches"]
 
 
+def test_pool_replay_flags_exotic_winners_waiting_for_final_dividend(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    conn = connect(db_path)
+    try:
+        insert_rows(
+            conn,
+            "races",
+            [
+                {
+                    "race_id": "HK20260506-ST-02",
+                    "date": "2026-05-06",
+                    "track": "Sha Tin",
+                    "course": "Turf",
+                    "distance_m": 1200,
+                    "going": "Good",
+                    "class_rating": "Class 4",
+                    "prize": 1000000,
+                    "race_name": "測試賽",
+                }
+            ],
+        )
+        insert_rows(
+            conn,
+            "runners",
+            [runner("H001", 1), runner("H002", 2), runner("H003", 3), runner("H004", 4)],
+        )
+        insert_rows(
+            conn,
+            "results",
+            [result("H001", 1), result("H002", 2), result("H003", 3), result("H004", 4)],
+        )
+        upsert_exotic_dividends(
+            conn,
+            "HK20260506-ST-02",
+            [{"market": "TRIO", "combination": "1+2+3", "dividend": 88.0}],
+            source="hkjc_results_final",
+            dividend_status="final",
+        )
+        rows = [
+            recommendation("qpl-waiting-final", "QPL", 20, None, None, None, status="pending", executed=True, execution_stake=20, execution_odds=16.0),
+            recommendation("trio-ready-final", "TRIO", 10, None, None, None, status="pending", executed=True, execution_stake=10, execution_odds=80.0),
+            recommendation("qpl-known-loss", "QPL", 20, None, None, None, status="pending", executed=True, execution_stake=20, execution_odds=20.0),
+        ]
+        rows[0]["race_id"] = rows[1]["race_id"] = rows[2]["race_id"] = "HK20260506-ST-02"
+        rows[0]["horse_id"] = "1+2"
+        rows[1]["horse_id"] = "1+2+3"
+        rows[2]["horse_id"] = "1+4"
+        insert_rows(conn, "betting_recommendations", rows)
+        conn.commit()
+
+        report = pool_replay_report(conn, race_id="HK20260506-ST-02")
+    finally:
+        conn.close()
+
+    audit = report["final_dividend_audit"]
+    markets = {row["market"]: row for row in report["markets"]}
+    assert audit["summary"]["waiting_final_dividend"] == 1
+    assert audit["summary"]["final_ready_unreconciled"] == 1
+    assert audit["summary"]["known_loss_unreconciled"] == 1
+    assert audit["summary"]["status"] == "waiting_final_dividend"
+    assert markets["QPL"]["final_dividend_waiting_hits"] == 1
+    assert markets["QPL"]["exotic_unsettled_known_losses"] == 1
+    assert markets["TRIO"]["final_dividend_ready_hits"] == 1
+
+
 def recommendation(
     recommendation_id: str,
     market: str,
@@ -136,4 +203,38 @@ def recommendation(
         "slippage": 0.0 if status == "reconciled" else None,
         "reconciled_at": "2026-05-06T13:00:00+00:00" if status == "reconciled" else None,
         "reconciliation_status": status,
+    }
+
+
+def runner(horse_id: str, horse_no: int) -> dict[str, object]:
+    return {
+        "race_id": "HK20260506-ST-02",
+        "horse_id": horse_id,
+        "horse_no": horse_no,
+        "horse_name": f"Horse {horse_no}",
+        "horse_name_zh": f"馬{horse_no}",
+        "jockey": "Jockey",
+        "jockey_zh": "騎師",
+        "trainer": "Trainer",
+        "trainer_zh": "練馬師",
+        "draw": horse_no,
+        "weight_lbs": 120,
+        "official_rating": 50,
+        "age": 4,
+        "sex": "G",
+        "running_style": "pace",
+        "gear": "",
+    }
+
+
+def result(horse_id: str, position: int) -> dict[str, object]:
+    return {
+        "race_id": "HK20260506-ST-02",
+        "horse_id": horse_id,
+        "finish_position": position,
+        "finish_time_sec": 70.0 + position,
+        "margin_lengths": position - 1,
+        "sectional_400_sec": None,
+        "sectional_800_sec": None,
+        "comment": "",
     }

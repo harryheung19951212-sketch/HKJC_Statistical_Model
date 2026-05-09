@@ -2194,6 +2194,8 @@ function renderPoolReplay(data) {
   const summary = data.summary || {};
   const bankrollReplay = data.bankroll_replay || {};
   const riskAudit = bankrollReplay.risk_audit || {};
+  const dividendAudit = data.final_dividend_audit || {};
+  const dividendSummary = dividendAudit.summary || {};
   $("pool-replay-summary").innerHTML = `
     <div class="stat"><label>建議票數</label><strong>${summary.tickets || 0}</strong></div>
     <div class="stat"><label>已結算</label><strong>${summary.reconciled || 0}</strong></div>
@@ -2204,11 +2206,13 @@ function renderPoolReplay(data) {
     <div class="stat"><label>整體命中率</label><strong>${summary.hit_rate === null || summary.hit_rate === undefined ? "-" : formatPct(summary.hit_rate)}</strong></div>
     <div class="stat"><label>最佳玩法</label><strong>${summary.best_market_label || "-"}</strong></div>
     <div class="stat"><label>資金回撤</label><strong class="${evClass(bankrollReplay.max_drawdown)}">${formatMoney(bankrollReplay.max_drawdown || 0)}</strong></div>
+    <div class="stat"><label>等最終派彩</label><strong>${dividendSummary.waiting_final_dividend || 0}</strong></div>
+    <div class="stat"><label>可對數組合票</label><strong>${(dividendSummary.final_ready_unreconciled || 0) + (dividendSummary.known_loss_unreconciled || 0)}</strong></div>
     <div class="stat"><label>日最大曝險</label><strong>${formatMoney((riskAudit.daily_max || {}).stake || 0)}</strong></div>
     <div class="stat"><label>風控違規</label><strong>${riskAudit.breach_count || 0}</strong></div>
   `;
   $("pool-replay-note").textContent = summary.best_market_label
-    ? `${summary.best_market_label} 暫時 ROI ${formatPct(summary.best_market_roi)}，但仍要用更多賽日樣本確認。`
+    ? `${summary.best_market_label} 暫時 ROI ${formatPct(summary.best_market_roi)}；${dividendSummary.message || "仍要用更多賽日樣本確認。"}`
     : "未有足夠已結算投注建議，暫時未能比較投注方法。";
   const markets = data.markets || [];
   $("pool-replay-markets").innerHTML = markets.map((row) => `
@@ -2230,6 +2234,8 @@ function renderPoolReplay(data) {
         <div><label>平均派彩</label><b>${formatNum(row.avg_final_dividend, 2)}</b></div>
         <div><label>下注CLV</label><b class="${evClass(row.avg_execution_clv)}">${row.avg_execution_clv === null || row.avg_execution_clv === undefined ? "-" : formatPct(row.avg_execution_clv)}</b></div>
         <div><label>薄利命中</label><b>${row.low_return_hits || 0}</b></div>
+        <div><label>中票等派彩</label><b>${row.final_dividend_waiting_hits || 0}</b></div>
+        <div><label>可對數組合</label><b>${(row.final_dividend_ready_hits || 0) + (row.exotic_unsettled_known_losses || 0)}</b></div>
       </div>
     </div>
   `).join("");

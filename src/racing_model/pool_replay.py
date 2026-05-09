@@ -5,7 +5,7 @@ import re
 from typing import Any
 
 from .betting import RISK_PROFILES
-from .betting_ledger import dedupe_logical_recommendations
+from .betting_ledger import dedupe_logical_recommendations, exotic_outcome, final_exotic_dividend, parse_combination_key
 from .pool_rules import POOL_RULES, cost_adjusted_expected_value, pool_rule_payload
 from .storage import fetch_all
 
@@ -25,13 +25,14 @@ POOL_LABELS_ZH = {
 
 def pool_replay_report(conn: sqlite3.Connection, race_id: str | None = None) -> dict[str, Any]:
     rows = load_recommendations(conn, race_id)
+    dividend_audit = final_dividend_audit(conn, rows)
     market_rows = {market: [] for market in POOL_RULES}
     for row in rows:
         market = str(row.get("market") or "").upper()
         if market in market_rows:
             market_rows[market].append(row)
 
-    markets = [market_replay(market, market_rows[market]) for market in POOL_RULES]
+    markets = [market_replay(market, market_rows[market], dividend_audit["by_market"].get(market, {})) for market in POOL_RULES]
     ranked = sorted(
         [row for row in markets if row["reconciled"] > 0],
         key=lambda row: (
@@ -50,6 +51,7 @@ def pool_replay_report(conn: sqlite3.Connection, race_id: str | None = None) -> 
         "markets": markets,
         "ranking": ranked,
         "bankroll_replay": bankroll_replay,
+        "final_dividend_audit": dividend_audit,
         "insights": replay_insights(markets, best),
     }
 
@@ -76,7 +78,7 @@ def load_recommendations(conn: sqlite3.Connection, race_id: str | None) -> list[
     return dedupe_logical_recommendations(rows)
 
 
-def market_replay(market: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
+def market_replay(market: str, rows: list[dict[str, Any]], dividend_audit: dict[str, Any] | None = None) -> dict[str, Any]:
     reconciled = [row for row in rows if str(row.get("reconciliation_status")) == "reconciled"]
     executed = [row for row in reconciled if str(row.get("execution_status")) == "confirmed"]
     hits = [row for row in reconciled if int(row.get("outcome_win") or 0) == 1]
@@ -149,8 +151,126 @@ def market_replay(market: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
         "execution_max_drawdown": max_drawdown(executed, profit_key="execution_profit"),
         "settlement_rate": safe_divide(len(reconciled), len(rows)),
         "execution_rate": safe_divide(len(executed), len(reconciled)),
+        "final_dividend_waiting_hits": int((dividend_audit or {}).get("waiting_final_dividend") or 0),
+        "final_dividend_ready_hits": int((dividend_audit or {}).get("final_ready_unreconciled") or 0),
+        "exotic_unsettled_known_losses": int((dividend_audit or {}).get("known_loss_unreconciled") or 0),
         "verdict": market_verdict(len(rows), len(reconciled), roi, hit_rate),
     }
+
+
+def final_dividend_audit(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> dict[str, Any]:
+    pending = [
+        row
+        for row in rows
+        if str(row.get("market") or "").upper() in {"QIN", "QPL", "FCT", "TRIO", "TCE", "FIRST4", "QUARTET"}
+        and str(row.get("execution_status") or "") == "confirmed"
+        and str(row.get("reconciliation_status") or "") != "reconciled"
+    ]
+    by_market = {market: empty_dividend_audit_market(market) for market in ["QIN", "QPL", "FCT", "TRIO", "TCE", "FIRST4", "QUARTET"]}
+    items: list[dict[str, Any]] = []
+    for row in pending:
+        market = str(row.get("market") or "").upper()
+        selected = parse_combination_key(str(row.get("horse_id") or ""))
+        race_id = str(row.get("race_id") or "")
+        market_summary = by_market.setdefault(market, empty_dividend_audit_market(market))
+        market_summary["pending_executed"] += 1
+        result_state = exotic_result_state(conn, race_id, market, selected)
+        status = str(result_state["status"])
+        final_odds = final_exotic_dividend(conn, race_id, market, str(row.get("horse_id") or ""))
+        if status == "no_results":
+            market_summary["no_results"] += 1
+            reason = "未有賽果，未能判斷是否中票。"
+        elif status == "loss":
+            market_summary["known_loss_unreconciled"] += 1
+            reason = "已知不中，下一次對數應可結算為輸票。"
+        elif final_odds is None:
+            market_summary["waiting_final_dividend"] += 1
+            reason = "已知中票，但未有 final dividend，不能計回報。"
+        else:
+            market_summary["final_ready_unreconciled"] += 1
+            reason = "final dividend 已有，下一次對數應可結算。"
+        items.append(
+            {
+                "race_id": race_id,
+                "market": market,
+                "market_label": POOL_LABELS_ZH.get(market, market),
+                "horse_id": row.get("horse_id"),
+                "horse_name": row.get("horse_name"),
+                "result_status": status,
+                "finish_positions": result_state.get("finish_positions"),
+                "final_dividend": final_odds,
+                "stake": settled_stake(row),
+                "reason": reason,
+            }
+        )
+    summary = {
+        "pending_executed": sum(int(row["pending_executed"]) for row in by_market.values()),
+        "waiting_final_dividend": sum(int(row["waiting_final_dividend"]) for row in by_market.values()),
+        "final_ready_unreconciled": sum(int(row["final_ready_unreconciled"]) for row in by_market.values()),
+        "known_loss_unreconciled": sum(int(row["known_loss_unreconciled"]) for row in by_market.values()),
+        "no_results": sum(int(row["no_results"]) for row in by_market.values()),
+    }
+    summary["status"] = (
+        "waiting_final_dividend"
+        if summary["waiting_final_dividend"]
+        else "ready_to_reconcile"
+        if summary["final_ready_unreconciled"] or summary["known_loss_unreconciled"]
+        else "no_pending_exotic"
+    )
+    summary["message"] = final_dividend_audit_message(summary)
+    return {
+        "summary": summary,
+        "by_market": by_market,
+        "items": sorted(items, key=lambda row: (str(row.get("race_id") or ""), str(row.get("market") or ""), str(row.get("horse_id") or "")))[:40],
+    }
+
+
+def empty_dividend_audit_market(market: str) -> dict[str, Any]:
+    return {
+        "market": market,
+        "market_label": POOL_LABELS_ZH.get(market, market),
+        "pending_executed": 0,
+        "waiting_final_dividend": 0,
+        "final_ready_unreconciled": 0,
+        "known_loss_unreconciled": 0,
+        "no_results": 0,
+    }
+
+
+def exotic_result_state(conn: sqlite3.Connection, race_id: str, market: str, selected: list[int]) -> dict[str, Any]:
+    if not race_id or not selected:
+        return {"status": "no_results", "finish_positions": []}
+    rows = fetch_all(
+        conn,
+        """
+        SELECT ru.horse_no, x.finish_position
+        FROM results x
+        JOIN runners ru ON ru.race_id = x.race_id AND ru.horse_id = x.horse_id
+        WHERE x.race_id = ?
+        """,
+        (race_id,),
+    )
+    if not rows:
+        return {"status": "no_results", "finish_positions": []}
+    finish_by_no = {int(row["horse_no"]): int(row["finish_position"]) for row in rows if row["horse_no"]}
+    if any(number not in finish_by_no for number in selected):
+        return {"status": "no_results", "finish_positions": []}
+    finishes = [finish_by_no[number] for number in selected]
+    return {
+        "status": "hit" if exotic_outcome(market, selected, finish_by_no) else "loss",
+        "finish_positions": finishes,
+    }
+
+
+def final_dividend_audit_message(summary: dict[str, Any]) -> str:
+    if int(summary.get("waiting_final_dividend") or 0) > 0:
+        return f"{summary['waiting_final_dividend']} 張組合中票等待 final dividend，暫不可計入真實 ROI。"
+    ready = int(summary.get("final_ready_unreconciled") or 0) + int(summary.get("known_loss_unreconciled") or 0)
+    if ready > 0:
+        return f"{ready} 張組合票已有足夠資料，下一次對數可結算。"
+    if int(summary.get("no_results") or 0) > 0:
+        return "仍有組合票未有賽果，暫時等待官方結果。"
+    return "未有等待 final dividend 的組合票。"
 
 
 def overall_summary(rows: list[dict[str, Any]], markets: list[dict[str, Any]], best: dict[str, Any] | None) -> dict[str, Any]:
