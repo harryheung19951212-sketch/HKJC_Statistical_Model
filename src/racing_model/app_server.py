@@ -1226,7 +1226,7 @@ def api_betting(
         else:
             adaptive = adaptive_predict_race(conn, model, race_id, policy)
             predictions = adaptive["predictions"]
-            policy = policy or adaptive.get("policy", {})
+            policy = adaptive.get("policy", policy or {})
             if state is not None:
                 state.cache_race_predictions(race_id, predictions, policy or {})
     pace_map = annotate_predictions_with_pace(predictions)
