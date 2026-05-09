@@ -952,8 +952,11 @@ function renderPoolChoiceCard(row) {
         <label>最佳派彩 <b>${formatNum(row.best_dividend, 2)}x</b></label>
         <label>派彩質素 <b>${row.price_quality_label || "-"}</b></label>
         <label>官方覆蓋 <b>${row.official_price_count || 0}/${row.candidate_count || row.ticket_count || 0}</b></label>
+        <label>Replay狀態 <b>${row.pool_replay_gate_label || "-"}</b></label>
+        <label>Replay ROI <b class="${evClass(row.pool_replay_roi)}">${row.pool_replay_roi === null || row.pool_replay_roi === undefined ? "-" : formatPct(row.pool_replay_roi)}</b></label>
+        <label>Replay樣本 <b>${row.pool_replay_sample_size || 0}/${row.pool_replay_min_samples || "-"}</b></label>
       </div>
-      <small>${row.price_gate_reason || ""}</small>
+      <small>${[row.price_gate_reason, row.pool_replay_gate_reason].filter(Boolean).join("｜")}</small>
     </div>
   `;
 }
@@ -967,6 +970,7 @@ function poolChoiceVerdict(value) {
     no_edge_after_cost: "扣成本後無值",
     dividend_too_short: "派彩未補償風險",
     high_variance: "波動過高",
+    replay_blocked: "Replay 封鎖",
     no_candidate: "未有候選",
   }[value] || value || "-";
 }

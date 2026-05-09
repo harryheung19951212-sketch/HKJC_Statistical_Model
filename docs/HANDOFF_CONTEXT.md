@@ -10,13 +10,13 @@ This is the current handoff note for the next Codex agent. Treat this section as
 
 - Repo: `https://github.com/harryheung19951212-sketch/HKJC_Statistical_Model`
 - Branch: `codex/horse-racing-model`
-- Latest pushed commit before this handoff note: `96e03b7 Log settlement ticket cleanup`
+- Latest handoff update: pool replay gate for pool choice. Previous pushed commit before this work: `9b5c335 Reconcile pool replay from final dividend audit`.
 - Production server: `43.228.125.192`
 - Production app path: `/opt/hkjc-model`
 - Public app URL: `http://43.228.125.192:8765/`
 - Production app uses Docker Compose with PostgreSQL. Do not commit `.env`, `.env.production`, data DBs, raw data, model snapshots, reports, passwords, tokens, or server secrets.
 
-### Current Development Focus - Official Exotic Dividend Gate
+### Current Development Focus - Pool Replay Gate For Pool Choice
 
 - The latest local work strengthens indicator 24 彩池選擇模型 and indicator 25 組合派彩預測.
 - Exotic dividends are now classified as official probable, final result, estimated, unverified, or missing.
@@ -26,7 +26,9 @@ This is the current handoff note for the next Codex agent. Treat this section as
 - Pool replay now includes `final_dividend_audit`, splitting pending confirmed exotic tickets into no-results, known-loss ready-to-settle, winning tickets waiting for final dividend, and winning tickets with final dividend ready but not yet reconciled.
 - `/api/pool-replay/reconcile` now uses the audit to refresh HKJC results/final dividends for flagged races, then runs betting-ledger reconciliation and returns before/after audit summaries.
 - Global update also reconciles the race ledger/pool replay immediately after a race becomes resulted.
-- Next best step: use settled final dividends to calibrate QPL/TRIO/TCE/FIRST4/QUARTET pool-specific ROI and improve pool-choice optimizer thresholds.
+- New in this turn: `pool_replay_calibration()` converts settled pool replay into per-pool statuses. Betting now accepts `pool_replay_gate`; a pool with poor settled ROI can be blocked, pools waiting for final dividend / reconciliation can be reduced, and pool-choice UI shows replay status, sample size, replay ROI, stake factor, and reason.
+- The active race API caches this gate for 60 seconds so the 30-second race refresh does not recalculate full replay state every time.
+- Next best step: extend this gate into walk-forward pool-choice optimizer thresholds by venue/distance/class and compare against single-pool baselines.
 
 ### Recent Betting And Settlement Changes
 

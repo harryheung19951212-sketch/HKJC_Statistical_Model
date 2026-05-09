@@ -349,6 +349,65 @@ def test_unverified_exotic_dividend_is_watch_only_not_ticket() -> None:
     assert qpl_pool["verdict"] == "need_official_dividend"
 
 
+def test_pool_replay_gate_blocks_exotic_ticket_after_poor_replay() -> None:
+    predictions = [
+        {
+            "horse_id": f"H00{index}",
+            "horse_no": index,
+            "display_name": f"馬{index}",
+            "win_probability": probability,
+            "latest_win_odds": 3.0 + index,
+            "latest_win_odds_source": "hkjc_mqtt",
+            "top3_probability": min(probability * 3, 0.9),
+            "place_odds": 1.5,
+            "place_odds_source": "hkjc_mqtt",
+        }
+        for index, probability in enumerate([0.34, 0.24, 0.18, 0.12, 0.07, 0.05], start=1)
+    ]
+    dividends = {
+        ("QPL", "1+2"): {
+            "dividend": 40.0,
+            "dividend_status": "probable",
+            "source": "hkjc_graphql",
+        }
+    }
+    replay_gate = {
+        "status": "blocked",
+        "markets": {
+            "QPL": {
+                "market": "QPL",
+                "status": "replay_block",
+                "label": "Replay 封鎖",
+                "reason": "位置Q replay ROI -25.0% 低於 -15%，暫停真注，只保留觀察。",
+                "stake_factor": 0.0,
+                "reconciled": 10,
+                "min_samples": 10,
+                "roi": -0.25,
+            }
+        },
+    }
+
+    result = build_betting_decisions(
+        predictions,
+        "scheduled",
+        bankroll=10000,
+        risk_profile="standard",
+        exotic_dividends=dividends,
+        pool_replay_gate=replay_gate,
+    )
+
+    qpl_candidate = next(row for row in result["exotic_candidates"] if row["market"] == "QPL" and row["combination_key"] == "1+2")
+    qpl_pool = next(row for row in result["pool_choice"]["markets"] if row["market"] == "QPL")
+
+    assert qpl_candidate["expected_value"] > 0
+    assert qpl_candidate["recommended_stake"] == 0.0
+    assert qpl_candidate["pool_replay_gate_status"] == "replay_block"
+    assert "暫停真注" in qpl_candidate["stake_reason"]
+    assert all(ticket["market"] != "QPL" for ticket in result["tickets"])
+    assert qpl_pool["verdict"] == "replay_blocked"
+    assert any(item["title"] == "Replay 封鎖彩池" for item in result["pool_choice"]["recommendations"])
+
+
 def test_ordered_exotic_box_counts_all_permutation_tickets() -> None:
     predictions = [
         {

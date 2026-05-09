@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from racing_model.pool_replay import pool_replay_report
+from racing_model.pool_replay import pool_replay_calibration, pool_replay_report
 from racing_model.exotic_dividends import upsert_exotic_dividends
 from racing_model.storage import connect, init_db, insert_rows
 
@@ -145,6 +145,33 @@ def test_pool_replay_flags_exotic_winners_waiting_for_final_dividend(tmp_path: P
     assert markets["QPL"]["final_dividend_waiting_hits"] == 1
     assert markets["QPL"]["exotic_unsettled_known_losses"] == 1
     assert markets["TRIO"]["final_dividend_ready_hits"] == 1
+
+
+def test_pool_replay_calibration_blocks_poor_settled_pool(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    conn = connect(db_path)
+    try:
+        rows = [
+            recommendation(f"qpl-loss-{index}", "QPL", 20, 0, -20, 0)
+            for index in range(10)
+        ]
+        for index, row in enumerate(rows, start=1):
+            row["horse_id"] = f"{index}+{index + 1}"
+        insert_rows(conn, "betting_recommendations", rows)
+        conn.commit()
+
+        report = pool_replay_report(conn)
+        gate = pool_replay_calibration(report)
+    finally:
+        conn.close()
+
+    qpl = gate["markets"]["QPL"]
+    assert gate["status"] == "blocked"
+    assert qpl["status"] == "replay_block"
+    assert qpl["stake_factor"] == 0.0
+    assert qpl["min_samples"] == 10
+    assert "暫停真注" in qpl["reason"]
 
 
 def recommendation(

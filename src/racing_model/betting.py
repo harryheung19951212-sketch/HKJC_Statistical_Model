@@ -56,6 +56,7 @@ def build_betting_decisions(
     exotic_dividends: dict[tuple[str, str], dict[str, Any]] | None = None,
     include_exotics: bool = True,
     calibration_gate: dict[str, Any] | None = None,
+    pool_replay_gate: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     profile = RISK_PROFILES.get(risk_profile, RISK_PROFILES["standard"])
     bankroll = max(float(bankroll or 0), 0.0)
@@ -96,6 +97,7 @@ def build_betting_decisions(
     exotic_candidates = build_exotic_candidates(predictions, race_status, exotic_dividends=exotic_dividends) if include_exotics else []
     exotic_decisions = build_exotic_decisions(exotic_candidates, race_status, bankroll, profile, effective_fractional_kelly) if include_exotics else []
     calibration_adjustments = apply_calibration_stake_gate([*decisions, *exotic_decisions], bankroll, calibration_gate)
+    pool_replay_adjustments = apply_pool_replay_stake_gate([*decisions, *exotic_decisions], bankroll, pool_replay_gate)
     active = [decision for decision in [*decisions, *exotic_decisions] if decision["recommended_stake"] > 0]
     max_race_stake = round(bankroll * profile.max_race_fraction, 2)
     raw_total = sum(float(item["recommended_stake"]) for item in active)
@@ -113,7 +115,7 @@ def build_betting_decisions(
         reverse=True,
     )
     tickets = [decision for decision in all_decisions if decision["recommended_stake"] > 0]
-    pool_choice = build_pool_choice_scorecard(all_decisions, exotic_candidates, tickets)
+    pool_choice = build_pool_choice_scorecard(all_decisions, exotic_candidates, tickets, pool_replay_gate=pool_replay_gate)
     bet_slip = build_bet_slip(tickets, pool_choice, exposure_report, bankroll, profile, race_status)
     return {
         "race_status": race_status,
@@ -133,6 +135,8 @@ def build_betting_decisions(
         },
         "calibration_gate": calibration_gate or default_calibration_gate(),
         "calibration_adjustments": calibration_adjustments,
+        "pool_replay_gate": pool_replay_gate or default_pool_replay_gate(),
+        "pool_replay_adjustments": pool_replay_adjustments,
         "pool_rules": all_pool_rules_payload(),
         "max_race_stake": max_race_stake,
         "total_recommended_stake": round(sum(float(item["recommended_stake"]) for item in tickets), 1),
@@ -204,6 +208,83 @@ def default_calibration_gate() -> dict[str, Any]:
         "message": "未提供額外校準 gate，按原本風險設定計注。",
         "stake_factor": 1.0,
         "promote_allowed": True,
+    }
+
+
+def apply_pool_replay_stake_gate(
+    decisions: list[dict[str, Any]],
+    bankroll: float,
+    gate: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    adjustments = []
+    for decision in decisions:
+        market = str(decision.get("market") or "")
+        market_gate = pool_replay_market_context(gate, market)
+        factor = pool_replay_stake_factor(market_gate)
+        decision["pool_replay_gate_status"] = market_gate.get("status", "unverified")
+        decision["pool_replay_gate_label"] = market_gate.get("label", "Replay 未驗證")
+        decision["pool_replay_gate_reason"] = market_gate.get("reason", "未有分池 replay 校準。")
+        decision["pool_replay_stake_factor"] = factor
+        decision["pool_replay_sample_size"] = market_gate.get("reconciled", 0)
+        decision["pool_replay_min_samples"] = market_gate.get("min_samples")
+        decision["pool_replay_roi"] = market_gate.get("roi")
+        decision["pool_replay_execution_roi"] = market_gate.get("execution_roi")
+        original_stake = float(decision.get("recommended_stake") or 0.0)
+        if original_stake <= 0 or factor >= 0.999:
+            continue
+        new_stake = round_stake_to_unit(original_stake * factor, market)
+        if factor <= 0.0:
+            new_stake = 0.0
+        decision["recommended_stake"] = new_stake
+        decision["stake_fraction"] = round(new_stake / bankroll, 6) if bankroll else 0.0
+        decision["reason"] = f"{decision.get('reason') or '符合條件'}；{decision['pool_replay_gate_reason']}"
+        if new_stake <= 0:
+            decision["action"] = "觀望"
+        adjustments.append(
+            {
+                "market": market,
+                "horse_id": decision.get("horse_id"),
+                "horse_name": decision.get("horse_name"),
+                "original_stake": round(original_stake, 1),
+                "adjusted_stake": round(new_stake, 1),
+                "factor": factor,
+                "status": market_gate.get("status", "unverified"),
+                "reason": decision["pool_replay_gate_reason"],
+            }
+        )
+    return adjustments
+
+
+def pool_replay_market_context(gate: dict[str, Any] | None, market: str) -> dict[str, Any]:
+    if not gate:
+        return {}
+    markets = gate.get("markets") if isinstance(gate, dict) else None
+    if isinstance(markets, dict):
+        row = markets.get(str(market).upper())
+        if isinstance(row, dict):
+            return row
+    return {}
+
+
+def pool_replay_stake_factor(market_gate: dict[str, Any] | None) -> float:
+    if not market_gate:
+        return 1.0
+    try:
+        value = market_gate.get("stake_factor", 1.0)
+        return max(0.0, min(float(1.0 if value is None else value), 1.0))
+    except (TypeError, ValueError):
+        return 1.0
+
+
+def default_pool_replay_gate() -> dict[str, Any]:
+    return {
+        "status": "unverified",
+        "label": "分彩池 replay 未啟用",
+        "message": "未提供分池 replay gate，注碼只按即場 EV、校準及曝險規則處理。",
+        "markets": {},
+        "blocked_markets": [],
+        "reduced_markets": [],
+        "sample_building_markets": [],
     }
 
 
@@ -700,13 +781,14 @@ def build_pool_choice_scorecard(
     decisions: list[dict[str, Any]],
     exotic_candidates: list[dict[str, Any]],
     tickets: list[dict[str, Any]],
+    pool_replay_gate: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     markets = ["WIN", "PLACE", *EXOTIC_PRODUCTS.keys()]
     rows = []
     for market in markets:
         market_decisions = [row for row in decisions if str(row.get("market")) == market]
         market_candidates = [row for row in exotic_candidates if str(row.get("market")) == market]
-        row = pool_choice_market_row(market, market_decisions, market_candidates)
+        row = pool_choice_market_row(market, market_decisions, market_candidates, pool_replay_market_context(pool_replay_gate, market))
         rows.append(row)
     ranked = sorted(rows, key=lambda row: float(row["choice_score"]), reverse=True)
     actionable = [row for row in ranked if row["actionable_count"] > 0]
@@ -730,9 +812,11 @@ def pool_choice_market_row(
     market: str,
     decisions: list[dict[str, Any]],
     candidates: list[dict[str, Any]],
+    replay_gate: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     sources = [*decisions, *candidates]
     rule = pool_rule_payload(market)
+    replay_gate = replay_gate or {}
     if not sources:
         return {
             "market": market,
@@ -757,6 +841,14 @@ def pool_choice_market_row(
             "price_quality_label": "未有派彩",
             "price_gate_reason": "未有候選或官方派彩。",
             "price_coverage": 0.0,
+            "pool_replay_gate_status": replay_gate.get("status", "no_candidate"),
+            "pool_replay_gate_label": replay_gate.get("label", "未有候選"),
+            "pool_replay_gate_reason": replay_gate.get("reason", "未有候選可做 replay 校準。"),
+            "pool_replay_stake_factor": pool_replay_stake_factor(replay_gate),
+            "pool_replay_sample_size": replay_gate.get("reconciled", 0),
+            "pool_replay_min_samples": replay_gate.get("min_samples"),
+            "pool_replay_roi": replay_gate.get("roi"),
+            "pool_replay_execution_roi": replay_gate.get("execution_roi"),
             "leverage_index": 0.0,
             "efficiency_gap": None,
             "risk_penalty": 0.0,
@@ -781,6 +873,8 @@ def pool_choice_market_row(
     leverage = max((dividend or required or 1.0) - 1.0, 0.0)
     efficiency_gap = (dividend - required) if dividend is not None and required is not None else None
     risk_penalty = pool_choice_risk_penalty(market, probability, minimum_cost, leverage)
+    replay_factor = pool_replay_stake_factor(replay_gate)
+    replay_penalty = pool_choice_replay_penalty(replay_gate)
     score = pool_choice_score(
         adjusted_ev=adjusted_ev,
         probability=probability,
@@ -788,7 +882,7 @@ def pool_choice_market_row(
         leverage=leverage,
         takeout=float(rule["takeout_rate"]),
         minimum_cost=minimum_cost,
-        risk_penalty=risk_penalty,
+        risk_penalty=risk_penalty + replay_penalty,
         actionable=bool(actionable),
         price_quality_score=float(price_quality["score"]),
     )
@@ -815,10 +909,18 @@ def pool_choice_market_row(
         "price_quality": price_quality["quality"],
         "price_quality_label": price_quality["label"],
         "price_gate_reason": price_quality["reason"],
+        "pool_replay_gate_status": replay_gate.get("status", "unverified"),
+        "pool_replay_gate_label": replay_gate.get("label", "Replay 未驗證"),
+        "pool_replay_gate_reason": replay_gate.get("reason", "未有分池 replay 校準。"),
+        "pool_replay_stake_factor": replay_factor,
+        "pool_replay_sample_size": replay_gate.get("reconciled", 0),
+        "pool_replay_min_samples": replay_gate.get("min_samples"),
+        "pool_replay_roi": replay_gate.get("roi"),
+        "pool_replay_execution_roi": replay_gate.get("execution_roi"),
         "leverage_index": round(leverage, 3),
         "efficiency_gap": round(efficiency_gap, 3) if efficiency_gap is not None else None,
-        "risk_penalty": round(risk_penalty, 4),
-        "verdict": pool_choice_verdict(market, adjusted_ev, efficiency_gap, actionable, risk_penalty, bool(price_quality["is_official"])),
+        "risk_penalty": round(risk_penalty + replay_penalty, 4),
+        "verdict": pool_choice_verdict(market, adjusted_ev, efficiency_gap, actionable, risk_penalty, bool(price_quality["is_official"]), replay_gate),
     }
 
 
@@ -923,6 +1025,20 @@ def pool_choice_risk_penalty(market: str, probability: float | None, minimum_cos
     return low_hit_penalty + cost_penalty + leverage_penalty
 
 
+def pool_choice_replay_penalty(replay_gate: dict[str, Any] | None) -> float:
+    if not replay_gate:
+        return 0.0
+    status = str(replay_gate.get("status") or "")
+    return {
+        "replay_block": 18.0,
+        "replay_reduce": 6.0,
+        "waiting_final_dividend": 5.0,
+        "ready_to_reconcile": 3.0,
+        "sample_building": 1.5,
+        "no_replay_data": 1.0,
+    }.get(status, 0.0)
+
+
 def pool_choice_verdict(
     market: str,
     adjusted_ev: float | None,
@@ -930,7 +1046,11 @@ def pool_choice_verdict(
     actionable: list[dict[str, Any]] | bool,
     risk_penalty: float,
     official_price: bool,
+    replay_gate: dict[str, Any] | None = None,
 ) -> str:
+    replay_status = str((replay_gate or {}).get("status") or "")
+    if replay_status == "replay_block":
+        return "replay_blocked"
     if adjusted_ev is None:
         return "need_dividend"
     if market not in {"WIN", "PLACE"} and not official_price:
@@ -948,6 +1068,30 @@ def pool_choice_verdict(
 
 def pool_choice_recommendations(rows: list[dict[str, Any]], best: dict[str, Any] | None) -> list[dict[str, str]]:
     recommendations: list[dict[str, str]] = []
+    blocked = [row for row in rows if row.get("pool_replay_gate_status") == "replay_block"]
+    reduced = [
+        row
+        for row in rows
+        if row.get("pool_replay_gate_status") in {"replay_reduce", "waiting_final_dividend", "ready_to_reconcile"}
+    ]
+    if blocked:
+        labels = "、".join(str(row.get("market_label") or row.get("market")) for row in blocked[:3])
+        recommendations.append(
+            {
+                "level": "risk",
+                "title": "Replay 封鎖彩池",
+                "body": f"{labels} 的已結算 replay 表現未達標，今場只保留觀察，不輸出真注。",
+            }
+        )
+    if reduced:
+        labels = "、".join(str(row.get("market_label") or row.get("market")) for row in reduced[:3])
+        recommendations.append(
+            {
+                "level": "risk",
+                "title": "Replay 降注彩池",
+                "body": f"{labels} 因 ROI、對數或 final dividend 未完全可信，已自動降低注碼及排序分。",
+            }
+        )
     if best and best.get("verdict") == "actionable":
         recommendations.append(
             {
@@ -1194,6 +1338,14 @@ def slip_ticket_payload(ticket: dict[str, Any]) -> dict[str, Any]:
         "reason",
         "exposure_action",
         "exposure_reason",
+        "pool_replay_gate_status",
+        "pool_replay_gate_label",
+        "pool_replay_gate_reason",
+        "pool_replay_stake_factor",
+        "pool_replay_sample_size",
+        "pool_replay_min_samples",
+        "pool_replay_roi",
+        "pool_replay_execution_roi",
     ]
     return {key: ticket.get(key) for key in keys if key in ticket}
 
@@ -1210,6 +1362,10 @@ def bet_slip_notes(
     best_market = (pool_choice.get("summary") or {}).get("best_market_label")
     if best_market:
         notes.append({"level": "focus", "title": "主攻彩池", "body": f"彩池選擇模型暫時偏向 {best_market}，下注單會優先排序同類高分票。"})
+    replay_limited = [row for row in tickets if row.get("pool_replay_gate_status") in {"replay_reduce", "waiting_final_dividend", "ready_to_reconcile"}]
+    if replay_limited:
+        markets = sorted({str(row.get("market_label") or row.get("market")) for row in replay_limited})
+        notes.append({"level": "risk", "title": "分池 replay 降注", "body": f"{'、'.join(markets[:3])} 受已結算 ROI / final dividend 對數狀態限制，注碼已先行收細。"})
     leverage = [row for row in tickets if row.get("portfolio_role") == "leverage"]
     if leverage:
         notes.append({"level": "upgrade", "title": "槓桿票", "body": "已將單T/三連彩/四連環類高派彩票標成槓桿角色，注碼受單場風險上限約束。"})
@@ -1446,6 +1602,14 @@ def annotate_exotic_candidate_stakes(
         candidate["exposure_action"] = decision.get("exposure_action")
         candidate["exposure_reason"] = decision.get("exposure_reason")
         candidate["exposure_adjustment_factor"] = decision.get("exposure_adjustment_factor")
+        candidate["pool_replay_gate_status"] = decision.get("pool_replay_gate_status")
+        candidate["pool_replay_gate_label"] = decision.get("pool_replay_gate_label")
+        candidate["pool_replay_gate_reason"] = decision.get("pool_replay_gate_reason")
+        candidate["pool_replay_stake_factor"] = decision.get("pool_replay_stake_factor")
+        candidate["pool_replay_sample_size"] = decision.get("pool_replay_sample_size")
+        candidate["pool_replay_min_samples"] = decision.get("pool_replay_min_samples")
+        candidate["pool_replay_roi"] = decision.get("pool_replay_roi")
+        candidate["pool_replay_execution_roi"] = decision.get("pool_replay_execution_roi")
         combination_count = max(int(candidate.get("combination_count") or 1), 1)
         candidate["per_combination_stake"] = round(float(candidate["recommended_stake"]) / combination_count, 2)
         if float(candidate["recommended_stake"]) <= 0:

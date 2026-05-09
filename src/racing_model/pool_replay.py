@@ -22,6 +22,18 @@ POOL_LABELS_ZH = {
     "QUARTET": "四重彩",
 }
 
+POOL_REPLAY_MIN_SAMPLES = {
+    "WIN": 12,
+    "PLACE": 12,
+    "QIN": 10,
+    "QPL": 10,
+    "FCT": 10,
+    "TRIO": 8,
+    "TCE": 8,
+    "FIRST4": 6,
+    "QUARTET": 6,
+}
+
 
 def pool_replay_report(conn: sqlite3.Connection, race_id: str | None = None) -> dict[str, Any]:
     rows = load_recommendations(conn, race_id)
@@ -54,6 +66,103 @@ def pool_replay_report(conn: sqlite3.Connection, race_id: str | None = None) -> 
         "final_dividend_audit": dividend_audit,
         "insights": replay_insights(markets, best),
     }
+
+
+def pool_replay_calibration(report: dict[str, Any] | None) -> dict[str, Any]:
+    markets = list((report or {}).get("markets") or [])
+    rows = [pool_replay_market_gate(row) for row in markets if isinstance(row, dict)]
+    by_market = {str(row["market"]): row for row in rows}
+    blocked = [row for row in rows if row["status"] == "replay_block"]
+    reduced = [row for row in rows if row["stake_factor"] < 1.0 and row["status"] != "replay_block"]
+    sample_building = [row for row in rows if row["status"] in {"no_replay_data", "sample_building"}]
+    return {
+        "status": "blocked" if blocked else "reduced" if reduced else "sample_building" if sample_building else "pass",
+        "label": "分彩池 replay 校準",
+        "message": pool_replay_calibration_message(blocked, reduced, sample_building),
+        "markets": by_market,
+        "blocked_markets": [row["market"] for row in blocked],
+        "reduced_markets": [row["market"] for row in reduced],
+        "sample_building_markets": [row["market"] for row in sample_building],
+    }
+
+
+def pool_replay_market_gate(row: dict[str, Any]) -> dict[str, Any]:
+    market = str(row.get("market") or "").upper()
+    label = str(row.get("market_label") or POOL_LABELS_ZH.get(market, market))
+    reconciled = int(row.get("reconciled") or 0)
+    executed = int(row.get("executed") or 0)
+    waiting_final = int(row.get("final_dividend_waiting_hits") or 0)
+    ready_final = int(row.get("final_dividend_ready_hits") or 0)
+    min_samples = POOL_REPLAY_MIN_SAMPLES.get(market, 10)
+    roi = safe_float(row.get("roi"))
+    execution_roi = safe_float(row.get("execution_roi"))
+    primary_roi = execution_roi if executed >= max(3, min_samples // 2) else roi
+    status = "pass"
+    stake_factor = 1.0
+    reason = f"{label} replay 樣本達標，未觸發分池降注。"
+
+    if reconciled <= 0:
+        status = "no_replay_data"
+        reason = f"{label} 未有已結算 replay 樣本；可以保存候選，但未能證明長期 ROI。"
+    elif waiting_final > 0:
+        status = "waiting_final_dividend"
+        stake_factor = 0.5
+        reason = f"{label} 有 {waiting_final} 張中票等 final dividend，真實 ROI 暫未可信，先減半注碼。"
+    elif ready_final > 0:
+        status = "ready_to_reconcile"
+        stake_factor = 0.75
+        reason = f"{label} 有 {ready_final} 張組合票已有 final dividend 等待對數，先降注直至 replay 更新。"
+    elif reconciled < min_samples:
+        status = "sample_building"
+        reason = f"{label} 已結算 {reconciled}/{min_samples} 張，樣本不足，只能作初步分池參考。"
+    elif primary_roi is not None and primary_roi <= -0.15:
+        status = "replay_block"
+        stake_factor = 0.0
+        reason = f"{label} replay ROI {format_pct(primary_roi)} 低於 -15%，暫停真注，只保留觀察。"
+    elif primary_roi is not None and primary_roi < 0:
+        status = "replay_reduce"
+        stake_factor = 0.5
+        reason = f"{label} replay ROI {format_pct(primary_roi)} 暫時為負，先減半注碼。"
+
+    return {
+        "market": market,
+        "market_label": label,
+        "status": status,
+        "label": pool_replay_gate_label(status),
+        "reason": reason,
+        "stake_factor": stake_factor,
+        "reconciled": reconciled,
+        "executed": executed,
+        "min_samples": min_samples,
+        "roi": roi,
+        "execution_roi": execution_roi,
+        "final_dividend_waiting_hits": waiting_final,
+        "final_dividend_ready_hits": ready_final,
+    }
+
+
+def pool_replay_gate_label(status: str) -> str:
+    return {
+        "pass": "Replay 通過",
+        "no_replay_data": "未有 replay 樣本",
+        "sample_building": "樣本累積中",
+        "waiting_final_dividend": "等待最終派彩",
+        "ready_to_reconcile": "等待對數",
+        "replay_reduce": "Replay 減注",
+        "replay_block": "Replay 封鎖",
+    }.get(status, "Replay 待檢查")
+
+
+def pool_replay_calibration_message(blocked: list[dict[str, Any]], reduced: list[dict[str, Any]], sample_building: list[dict[str, Any]]) -> str:
+    if blocked:
+        labels = "、".join(str(row["market_label"]) for row in blocked[:3])
+        return f"{labels} 的已結算 replay ROI 太差，暫停真注。"
+    if reduced:
+        labels = "、".join(str(row["market_label"]) for row in reduced[:3])
+        return f"{labels} replay 未完全可信，下注前會自動降注。"
+    if sample_building:
+        return "部分彩池仍在累積 replay 樣本；系統會顯示樣本狀態但不當成已驗證 edge。"
+    return "分彩池 replay 暫未觸發限制。"
 
 
 def load_recommendations(conn: sqlite3.Connection, race_id: str | None) -> list[dict[str, Any]]:

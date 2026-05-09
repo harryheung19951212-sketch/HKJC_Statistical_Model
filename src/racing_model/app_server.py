@@ -55,7 +55,7 @@ from .odds import (
     refresh_odds,
 )
 from .pace import annotate_predictions_with_pace
-from .pool_replay import pool_replay_report
+from .pool_replay import pool_replay_calibration, pool_replay_report
 from .promotion_scorecard import build_promotion_scorecard, promotion_scorecard
 from .storage import (
     connect,
@@ -98,6 +98,8 @@ class AppState:
         self.policy_lock = threading.Lock()
         self.calibration_cache: dict[str, object] = {"expires_at": 0.0, "gate": None}
         self.calibration_lock = threading.Lock()
+        self.pool_replay_gate_cache: dict[str, object] = {"expires_at": 0.0, "gate": None}
+        self.pool_replay_gate_lock = threading.Lock()
 
     def model(self) -> RankingModel:
         if self.model_path.exists():
@@ -145,6 +147,28 @@ class AppState:
             }
         with self.calibration_lock:
             self.calibration_cache = {"expires_at": now + 300.0, "gate": dict(gate)}
+        return dict(gate)
+
+    def pool_replay_gate(self, conn) -> dict[str, object]:
+        now = time.monotonic()
+        with self.pool_replay_gate_lock:
+            cached = self.pool_replay_gate_cache.get("gate")
+            if cached and now < float(self.pool_replay_gate_cache.get("expires_at") or 0):
+                return dict(cached)
+        try:
+            gate = pool_replay_calibration(pool_replay_report(conn))
+        except Exception as exc:
+            gate = {
+                "status": "unverified",
+                "label": "分彩池 replay 暫未確認",
+                "message": f"分池 replay gate 暫時未能計算：{str(exc)[:160]}。先不改變注碼。",
+                "markets": {},
+                "blocked_markets": [],
+                "reduced_markets": [],
+                "sample_building_markets": [],
+            }
+        with self.pool_replay_gate_lock:
+            self.pool_replay_gate_cache = {"expires_at": now + 60.0, "gate": dict(gate)}
         return dict(gate)
 
     def focus_race(self, race_id: str, now: float | None = None) -> dict[str, object]:
@@ -1218,6 +1242,7 @@ def api_betting(
         exotic_dividends=exotic_lookup,
         include_exotics=include_exotics,
         calibration_gate=None if status == "resulted" or state is None else state.calibration_gate(conn, model),
+        pool_replay_gate=None if status == "resulted" or state is None else state.pool_replay_gate(conn),
     )
     race = dict(race_rows[0])
     payload["race"] = race

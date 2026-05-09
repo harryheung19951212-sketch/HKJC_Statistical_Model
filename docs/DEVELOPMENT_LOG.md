@@ -2,6 +2,29 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-09 - Pool Replay Gate For Pool Choice
+
+Goal:
+
+- Continue indicator 24 彩池選擇模型 and indicator 25 組合派彩預測.
+- Stop pool-choice from trusting a pool only because the current estimated EV is high.
+- Use settled betting ledger / final dividend replay as a per-pool safety gate before live staking.
+
+Changes:
+
+- Added `pool_replay_calibration()` to convert pool replay into per-pool statuses: pass, no replay data, sample building, waiting final dividend, ready to reconcile, replay reduce, and replay block.
+- Betting decisions now accept a `pool_replay_gate`; poor settled ROI can block a pool, unresolved final dividends can reduce stake, and every ticket/candidate carries the replay reason.
+- Pool-choice scorecards now include replay status, sample size, replay ROI, stake factor, and a `replay_blocked` verdict.
+- Race API caches the pool replay gate for 60 seconds so active race refreshes do not recalculate heavy replay state every 30 seconds.
+- UI pool-choice cards now show replay status, replay ROI, sample count, and the reason beside official price quality.
+- Updated the 36-indicator coverage report for items 24 and 25.
+
+Verification:
+
+- `py -3.12 -m compileall -q src dashboard tests`
+- `node --check src\racing_model\web\app.js`
+- `$env:PYTHONPATH='src'; py -3.12 -m pytest -q`
+
 ## 2026-05-09 - Audit-Driven Final Dividend Reconciliation
 
 Goal:
