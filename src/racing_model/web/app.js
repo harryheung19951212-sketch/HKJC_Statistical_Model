@@ -2304,6 +2304,7 @@ function renderCoverage(data) {
   $("coverage-objective").textContent = data.objective || "";
   $("coverage-summary").innerHTML = `
     <div><label>覆蓋分</label><strong>${formatPct(summary.coverage_score)}</strong></div>
+    <div><label>舊狀態分</label><strong>${formatPct(summary.status_coverage_score)}</strong></div>
     <div><label>36 主項</label><strong>${summary.total_groups || 0}/${summary.target_groups || 36}</strong></div>
     <div><label>主分析項</label><strong>${summary.core_groups || 0}</strong></div>
     <div><label>進階主項</label><strong>${summary.blind_spot_groups || 0}</strong></div>
@@ -2316,6 +2317,7 @@ function renderCoverage(data) {
     <div><label>賽果資料</label><strong>${database.results || 0}</strong></div>
     <div><label>賠率 ticks</label><strong>${database.odds_ticks || 0}</strong></div>
   `;
+  $("coverage-objective").textContent = [data.objective, summary.coverage_score_method].filter(Boolean).join(" ");
   $("coverage-priority").innerHTML = (data.priority_next_steps || []).map((item) => `
     <div class="coverage-priority-card">
       <div class="coverage-card-head">
@@ -2335,11 +2337,12 @@ function renderCoverageCard(item) {
     <details class="coverage-card status-${item.status_key}">
       <summary class="coverage-card-head">
         <strong>${item.id}. ${item.name}</strong>
-        <span class="coverage-tag">${item.status}</span>
+        <span class="coverage-tag">${item.status}｜${formatPct(item.maturity_score)}</span>
       </summary>
       <p>${item.current_support}</p>
       <div class="coverage-meta">
         <span><b>類別</b>：${item.category_label}</span>
+        <span><b>成熟度</b>：${formatPct(item.maturity_score)}｜${item.maturity_reason || ""}</span>
         <span><b>細項</b>：${listText(item.sub_items)}</span>
         <span><b>資料來源</b>：${listText(item.data_sources)}</span>
         <span><b>支援檔案</b>：${listText(item.supported_files)}</span>

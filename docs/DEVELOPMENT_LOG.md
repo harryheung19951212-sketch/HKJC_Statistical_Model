@@ -2,6 +2,26 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-09 - Granular Coverage Maturity Score
+
+Goal:
+
+- Make 方程式覆蓋率 reflect actual incremental model development.
+- Avoid a flat score when a partially completed indicator gets materially stronger but is not fully complete yet.
+
+Changes:
+
+- Added per-indicator `maturity_score`, `maturity_percent`, and `maturity_reason`.
+- `coverage_score` now uses maturity scores instead of only coarse status weights.
+- Kept `status_coverage_score` so the old 51.8% status-only score remains visible for comparison.
+- Updated indicators 24 彩池選擇模型 and 25 組合派彩預測 to reflect the official dividend gate, final-dividend audit/reconcile, and pool replay gate work.
+- Coverage UI now shows both current score and old status score, plus each item maturity and reason.
+
+Verification:
+
+- `py -3.12 -m compileall -q src dashboard tests`
+- `$env:PYTHONPATH='src'; py -3.12 -m pytest tests\test_coverage.py -q`
+
 ## 2026-05-09 - Pool Replay Gate For Pool Choice
 
 Goal:

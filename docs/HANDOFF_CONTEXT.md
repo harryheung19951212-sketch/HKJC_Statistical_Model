@@ -10,7 +10,7 @@ This is the current handoff note for the next Codex agent. Treat this section as
 
 - Repo: `https://github.com/harryheung19951212-sketch/HKJC_Statistical_Model`
 - Branch: `codex/horse-racing-model`
-- Latest handoff update: pool replay gate for pool choice. Previous pushed commit before this work: `9b5c335 Reconcile pool replay from final dividend audit`.
+- Latest handoff update: granular coverage maturity score after pool replay gate for pool choice. Previous pushed commit before this work: `cf822a5 Gate pool choice with replay calibration`.
 - Production server: `43.228.125.192`
 - Production app path: `/opt/hkjc-model`
 - Public app URL: `http://43.228.125.192:8765/`
@@ -28,6 +28,7 @@ This is the current handoff note for the next Codex agent. Treat this section as
 - Global update also reconciles the race ledger/pool replay immediately after a race becomes resulted.
 - New in this turn: `pool_replay_calibration()` converts settled pool replay into per-pool statuses. Betting now accepts `pool_replay_gate`; a pool with poor settled ROI can be blocked, pools waiting for final dividend / reconciliation can be reduced, and pool-choice UI shows replay status, sample size, replay ROI, stake factor, and reason.
 - The active race API caches this gate for 60 seconds so the 30-second race refresh does not recalculate full replay state every time.
+- Coverage scoring now uses per-item `maturity_score` instead of only coarse statuses. The old status-only score is still exposed as `status_coverage_score`; item 24 and 25 now move the overall score after the recent pool-choice/final-dividend work without pretending they are fully complete.
 - Next best step: extend this gate into walk-forward pool-choice optimizer thresholds by venue/distance/class and compare against single-pool baselines.
 
 ### Recent Betting And Settlement Changes

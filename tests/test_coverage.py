@@ -68,7 +68,15 @@ def test_coverage_report_contains_all_roadmap_groups() -> None:
     assert report["summary"]["database"]["races"] > 0
     assert report["summary"]["database"]["runners"] > 0
     assert report["summary"]["coverage_score"] > 0
+    assert report["summary"]["coverage_score"] > report["summary"]["status_coverage_score"]
+    assert report["summary"]["coverage_score_method"]
     assert report["priority_next_steps"]
+    pool_choice = next(item for item in items if item["id"] == 24)
+    dividends = next(item for item in items if item["id"] == 25)
+    assert pool_choice["status"] == STATUS_PARTIAL
+    assert pool_choice["maturity_score"] > 0.5
+    assert "replay gate" in pool_choice["maturity_reason"]
+    assert dividends["maturity_score"] > 0.5
 
 
 def test_coverage_report_is_localized_for_users() -> None:

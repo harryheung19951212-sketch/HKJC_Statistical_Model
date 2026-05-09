@@ -18,6 +18,17 @@ STATUS_WEIGHTS = {
     STATUS_MISSING: 0.0,
 }
 
+MATURITY_OVERRIDES = {
+    24: (
+        0.64,
+        "已由純候選排序進展到官方派彩 gate、分池 replay gate、ROI 封鎖/降注及 UI 可解釋狀態；仍未完成分場地/距離 optimizer。",
+    ),
+    25: (
+        0.60,
+        "已接入 probable/final dividend 儲存、官方派彩 gate、final dividend audit、自動補抓對數及分池 replay stake gate；仍未有完整彩池深度和長期 final-dividend 校準。",
+    ),
+}
+
 
 def build_coverage_report(conn: sqlite3.Connection) -> dict[str, Any]:
     items = coverage_items()
@@ -25,7 +36,8 @@ def build_coverage_report(conn: sqlite3.Connection) -> dict[str, Any]:
     for item_data in items:
         status_counts[str(item_data["status"])] += 1
 
-    weighted = sum(STATUS_WEIGHTS[str(item_data["status"])] for item_data in items)
+    status_weighted = sum(STATUS_WEIGHTS[str(item_data["status"])] for item_data in items)
+    weighted = sum(float(item_data.get("maturity_score", STATUS_WEIGHTS[str(item_data["status"])])) for item_data in items)
     max_score = len(items) or 1
     blocked = [item_data for item_data in items if item_data["status"] in {STATUS_MISSING, STATUS_EXTERNAL}]
     priority_items = sorted(
@@ -48,6 +60,8 @@ def build_coverage_report(conn: sqlite3.Connection) -> dict[str, Any]:
             "core_groups": sum(1 for item_data in items if item_data["category"] == "core"),
             "blind_spot_groups": sum(1 for item_data in items if item_data["category"] == "advanced"),
             "coverage_score": round(weighted / max_score, 4),
+            "status_coverage_score": round(status_weighted / max_score, 4),
+            "coverage_score_method": "以每項 maturity_score 計算；同為部分完成的主項亦可按已測試落地深度逐步上升。",
             "status_counts": status_counts,
             "database": database_snapshot(conn),
         },
@@ -692,6 +706,9 @@ def item(
     validation_gate: str,
     priority: int,
 ) -> dict[str, Any]:
+    default_score = STATUS_WEIGHTS[status]
+    override_score, override_reason = MATURITY_OVERRIDES.get(item_id, (default_score, "按目前狀態權重計算。"))
+    maturity_score = max(0.0, min(float(override_score), STATUS_WEIGHTS[STATUS_DONE]))
     return {
         "id": item_id,
         "category": category,
@@ -699,6 +716,9 @@ def item(
         "name": name,
         "status": status,
         "status_key": status_key(status),
+        "maturity_score": round(maturity_score, 4),
+        "maturity_percent": round(maturity_score * 100, 1),
+        "maturity_reason": override_reason,
         "data_sources": data_sources,
         "supported_files": supported_files,
         "current_support": current_support,
