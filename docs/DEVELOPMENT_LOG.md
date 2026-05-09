@@ -2,6 +2,28 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-09 - Audit-Driven Final Dividend Reconciliation
+
+Goal:
+
+- Continue indicator 25 組合派彩預測 by turning final-dividend audit into an action.
+- Let pool replay reconcile confirmed exotic tickets after results/final dividends become available.
+- Reduce manual steps after a race finishes.
+
+Changes:
+
+- Added `reconcile_pool_replay_with_final_dividends()` to refresh HKJC results/final dividends for races flagged by `final_dividend_audit`, then run betting-ledger reconciliation.
+- `/api/pool-replay/reconcile` now returns before/after final-dividend audit summaries, refresh targets, refresh outcomes, and the updated pool replay.
+- Global update now immediately reconciles the race ledger and pool replay after a race is marked resulted and final odds/dividends are imported.
+- The pool replay UI status message now reports how many races were refreshed and how many tickets are still waiting for final dividends.
+- Updated the 36-indicator coverage report for item 25.
+
+Verification:
+
+- `py -3.12 -m compileall -q src dashboard tests`
+- `node --check src\racing_model\web\app.js`
+- `$env:PYTHONPATH='src'; py -3.12 -m pytest tests\test_active_race_refresh.py tests\test_pool_replay.py tests\test_betting_ledger.py -q`
+
 ## 2026-05-09 - Final Dividend Audit For Pool Replay
 
 Goal:

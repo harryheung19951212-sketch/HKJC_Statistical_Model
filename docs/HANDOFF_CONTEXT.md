@@ -24,7 +24,9 @@ This is the current handoff note for the next Codex agent. Treat this section as
 - Pool-choice rows now expose official price coverage, price quality, and `need_official_dividend` verdicts so another Codex can continue with real pool replay and final-dividend calibration.
 - UI candidate cards show dividend quality and the exact price-gate reason.
 - Pool replay now includes `final_dividend_audit`, splitting pending confirmed exotic tickets into no-results, known-loss ready-to-settle, winning tickets waiting for final dividend, and winning tickets with final dividend ready but not yet reconciled.
-- Next best step: wire the audit to automatic final-dividend backfill/reconciliation, then use settled final dividends to calibrate QPL/TRIO/TCE/FIRST4/QUARTET pool-specific ROI.
+- `/api/pool-replay/reconcile` now uses the audit to refresh HKJC results/final dividends for flagged races, then runs betting-ledger reconciliation and returns before/after audit summaries.
+- Global update also reconciles the race ledger/pool replay immediately after a race becomes resulted.
+- Next best step: use settled final dividends to calibrate QPL/TRIO/TCE/FIRST4/QUARTET pool-specific ROI and improve pool-choice optimizer thresholds.
 
 ### Recent Betting And Settlement Changes
 

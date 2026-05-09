@@ -2259,11 +2259,13 @@ function poolVerdictLabel(value) {
 }
 
 async function reconcilePoolReplay() {
-  $("system-status").textContent = "投注方法全局結算中...";
+  $("system-status").textContent = "投注方法全局結算中，必要時會補抓最終派彩...";
   const result = await api("/api/pool-replay/reconcile", { method: "POST" });
   renderPoolReplay(result.pool_replay || {});
   const updated = result.updated || 0;
-  $("system-status").textContent = `投注方法回測已更新：${updated} 筆`;
+  const refreshCount = (result.refresh_targets || []).length;
+  const audit = result.after_final_dividend_audit || {};
+  $("system-status").textContent = `投注方法回測已更新：${updated} 筆｜補抓 ${refreshCount} 場｜等最終派彩 ${audit.waiting_final_dividend || 0}`;
 }
 
 function renderDataQuality(data) {

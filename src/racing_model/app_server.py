@@ -815,9 +815,7 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(result)
             elif path == "/api/pool-replay/reconcile":
                 race_id = query.get("race_id", [None])[0]
-                result = reconcile_betting_ledger(conn, race_id=race_id)
-                result["pool_replay"] = pool_replay_report(conn, race_id=race_id)
-                self.send_json(result)
+                self.send_json(reconcile_pool_replay_with_final_dividends(conn, self.app_state, race_id=race_id))
             elif path == "/api/exotic-dividends":
                 race_id = required_query(query, "race_id")
                 body = self.read_json_body()
@@ -1072,6 +1070,68 @@ def api_analytics_dashboard(conn, state: AppState, include_coverage: bool = Fals
     if include_coverage:
         payload["coverage"] = build_coverage_report(conn)
     return payload
+
+
+def reconcile_pool_replay_with_final_dividends(
+    conn,
+    state: AppState,
+    race_id: str | None = None,
+) -> dict[str, object]:
+    before = pool_replay_report(conn, race_id=race_id)
+    targets = final_dividend_refresh_targets(before)
+    refreshes = []
+    for target_race_id in targets:
+        result = refresh_hkjc_results_if_available(
+            conn,
+            target_race_id,
+            state.model(),
+            state.settings.user_agent,
+            state.settings.request_delay_seconds,
+        )
+        entry: dict[str, object] = {"race_id": target_race_id, "result": result}
+        if result and result.get("status") == "resulted":
+            entry["final_place_backfill"] = backfill_final_place_odds(
+                conn,
+                target_race_id,
+                build_official_odds_provider(state.settings),
+            )
+        refreshes.append(entry)
+    reconciliation = reconcile_betting_ledger(conn, race_id=race_id)
+    after = pool_replay_report(conn, race_id=race_id)
+    before_summary = (before.get("final_dividend_audit") or {}).get("summary", {})
+    after_summary = (after.get("final_dividend_audit") or {}).get("summary", {})
+    return {
+        "status": "done",
+        "race_id": race_id,
+        "refresh_targets": targets,
+        "refreshes": refreshes,
+        "reconciliation": reconciliation,
+        "updated": reconciliation.get("updated", 0),
+        "before_final_dividend_audit": before_summary,
+        "after_final_dividend_audit": after_summary,
+        "pool_replay": after,
+    }
+
+
+def final_dividend_refresh_targets(pool_replay: dict[str, object]) -> list[str]:
+    audit = pool_replay.get("final_dividend_audit") if isinstance(pool_replay, dict) else {}
+    items = (audit or {}).get("items", []) if isinstance(audit, dict) else []
+    targets = []
+    seen = set()
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        result_status = str(item.get("result_status") or "")
+        final_dividend = item.get("final_dividend")
+        if result_status not in {"no_results", "hit"}:
+            continue
+        if result_status == "hit" and final_dividend not in {None, ""}:
+            continue
+        item_race_id = str(item.get("race_id") or "")
+        if item_race_id and item_race_id not in seen:
+            seen.add(item_race_id)
+            targets.append(item_race_id)
+    return targets
 
 
 def api_predictions(
@@ -1421,6 +1481,8 @@ def run_lifecycle_step(conn, state: AppState, scope: str = "active") -> dict[str
             race_id,
             build_official_odds_provider(state.settings),
         )
+        result["betting_reconciliation"] = reconcile_betting_ledger(conn, race_id=race_id)
+        result["pool_replay"] = pool_replay_report(conn, race_id=race_id)
         state.sleep_race(race_id)
     next_race_id = current_refreshable_race_id(conn)
     return {
