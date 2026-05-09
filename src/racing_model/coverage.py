@@ -39,6 +39,9 @@ def build_coverage_report(conn: sqlite3.Connection) -> dict[str, Any]:
     status_weighted = sum(STATUS_WEIGHTS[str(item_data["status"])] for item_data in items)
     weighted = sum(float(item_data.get("maturity_score", STATUS_WEIGHTS[str(item_data["status"])])) for item_data in items)
     max_score = len(items) or 1
+    coverage_score = weighted / max_score
+    coarse_status_score = status_weighted / max_score
+    status_progress_score = (coverage_score + coarse_status_score) / 2.0
     blocked = [item_data for item_data in items if item_data["status"] in {STATUS_MISSING, STATUS_EXTERNAL}]
     priority_items = sorted(
         blocked,
@@ -59,9 +62,10 @@ def build_coverage_report(conn: sqlite3.Connection) -> dict[str, Any]:
             "total_groups": len(items),
             "core_groups": sum(1 for item_data in items if item_data["category"] == "core"),
             "blind_spot_groups": sum(1 for item_data in items if item_data["category"] == "advanced"),
-            "coverage_score": round(weighted / max_score, 4),
-            "status_coverage_score": round(status_weighted / max_score, 4),
-            "coverage_score_method": "以每項 maturity_score 計算；同為部分完成的主項亦可按已測試落地深度逐步上升。",
+            "coverage_score": round(coverage_score, 4),
+            "status_coverage_score": round(status_progress_score, 4),
+            "coarse_status_score": round(coarse_status_score, 4),
+            "coverage_score_method": "覆蓋分以每項 maturity_score 計算；狀態進度分會混合粗分類與 maturity，所以每次有實質模型補洞都會同步變動；粗分類基準只在已完成/部分完成等大狀態改變時變動。",
             "status_counts": status_counts,
             "database": database_snapshot(conn),
         },

@@ -2,6 +2,26 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-09 - Coverage Status Progress Score
+
+Goal:
+
+- Fix the misleading coverage display where the old status-only score stayed flat after real maturity improvements.
+- Make the visible status score move when a tested 36-indicator development layer lands.
+
+Changes:
+
+- Changed `status_coverage_score` into a status progress score that blends coarse status weight with maturity progress.
+- Added `coarse_status_score` as the true old coarse baseline for reference.
+- Updated the coverage UI labels from `舊狀態分` to `狀態進度分` and added `粗分類基準`.
+- Updated coverage tests to assert the score ordering: coverage score > status progress score > coarse baseline.
+
+Verification:
+
+- `py -3.12 -m compileall -q src dashboard tests`
+- `node --check src\racing_model\web\app.js`
+- `$env:PYTHONPATH='src'; py -3.12 -m pytest tests\test_coverage.py -q`
+
 ## 2026-05-09 - Walk-Forward Pool Choice Optimizer
 
 Goal:

@@ -69,6 +69,8 @@ def test_coverage_report_contains_all_roadmap_groups() -> None:
     assert report["summary"]["database"]["runners"] > 0
     assert report["summary"]["coverage_score"] > 0
     assert report["summary"]["coverage_score"] > report["summary"]["status_coverage_score"]
+    assert report["summary"]["status_coverage_score"] > report["summary"]["coarse_status_score"]
+    assert report["summary"]["coarse_status_score"] > 0
     assert report["summary"]["coverage_score_method"]
     assert report["priority_next_steps"]
     pool_choice = next(item for item in items if item["id"] == 24)

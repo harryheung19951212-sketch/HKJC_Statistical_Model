@@ -2355,7 +2355,8 @@ function renderCoverage(data) {
   $("coverage-objective").textContent = data.objective || "";
   $("coverage-summary").innerHTML = `
     <div><label>覆蓋分</label><strong>${formatPct(summary.coverage_score)}</strong></div>
-    <div><label>舊狀態分</label><strong>${formatPct(summary.status_coverage_score)}</strong></div>
+    <div><label>狀態進度分</label><strong>${formatPct(summary.status_coverage_score)}</strong></div>
+    <div><label>粗分類基準</label><strong>${formatPct(summary.coarse_status_score)}</strong></div>
     <div><label>36 主項</label><strong>${summary.total_groups || 0}/${summary.target_groups || 36}</strong></div>
     <div><label>主分析項</label><strong>${summary.core_groups || 0}</strong></div>
     <div><label>進階主項</label><strong>${summary.blind_spot_groups || 0}</strong></div>
