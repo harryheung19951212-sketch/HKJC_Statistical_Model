@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 import re
+import math
 from typing import Any
 
 from .betting import RISK_PROFILES
@@ -57,10 +58,12 @@ def pool_replay_report(conn: sqlite3.Connection, race_id: str | None = None) -> 
     best = ranked[0] if ranked else None
     summary = overall_summary(rows, markets, best)
     bankroll_replay = bankroll_replay_report(rows)
+    context_segments = contextual_replay_segments(rows)
     return {
         "race_id": race_id,
         "summary": summary,
         "markets": markets,
+        "context_segments": context_segments,
         "ranking": ranked,
         "bankroll_replay": bankroll_replay,
         "final_dividend_audit": dividend_audit,
@@ -68,9 +71,13 @@ def pool_replay_report(conn: sqlite3.Connection, race_id: str | None = None) -> 
     }
 
 
-def pool_replay_calibration(report: dict[str, Any] | None) -> dict[str, Any]:
+def pool_replay_calibration(report: dict[str, Any] | None, race_context: dict[str, Any] | None = None) -> dict[str, Any]:
     markets = list((report or {}).get("markets") or [])
-    rows = [pool_replay_market_gate(row) for row in markets if isinstance(row, dict)]
+    global_rows = [pool_replay_market_gate(row) for row in markets if isinstance(row, dict)]
+    global_by_market = {str(row["market"]): row for row in global_rows}
+    context = normalize_race_context(race_context or {})
+    context_rows = contextual_pool_replay_gates(report or {}, context, global_by_market) if context else {}
+    rows = [context_rows.get(market, row) for market, row in global_by_market.items()]
     by_market = {str(row["market"]): row for row in rows}
     blocked = [row for row in rows if row["status"] == "replay_block"]
     reduced = [row for row in rows if row["stake_factor"] < 1.0 and row["status"] != "replay_block"]
@@ -78,7 +85,8 @@ def pool_replay_calibration(report: dict[str, Any] | None) -> dict[str, Any]:
     return {
         "status": "blocked" if blocked else "reduced" if reduced else "sample_building" if sample_building else "pass",
         "label": "分彩池 replay 校準",
-        "message": pool_replay_calibration_message(blocked, reduced, sample_building),
+        "message": pool_replay_calibration_message(blocked, reduced, sample_building, bool(context_rows)),
+        "context": context,
         "markets": by_market,
         "blocked_markets": [row["market"] for row in blocked],
         "reduced_markets": [row["market"] for row in reduced],
@@ -86,14 +94,18 @@ def pool_replay_calibration(report: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
-def pool_replay_market_gate(row: dict[str, Any]) -> dict[str, Any]:
+def pool_replay_market_gate(
+    row: dict[str, Any],
+    min_samples_override: int | None = None,
+    context_source: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     market = str(row.get("market") or "").upper()
     label = str(row.get("market_label") or POOL_LABELS_ZH.get(market, market))
     reconciled = int(row.get("reconciled") or 0)
     executed = int(row.get("executed") or 0)
     waiting_final = int(row.get("final_dividend_waiting_hits") or 0)
     ready_final = int(row.get("final_dividend_ready_hits") or 0)
-    min_samples = POOL_REPLAY_MIN_SAMPLES.get(market, 10)
+    min_samples = int(min_samples_override or POOL_REPLAY_MIN_SAMPLES.get(market, 10))
     roi = safe_float(row.get("roi"))
     execution_roi = safe_float(row.get("execution_roi"))
     primary_roi = execution_roi if executed >= max(3, min_samples // 2) else roi
@@ -138,6 +150,14 @@ def pool_replay_market_gate(row: dict[str, Any]) -> dict[str, Any]:
         "execution_roi": execution_roi,
         "final_dividend_waiting_hits": waiting_final,
         "final_dividend_ready_hits": ready_final,
+        "context_status": (context_source or {}).get("context_status", "global"),
+        "context_segment_type": (context_source or {}).get("segment_type"),
+        "context_segment_label": (context_source or {}).get("segment_label"),
+        "context_sample_size": (context_source or {}).get("reconciled"),
+        "context_min_samples": (context_source or {}).get("min_samples"),
+        "context_roi": (context_source or {}).get("roi"),
+        "global_status": (context_source or {}).get("global_status"),
+        "global_roi": (context_source or {}).get("global_roi"),
     }
 
 
@@ -153,38 +173,288 @@ def pool_replay_gate_label(status: str) -> str:
     }.get(status, "Replay 待檢查")
 
 
-def pool_replay_calibration_message(blocked: list[dict[str, Any]], reduced: list[dict[str, Any]], sample_building: list[dict[str, Any]]) -> str:
+def pool_replay_calibration_message(
+    blocked: list[dict[str, Any]],
+    reduced: list[dict[str, Any]],
+    sample_building: list[dict[str, Any]],
+    has_context: bool = False,
+) -> str:
+    prefix = "已按本場條件切片；" if has_context else ""
     if blocked:
         labels = "、".join(str(row["market_label"]) for row in blocked[:3])
-        return f"{labels} 的已結算 replay ROI 太差，暫停真注。"
+        return f"{prefix}{labels} 的已結算 replay ROI 太差，暫停真注。"
     if reduced:
         labels = "、".join(str(row["market_label"]) for row in reduced[:3])
-        return f"{labels} replay 未完全可信，下注前會自動降注。"
+        return f"{prefix}{labels} replay 未完全可信，下注前會自動降注。"
     if sample_building:
-        return "部分彩池仍在累積 replay 樣本；系統會顯示樣本狀態但不當成已驗證 edge。"
-    return "分彩池 replay 暫未觸發限制。"
+        return f"{prefix}部分彩池仍在累積 replay 樣本；系統會顯示樣本狀態但不當成已驗證 edge。"
+    return f"{prefix}分彩池 replay 暫未觸發限制。"
 
 
 def load_recommendations(conn: sqlite3.Connection, race_id: str | None) -> list[dict[str, Any]]:
     where = ""
     params: tuple[Any, ...] = ()
     if race_id:
-        where = "WHERE race_id = ?"
+        where = "WHERE br.race_id = ?"
         params = (race_id,)
     rows = [
         dict(row)
         for row in fetch_all(
             conn,
             f"""
-            SELECT *
-            FROM betting_recommendations
+            SELECT br.*,
+                   r.track AS race_track,
+                   r.course AS race_course,
+                   r.distance_m AS race_distance_m,
+                   r.going AS race_going,
+                   r.class_rating AS race_class_rating
+            FROM betting_recommendations br
+            LEFT JOIN races r ON r.race_id = br.race_id
             {where}
-            ORDER BY race_date, race_id, created_at, recommendation_id
+            ORDER BY br.race_date, br.race_id, br.created_at, br.recommendation_id
             """,
             params,
         )
     ]
     return dedupe_logical_recommendations(rows)
+
+
+def contextual_replay_segments(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    specs = [
+        ("track_distance_class", "馬場/路程/班次", lambda row: (race_track(row), distance_bucket(row.get("race_distance_m")), race_class(row))),
+        ("track_distance", "馬場/路程", lambda row: (race_track(row), distance_bucket(row.get("race_distance_m")))),
+        ("track", "馬場", lambda row: (race_track(row),)),
+        ("distance_bucket", "路程桶", lambda row: (distance_bucket(row.get("race_distance_m")),)),
+        ("class_rating", "班次", lambda row: (race_class(row),)),
+    ]
+    segments: list[dict[str, Any]] = []
+    for market in POOL_RULES:
+        market_rows = [row for row in rows if str(row.get("market") or "").upper() == market]
+        if not market_rows:
+            continue
+        for segment_type, segment_name, key_func in specs:
+            buckets: dict[tuple[str, ...], list[dict[str, Any]]] = {}
+            for row in market_rows:
+                key = tuple(str(part or "") for part in key_func(row))
+                if not key or any(not part for part in key):
+                    continue
+                buckets.setdefault(key, []).append(row)
+            for key, bucket_rows in buckets.items():
+                replay = market_replay(market, bucket_rows)
+                replay.update(
+                    {
+                        "segment_type": segment_type,
+                        "segment_name": segment_name,
+                        "segment_key": "|".join(key),
+                        "segment_label": segment_label(segment_type, key),
+                        "context_min_samples": contextual_min_samples(market),
+                    }
+                )
+                segments.append(replay)
+    return sorted(
+        segments,
+        key=lambda row: (
+            str(row.get("market") or ""),
+            -int(row.get("reconciled") or 0),
+            str(row.get("segment_type") or ""),
+            str(row.get("segment_key") or ""),
+        ),
+    )
+
+
+def contextual_pool_replay_gates(
+    report: dict[str, Any],
+    context: dict[str, Any],
+    global_by_market: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    segments = [row for row in list(report.get("context_segments") or []) if isinstance(row, dict)]
+    if not context:
+        return {}
+    output: dict[str, dict[str, Any]] = {}
+    for market, global_gate in global_by_market.items():
+        selected = select_context_segment(market, segments, context)
+        if not selected:
+            output[market] = context_fallback_gate(global_gate, "未有符合本場條件的 replay 切片，沿用全局分池 gate。")
+            continue
+        context_min = contextual_min_samples(market)
+        if int(selected.get("reconciled") or 0) < context_min:
+            message = f"{selected['segment_label']} 切片已結算 {int(selected.get('reconciled') or 0)}/{context_min} 張，樣本未夠，沿用全局分池 gate。"
+            output[market] = context_fallback_gate(global_gate, message, selected, context_min)
+            continue
+        context_gate = pool_replay_market_gate(
+            selected,
+            min_samples_override=context_min,
+            context_source={
+                "context_status": "context_applied",
+                "segment_type": selected.get("segment_type"),
+                "segment_label": selected.get("segment_label"),
+                "reconciled": selected.get("reconciled"),
+                "min_samples": context_min,
+                "roi": selected.get("roi"),
+                "global_status": global_gate.get("status"),
+                "global_roi": global_gate.get("roi"),
+            },
+        )
+        context_gate["reason"] = f"{selected['segment_label']} 切片：{context_gate['reason']}"
+        output[market] = combine_global_and_context_gate(global_gate, context_gate)
+    return output
+
+
+def select_context_segment(market: str, segments: list[dict[str, Any]], context: dict[str, Any]) -> dict[str, Any] | None:
+    wanted = {
+        "track_distance_class": (context.get("track"), context.get("distance_bucket"), context.get("class_rating")),
+        "track_distance": (context.get("track"), context.get("distance_bucket")),
+        "track": (context.get("track"),),
+        "distance_bucket": (context.get("distance_bucket"),),
+        "class_rating": (context.get("class_rating"),),
+    }
+    priority = {key: index for index, key in enumerate(wanted)}
+    candidates = []
+    for row in segments:
+        if str(row.get("market") or "").upper() != market:
+            continue
+        segment_type = str(row.get("segment_type") or "")
+        key = tuple(part for part in str(row.get("segment_key") or "").split("|") if part)
+        if segment_type in wanted and key == tuple(part for part in wanted[segment_type] if part):
+            candidates.append(row)
+    if not candidates:
+        return None
+    return sorted(
+        candidates,
+        key=lambda row: (
+            priority.get(str(row.get("segment_type") or ""), 99),
+            -int(row.get("reconciled") or 0),
+        ),
+    )[0]
+
+
+def context_fallback_gate(
+    global_gate: dict[str, Any],
+    message: str,
+    selected: dict[str, Any] | None = None,
+    context_min: int | None = None,
+) -> dict[str, Any]:
+    gate = dict(global_gate)
+    gate.update(
+        {
+            "context_status": "fallback_global",
+            "context_segment_type": (selected or {}).get("segment_type"),
+            "context_segment_label": (selected or {}).get("segment_label"),
+            "context_sample_size": (selected or {}).get("reconciled"),
+            "context_min_samples": context_min,
+            "context_roi": (selected or {}).get("roi"),
+            "global_status": global_gate.get("status"),
+            "global_roi": global_gate.get("roi"),
+            "reason": f"{message} {global_gate.get('reason') or ''}".strip(),
+        }
+    )
+    return gate
+
+
+def combine_global_and_context_gate(global_gate: dict[str, Any], context_gate: dict[str, Any]) -> dict[str, Any]:
+    if gate_risk_rank(global_gate) > gate_risk_rank(context_gate):
+        gate = dict(global_gate)
+        gate.update(
+            {
+                "context_status": "context_limited_by_global",
+                "context_segment_type": context_gate.get("context_segment_type"),
+                "context_segment_label": context_gate.get("context_segment_label"),
+                "context_sample_size": context_gate.get("context_sample_size"),
+                "context_min_samples": context_gate.get("context_min_samples"),
+                "context_roi": context_gate.get("context_roi"),
+                "global_status": global_gate.get("status"),
+                "global_roi": global_gate.get("roi"),
+                "reason": f"全局 replay 風險較高，優先採用全局限制；本場切片 {context_gate.get('context_segment_label') or '-'} ROI {format_pct(context_gate.get('context_roi'))}。",
+            }
+        )
+        return gate
+    gate = dict(context_gate)
+    gate["stake_factor"] = min(gate_stake_factor(global_gate), gate_stake_factor(context_gate))
+    gate["global_status"] = global_gate.get("status")
+    gate["global_roi"] = global_gate.get("roi")
+    if gate["stake_factor"] < gate_stake_factor(context_gate):
+        gate["reason"] = f"{gate.get('reason') or ''}；全局 replay 亦要求降注，已採用較保守注碼。"
+    return gate
+
+
+def gate_stake_factor(gate: dict[str, Any]) -> float:
+    value = gate.get("stake_factor")
+    if value is None:
+        return 1.0
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 1.0
+
+
+def gate_risk_rank(gate: dict[str, Any]) -> int:
+    return {
+        "replay_block": 6,
+        "waiting_final_dividend": 5,
+        "replay_reduce": 4,
+        "ready_to_reconcile": 3,
+        "sample_building": 2,
+        "no_replay_data": 1,
+        "pass": 0,
+    }.get(str(gate.get("status") or ""), 1)
+
+
+def normalize_race_context(row: dict[str, Any]) -> dict[str, Any]:
+    track = clean_context_value(row.get("track") or row.get("race_track"))
+    class_rating = clean_context_value(row.get("class_rating") or row.get("race_class_rating"))
+    bucket = distance_bucket(row.get("distance_m") or row.get("race_distance_m"))
+    context = {
+        "track": track,
+        "course": clean_context_value(row.get("course") or row.get("race_course")),
+        "distance_m": safe_int(row.get("distance_m") or row.get("race_distance_m")),
+        "distance_bucket": bucket,
+        "going": clean_context_value(row.get("going") or row.get("race_going")),
+        "class_rating": class_rating,
+    }
+    return {key: value for key, value in context.items() if value not in {None, ""}}
+
+
+def contextual_min_samples(market: str) -> int:
+    return max(3, math.ceil(POOL_REPLAY_MIN_SAMPLES.get(market, 10) * 0.5))
+
+
+def race_track(row: dict[str, Any]) -> str:
+    return clean_context_value(row.get("race_track") or row.get("track"))
+
+
+def race_class(row: dict[str, Any]) -> str:
+    return clean_context_value(row.get("race_class_rating") or row.get("class_rating"))
+
+
+def clean_context_value(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def distance_bucket(value: Any) -> str:
+    distance = safe_int(value)
+    if distance is None or distance <= 0:
+        return ""
+    if distance <= 1200:
+        return "短途"
+    if distance <= 1600:
+        return "一哩"
+    if distance <= 2000:
+        return "中距離"
+    return "長途"
+
+
+def segment_label(segment_type: str, key: tuple[str, ...]) -> str:
+    if segment_type == "track_distance_class":
+        return f"{key[0]} / {key[1]} / {key[2]}"
+    if segment_type == "track_distance":
+        return f"{key[0]} / {key[1]}"
+    if segment_type == "track":
+        return f"{key[0]}"
+    if segment_type == "distance_bucket":
+        return f"{key[0]}"
+    if segment_type == "class_rating":
+        return f"{key[0]}"
+    return " / ".join(key)
 
 
 def market_replay(market: str, rows: list[dict[str, Any]], dividend_audit: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -709,6 +979,15 @@ def safe_float(value: object) -> float | None:
         return None
     try:
         return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def safe_int(value: object) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(float(value))
     except (TypeError, ValueError):
         return None
 

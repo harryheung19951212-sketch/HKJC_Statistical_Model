@@ -174,6 +174,71 @@ def test_pool_replay_calibration_blocks_poor_settled_pool(tmp_path: Path) -> Non
     assert "暫停真注" in qpl["reason"]
 
 
+def test_pool_replay_calibration_uses_race_context_slice_when_sample_is_ready(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    conn = connect(db_path)
+    try:
+        insert_rows(
+            conn,
+            "races",
+            [
+                race("HK20260506-ST-01", "Sha Tin", "Turf", 1000, "Class 4"),
+                race("HK20260506-HV-02", "Happy Valley", "Turf", 1650, "Class 3"),
+            ],
+        )
+        rows = []
+        for index in range(5):
+            row = recommendation(f"st-qpl-loss-{index}", "QPL", 20, 0, -20, 0)
+            row["race_id"] = "HK20260506-ST-01"
+            row["horse_id"] = f"{index + 1}+{index + 2}"
+            rows.append(row)
+        for index in range(5):
+            row = recommendation(f"hv-qpl-win-{index}", "QPL", 20, 60, 40, 1)
+            row["race_id"] = "HK20260506-HV-02"
+            row["horse_id"] = f"{index + 6}+{index + 7}"
+            rows.append(row)
+        insert_rows(conn, "betting_recommendations", rows)
+        conn.commit()
+
+        report = pool_replay_report(conn)
+        gate = pool_replay_calibration(
+            report,
+            race_context={
+                "track": "Sha Tin",
+                "course": "Turf",
+                "distance_m": 1000,
+                "going": "Good",
+                "class_rating": "Class 4",
+            },
+        )
+    finally:
+        conn.close()
+
+    qpl = gate["markets"]["QPL"]
+    assert qpl["status"] == "replay_block"
+    assert qpl["context_status"] == "context_applied"
+    assert qpl["context_segment_label"] == "Sha Tin / 短途 / Class 4"
+    assert qpl["context_sample_size"] == 5
+    assert qpl["context_min_samples"] == 5
+    assert qpl["global_roi"] > 0
+    assert "切片" in qpl["reason"]
+
+
+def race(race_id: str, track: str, course: str, distance_m: int, class_rating: str) -> dict[str, object]:
+    return {
+        "race_id": race_id,
+        "date": "2026-05-06",
+        "track": track,
+        "course": course,
+        "distance_m": distance_m,
+        "going": "Good",
+        "class_rating": class_rating,
+        "prize": 1000000,
+        "race_name": "測試賽",
+    }
+
+
 def recommendation(
     recommendation_id: str,
     market: str,

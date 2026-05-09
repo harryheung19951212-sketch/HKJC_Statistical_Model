@@ -229,6 +229,11 @@ def apply_pool_replay_stake_gate(
         decision["pool_replay_min_samples"] = market_gate.get("min_samples")
         decision["pool_replay_roi"] = market_gate.get("roi")
         decision["pool_replay_execution_roi"] = market_gate.get("execution_roi")
+        decision["pool_replay_context_status"] = market_gate.get("context_status")
+        decision["pool_replay_context_segment_label"] = market_gate.get("context_segment_label")
+        decision["pool_replay_context_sample_size"] = market_gate.get("context_sample_size")
+        decision["pool_replay_context_min_samples"] = market_gate.get("context_min_samples")
+        decision["pool_replay_context_roi"] = market_gate.get("context_roi")
         original_stake = float(decision.get("recommended_stake") or 0.0)
         if original_stake <= 0 or factor >= 0.999:
             continue
@@ -849,6 +854,14 @@ def pool_choice_market_row(
             "pool_replay_min_samples": replay_gate.get("min_samples"),
             "pool_replay_roi": replay_gate.get("roi"),
             "pool_replay_execution_roi": replay_gate.get("execution_roi"),
+            "context_status": replay_gate.get("context_status"),
+            "context_segment_type": replay_gate.get("context_segment_type"),
+            "context_segment_label": replay_gate.get("context_segment_label"),
+            "context_sample_size": replay_gate.get("context_sample_size"),
+            "context_min_samples": replay_gate.get("context_min_samples"),
+            "context_roi": replay_gate.get("context_roi"),
+            "global_status": replay_gate.get("global_status"),
+            "global_roi": replay_gate.get("global_roi"),
             "leverage_index": 0.0,
             "efficiency_gap": None,
             "risk_penalty": 0.0,
@@ -917,6 +930,14 @@ def pool_choice_market_row(
         "pool_replay_min_samples": replay_gate.get("min_samples"),
         "pool_replay_roi": replay_gate.get("roi"),
         "pool_replay_execution_roi": replay_gate.get("execution_roi"),
+        "context_status": replay_gate.get("context_status"),
+        "context_segment_type": replay_gate.get("context_segment_type"),
+        "context_segment_label": replay_gate.get("context_segment_label"),
+        "context_sample_size": replay_gate.get("context_sample_size"),
+        "context_min_samples": replay_gate.get("context_min_samples"),
+        "context_roi": replay_gate.get("context_roi"),
+        "global_status": replay_gate.get("global_status"),
+        "global_roi": replay_gate.get("global_roi"),
         "leverage_index": round(leverage, 3),
         "efficiency_gap": round(efficiency_gap, 3) if efficiency_gap is not None else None,
         "risk_penalty": round(risk_penalty + replay_penalty, 4),

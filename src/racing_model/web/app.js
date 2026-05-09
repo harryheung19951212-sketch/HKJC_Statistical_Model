@@ -955,10 +955,24 @@ function renderPoolChoiceCard(row) {
         <label>Replay狀態 <b>${row.pool_replay_gate_label || "-"}</b></label>
         <label>Replay ROI <b class="${evClass(row.pool_replay_roi)}">${row.pool_replay_roi === null || row.pool_replay_roi === undefined ? "-" : formatPct(row.pool_replay_roi)}</b></label>
         <label>Replay樣本 <b>${row.pool_replay_sample_size || 0}/${row.pool_replay_min_samples || "-"}</b></label>
+        <label>本場切片 <b>${poolReplayContextLabel(row)}</b></label>
       </div>
       <small>${[row.price_gate_reason, row.pool_replay_gate_reason].filter(Boolean).join("｜")}</small>
     </div>
   `;
+}
+
+function poolReplayContextLabel(row) {
+  if (!row || !row.context_status || row.context_status === "global") return "全局";
+  const sample = row.context_sample_size === null || row.context_sample_size === undefined ? "-" : row.context_sample_size;
+  const min = row.context_min_samples || "-";
+  if (row.context_status === "context_applied") {
+    return `${row.context_segment_label || "切片"} ${sample}/${min}`;
+  }
+  if (row.context_status === "context_limited_by_global") {
+    return `${row.context_segment_label || "切片"}，全局限制`;
+  }
+  return `${row.context_segment_label || "切片不足"} ${sample}/${min}`;
 }
 
 function poolChoiceVerdict(value) {

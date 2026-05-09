@@ -29,7 +29,9 @@ This is the current handoff note for the next Codex agent. Treat this section as
 - New in this turn: `pool_replay_calibration()` converts settled pool replay into per-pool statuses. Betting now accepts `pool_replay_gate`; a pool with poor settled ROI can be blocked, pools waiting for final dividend / reconciliation can be reduced, and pool-choice UI shows replay status, sample size, replay ROI, stake factor, and reason.
 - The active race API caches this gate for 60 seconds so the 30-second race refresh does not recalculate full replay state every time.
 - Coverage scoring now uses per-item `maturity_score` instead of only coarse statuses. The old status-only score is still exposed as `status_coverage_score`; item 24 and 25 now move the overall score after the recent pool-choice/final-dividend work without pretending they are fully complete.
-- Next best step: extend this gate into walk-forward pool-choice optimizer thresholds by venue/distance/class and compare against single-pool baselines.
+- New in this turn: pool replay now builds contextual segments by track, distance bucket, class, track/distance, and track/distance/class. Active betting passes the current race row into `pool_replay_calibration()`. If a matching slice has enough settled samples, it can block/reduce a pool by slice ROI; if not, the system falls back to the global pool gate and shows that reason in pool-choice UI.
+- Coverage now shows overall `coverage_score` around 52.6% and old `status_coverage_score` around 51.8%. Item 24 maturity is 68%; item 25 maturity is 62%.
+- Next best step: turn contextual replay into trained walk-forward pool-choice optimizer thresholds by venue/distance/class and compare against single-pool baselines; do not raise coverage again unless the optimizer has tests/replay evidence.
 
 ### Recent Betting And Settlement Changes
 

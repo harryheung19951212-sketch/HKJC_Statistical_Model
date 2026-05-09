@@ -2,6 +2,28 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-09 - Contextual Pool Replay Gate
+
+Goal:
+
+- Continue the 36-indicator buildout, mainly indicator 24 彩池選擇模型 and indicator 25 組合派彩預測.
+- Stop a pool from being trusted only by global ROI when the current race context has a different replay profile.
+- Make the coverage score move only when a tested modelling/control layer is actually added.
+
+Changes:
+
+- Added contextual pool replay segments by track, distance bucket, class, track/distance, and track/distance/class.
+- Active betting now passes the current race conditions into the pool replay gate.
+- When the matching context slice has enough settled tickets, the gate can block/reduce stake by that slice ROI; if the slice is under-sampled it falls back to the global pool gate.
+- Pool-choice cards now show whether replay is using a current-race slice, global fallback, or global restriction.
+- Updated coverage items 24 and 25, raising maturity from 52.5% overall to 52.6% overall while leaving the old status-only score at 51.8%.
+
+Verification:
+
+- `py -3.12 -m compileall -q src dashboard tests`
+- `node --check src\racing_model\web\app.js`
+- `$env:PYTHONPATH='src'; py -3.12 -m pytest tests\test_pool_replay.py tests\test_betting.py tests\test_coverage.py -q`
+
 ## 2026-05-09 - Granular Coverage Maturity Score
 
 Goal:

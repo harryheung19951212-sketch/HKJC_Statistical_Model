@@ -74,6 +74,15 @@ from .weather import race_weather
 APP_DIR = Path(__file__).resolve().parent / "web"
 
 
+def pool_replay_context_key(race_context: dict[str, object] | None) -> str:
+    if not race_context:
+        return "global"
+    return "|".join(
+        str(race_context.get(key) or "")
+        for key in ("track", "course", "distance_m", "going", "class_rating")
+    )
+
+
 class AppState:
     def __init__(self, model_path: Path, odds_interval_seconds: int) -> None:
         self.settings = get_settings()
@@ -149,14 +158,16 @@ class AppState:
             self.calibration_cache = {"expires_at": now + 300.0, "gate": dict(gate)}
         return dict(gate)
 
-    def pool_replay_gate(self, conn) -> dict[str, object]:
+    def pool_replay_gate(self, conn, race_context: dict[str, object] | None = None) -> dict[str, object]:
         now = time.monotonic()
+        context_key = pool_replay_context_key(race_context)
         with self.pool_replay_gate_lock:
             cached = self.pool_replay_gate_cache.get("gate")
-            if cached and now < float(self.pool_replay_gate_cache.get("expires_at") or 0):
+            cached_key = self.pool_replay_gate_cache.get("context_key")
+            if cached and cached_key == context_key and now < float(self.pool_replay_gate_cache.get("expires_at") or 0):
                 return dict(cached)
         try:
-            gate = pool_replay_calibration(pool_replay_report(conn))
+            gate = pool_replay_calibration(pool_replay_report(conn), race_context=race_context)
         except Exception as exc:
             gate = {
                 "status": "unverified",
@@ -168,7 +179,7 @@ class AppState:
                 "sample_building_markets": [],
             }
         with self.pool_replay_gate_lock:
-            self.pool_replay_gate_cache = {"expires_at": now + 60.0, "gate": dict(gate)}
+            self.pool_replay_gate_cache = {"expires_at": now + 60.0, "gate": dict(gate), "context_key": context_key}
         return dict(gate)
 
     def focus_race(self, race_id: str, now: float | None = None) -> dict[str, object]:
@@ -1234,6 +1245,7 @@ def api_betting(
         queued = state.start_exotic_refresh_job(race_id) if state is not None else False
     else:
         queued = False
+    race = dict(race_rows[0])
     payload = build_betting_decisions(
         predictions,
         status,
@@ -1242,9 +1254,8 @@ def api_betting(
         exotic_dividends=exotic_lookup,
         include_exotics=include_exotics,
         calibration_gate=None if status == "resulted" or state is None else state.calibration_gate(conn, model),
-        pool_replay_gate=None if status == "resulted" or state is None else state.pool_replay_gate(conn),
+        pool_replay_gate=None if status == "resulted" or state is None else state.pool_replay_gate(conn, race),
     )
-    race = dict(race_rows[0])
     payload["race"] = race
     payload["prediction_policy"] = policy or {}
     payload["pace_map"] = pace_map

@@ -20,12 +20,12 @@ STATUS_WEIGHTS = {
 
 MATURITY_OVERRIDES = {
     24: (
-        0.64,
-        "已由純候選排序進展到官方派彩 gate、分池 replay gate、ROI 封鎖/降注及 UI 可解釋狀態；仍未完成分場地/距離 optimizer。",
+        0.68,
+        "已由純候選排序進展到官方派彩 gate、分池 replay gate、馬場/路程/班次情境切片、ROI 封鎖/降注及 UI 可解釋狀態；仍未完成正式 optimizer 閾值訓練。",
     ),
     25: (
-        0.60,
-        "已接入 probable/final dividend 儲存、官方派彩 gate、final dividend audit、自動補抓對數及分池 replay stake gate；仍未有完整彩池深度和長期 final-dividend 校準。",
+        0.62,
+        "已接入 probable/final dividend 儲存、官方派彩 gate、final dividend audit、自動補抓對數、分池 replay stake gate 及情境切片校準；仍未有完整彩池深度和長期 final-dividend 校準。",
     ),
 }
 
@@ -462,12 +462,12 @@ def coverage_items() -> list[dict[str, Any]]:
             STATUS_PARTIAL,
             ["模型預測", "組合派彩", "投注候選"],
             ["src/racing_model/betting.py", "src/racing_model/exotic_dividends.py", "src/racing_model/pool_replay.py", "src/racing_model/web/app.js"],
-            "已產生多彩池候選，並把官方派彩覆蓋率、派彩質素、成本後 EV、所需派彩差、風險扣分、官方價 gate 及分池 replay gate 納入 pool-choice 排序；若某 pool 已結算 ROI 太差、等待 final dividend 或等待對數，會自動封鎖/降注並在 UI 顯示原因。",
-            "仍未有完整 pool-choice optimizer、跨場相關性、分馬場/距離的 pool ROI 校準及長期樣本穩定性驗證。",
-            "用 hit probability x official expected dividend x risk x takeout x replay performance 做跨彩池 walk-forward，逐池驗證不下注/升級/降級規則。",
+            "已產生多彩池候選，並把官方派彩覆蓋率、派彩質素、成本後 EV、所需派彩差、風險扣分、官方價 gate、分池 replay gate 及馬場/路程/班次情境切片納入 pool-choice 排序；若本場切片或全局 pool 已結算 ROI 太差、等待 final dividend 或等待對數，會自動封鎖/降注並在 UI 顯示原因。",
+            "仍未有正式 pool-choice optimizer 閾值訓練、跨場相關性、切片樣本穩定性檢定及長期 ROI 顯著性檢驗。",
+            "用 hit probability x official expected dividend x risk x takeout x contextual replay performance 做跨彩池 walk-forward，逐池驗證不下注/升級/降級規則。",
             ["位置Q", "連贏", "單T/三重彩", "四連環/四重彩", "中獎率 x 派彩 x 風險"],
             "極高：買錯玩法會大幅降低 ROI。",
-            "Pool-choice replay 必須勝過單一彩池 baseline。",
+            "Pool-choice contextual replay 必須勝過單一彩池 baseline，且切片樣本不足時要能保守 fallback。",
             2,
         ),
         spec(
@@ -477,9 +477,9 @@ def coverage_items() -> list[dict[str, Any]]:
             STATUS_PARTIAL,
             ["HKJC 可能派彩", "HKJC MQTT recovery", "最終派彩", "彩池大小"],
             ["src/racing_model/exotic_dividends.py", "src/racing_model/exotic_live.py", "src/racing_model/betting.py", "src/racing_model/pool_replay.py", "tests/test_betting.py", "tests/test_pool_replay.py"],
-            "可儲存 probable/final dividends，下注引擎會標示官方即時、賽果派彩、估算或未核實派彩；只有 HKJC GraphQL/MQTT probable 組合派彩可進入即場下注 gate。pool replay 已加入 final dividend audit，並可由 audit 驅動補抓 HKJC 賽果/最終派彩再自動對數；分池 replay gate 會用已結算/等待派彩狀態控制組合票注碼。",
-            "彩池深度、組合結構校準、更完整 probable/final dividend coverage、分場地/距離的 final-dividend replay 及長期分池 ROI 校準仍未完整。",
-            "擴大 HKJC probable/final dividend 抓取覆蓋，把補抓後的真實 final dividends 納入 QPL/TRIO/TCE/FIRST4/QUARTET 分池 walk-forward 校準。",
+            "可儲存 probable/final dividends，下注引擎會標示官方即時、賽果派彩、估算或未核實派彩；只有 HKJC GraphQL/MQTT probable 組合派彩可進入即場下注 gate。pool replay 已加入 final dividend audit，並可由 audit 驅動補抓 HKJC 賽果/最終派彩再自動對數；分池 replay gate 會用已結算/等待派彩狀態及本場情境切片控制組合票注碼。",
+            "彩池深度、組合結構校準、更完整 probable/final dividend coverage、長期 final-dividend replay 及分切片 ROI 顯著性仍未完整。",
+            "擴大 HKJC probable/final dividend 抓取覆蓋，把補抓後的真實 final dividends 納入 QPL/TRIO/TCE/FIRST4/QUARTET 分池/切片 walk-forward 校準。",
             ["組合彩池賠率", "probable dividend", "final dividend", "官方即時派彩"],
             "極高：無派彩就不能正確計組合注碼。",
             "組合 EV 要用真實 final dividend 做 replay 校準。",
