@@ -89,6 +89,50 @@ def test_market_fallback_ev_is_reported_but_not_actionable() -> None:
     assert win_decision["reason"] == "同分熔斷只計市場公平EV，未有模型edge"
 
 
+def test_market_fallback_blocks_exotic_stakes_but_keeps_ev() -> None:
+    predictions = [
+        {
+            "horse_id": f"H00{index}",
+            "horse_no": index,
+            "display_name": f"市場馬{index}",
+            "win_probability": probability,
+            "latest_win_odds": 4.0 + index,
+            "latest_win_odds_source": "hkjc_mqtt",
+            "top3_probability": min(probability * 3, 0.9),
+            "place_odds": 1.6 + index * 0.1,
+            "place_odds_source": "hkjc_mqtt",
+            "market_fallback_no_edge": True,
+            "model_edge_available": False,
+            "expected_value_source": "market_fair_probability_fallback",
+        }
+        for index, probability in enumerate([0.40, 0.32, 0.28], start=1)
+    ]
+    dividends = {
+        ("QPL", "1+2"): {
+            "dividend": 100.0,
+            "dividend_status": "probable",
+            "source": "hkjc_graphql",
+        }
+    }
+
+    result = build_betting_decisions(
+        predictions,
+        "scheduled",
+        bankroll=10000,
+        risk_profile="standard",
+        exotic_dividends=dividends,
+    )
+
+    assert result["tickets"] == []
+    qpl_decision = next(row for row in result["exotic_decisions"] if row["market"] == "QPL" and row["combination_key"] == "1+2")
+    assert qpl_decision["expected_value"] is not None
+    assert qpl_decision["expected_value_source"] == "market_fair_probability_fallback"
+    assert qpl_decision["model_edge_available"] is False
+    assert qpl_decision["recommended_stake"] == 0.0
+    assert qpl_decision["action"] == "觀望"
+    assert qpl_decision["reason"] == "同分熔斷只計組合市場公平EV，未有模型edge"
+
+
 def test_resulted_race_is_review_only() -> None:
     predictions = [
         {

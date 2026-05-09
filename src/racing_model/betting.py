@@ -609,6 +609,11 @@ def build_exotic_candidates(
             expected_value = probability * dividend - 1.0 if dividend else None
             adjusted_ev = cost_adjusted_expected_value(expected_value, code)
             req_dividend = required_dividend(probability, code, RISK_PROFILES["standard"].min_expected_value)
+            market_fallback_no_edge = any(
+                bool(runner_by_id[str(horse_id)].get("market_fallback_no_edge"))
+                for horse_id in horse_ids
+                if str(horse_id) in runner_by_id
+            )
             structure = exotic_structure_payload(
                 code,
                 str(product["label"]),
@@ -652,7 +657,10 @@ def build_exotic_candidates(
                     "dividend_is_live": dividend_quality["is_live"],
                     "dividend_gate_reason": dividend_quality["reason"],
                     "expected_value": round(expected_value, 6) if expected_value is not None else None,
+                    "expected_value_source": "market_fair_probability_fallback" if market_fallback_no_edge else "model_probability",
                     "cost_adjusted_expected_value": round(adjusted_ev, 6) if adjusted_ev is not None else None,
+                    "market_fallback_no_edge": market_fallback_no_edge,
+                    "model_edge_available": not market_fallback_no_edge,
                     "combination_count": structure["combination_count"],
                     "minimum_ticket_cost": round(unit * int(structure["combination_count"]), 1),
                     "recommended_stake": 0.0,
@@ -774,6 +782,10 @@ def build_exotic_decisions(
             req_edge,
             candidate.get("dividend_status"),
         )
+        market_fallback_no_edge = bool(candidate.get("market_fallback_no_edge"))
+        if market_fallback_no_edge:
+            eligible = False
+            reason = "同分熔斷只計組合市場公平EV，未有模型edge"
         action = action_label(eligible, expected_value, edge, profile, reason)
         stake_fraction = capped_fraction if action == "有值博" else 0.0
         stake = (
@@ -810,6 +822,7 @@ def build_exotic_decisions(
                 "market_probability": round(market_probability, 6) if market_probability is not None else None,
                 "edge": round(edge, 6) if edge is not None else None,
                 "expected_value": round(expected_value, 6) if expected_value is not None else None,
+                "expected_value_source": candidate.get("expected_value_source") or "model_probability",
                 "cost_adjusted_expected_value": round(adjusted_ev, 6) if adjusted_ev is not None else None,
                 "required_expected_value": round(req_ev, 6),
                 "required_edge": round(req_edge, 6),
@@ -823,6 +836,8 @@ def build_exotic_decisions(
                 "recommended_stake": stake,
                 "action": action,
                 "reason": reason,
+                "model_edge_available": not market_fallback_no_edge,
+                "market_fallback_no_edge": market_fallback_no_edge,
                 "exposure_action": "保留",
                 "exposure_reason": "未觸及相關曝險上限",
                 "exposure_adjustment_factor": 1.0,
