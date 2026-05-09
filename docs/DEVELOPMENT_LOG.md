@@ -2,6 +2,28 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-09 - Official Exotic Dividend Gate For Pool Choice
+
+Goal:
+
+- Strengthen indicator 24 彩池選擇模型 and indicator 25 組合派彩預測.
+- Prevent unverified or estimated exotic dividends from becoming real betting tickets.
+- Make pool-choice ranking prefer pools with official HKJC probable dividend coverage.
+
+Changes:
+
+- Added exotic dividend quality labels: official probable, final result, estimated, unverified, and missing.
+- Exotic tickets now require HKJC GraphQL/MQTT `probable` dividends before they can pass the betting gate; final result dividends remain replay/settlement only, and unverified/manual prices are watch-only.
+- Pool-choice scoring now includes official price quality and official dividend coverage, with a separate `need_official_dividend` verdict for positive-EV pools that still lack official live prices.
+- The live betting UI now shows dividend quality, official coverage, and the price-gate reason on pool-choice and exotic candidate cards.
+- Updated the 36-indicator coverage report for items 24 and 25.
+
+Verification:
+
+- `py -3.12 -m compileall -q src dashboard tests`
+- `node --check src\racing_model\web\app.js`
+- `$env:PYTHONPATH='src'; py -3.12 -m pytest tests\test_betting.py tests\test_exotic_dividends.py tests\test_exotic_live.py -q`
+
 ## 2026-05-09 - Refresh Codex Handoff Notes
 
 Goal:

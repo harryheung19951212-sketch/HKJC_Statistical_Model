@@ -950,7 +950,10 @@ function renderPoolChoiceCard(row) {
         <label>抽水 <b>${formatPct(row.takeout_rate)}</b></label>
         <label>建議注碼 <b>${formatMoney(row.best_recommended_stake)}</b></label>
         <label>最佳派彩 <b>${formatNum(row.best_dividend, 2)}x</b></label>
+        <label>派彩質素 <b>${row.price_quality_label || "-"}</b></label>
+        <label>官方覆蓋 <b>${row.official_price_count || 0}/${row.candidate_count || row.ticket_count || 0}</b></label>
       </div>
+      <small>${row.price_gate_reason || ""}</small>
     </div>
   `;
 }
@@ -960,6 +963,7 @@ function poolChoiceVerdict(value) {
     actionable: "可落注",
     watchlist: "觀察名單",
     need_dividend: "等官方派彩",
+    need_official_dividend: "等官方派彩",
     no_edge_after_cost: "扣成本後無值",
     dividend_too_short: "派彩未補償風險",
     high_variance: "波動過高",
@@ -1043,6 +1047,7 @@ function renderExoticCard(row) {
         <label>\u6240\u9700\u6d3e\u5f69 <b>${formatNum(row.required_dividend, 2)}x</b></label>
         <label>官方即時 <b>${formatNum(row.dividend, 2)}x</b></label>
         <label>賠率來源 <b>${dividendSourceLabel(row)}</b></label>
+        <label>派彩質素 <b>${row.dividend_quality_label || "-"}</b></label>
         <label>建議注碼 <b>${formatMoney(row.recommended_stake)}</b></label>
         <label>每組約 <b>${formatMoney(row.per_combination_stake)}</b></label>
         <label>組合數 <b>${row.combination_count || 1}</b></label>
@@ -1055,6 +1060,7 @@ function renderExoticCard(row) {
         <label>\u6263\u6210\u672cEV <b class="${evClass(row.cost_adjusted_expected_value)}">${formatSigned(row.cost_adjusted_expected_value, 3)}</b></label>
       </div>
       <small>${row.exposure_reason || ""}</small>
+      <small>${row.dividend_gate_reason || ""}</small>
       <small>${row.stake_reason || ""}</small>
     </div>
   `;

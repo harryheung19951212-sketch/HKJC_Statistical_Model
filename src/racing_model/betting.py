@@ -18,6 +18,7 @@ from .pace import annotate_predictions_with_pace, exotic_pace_payload
 
 
 LIVE_ODDS_SOURCES = {"hkjc_graphql", "hkjc_mqtt"}
+FINAL_DIVIDEND_SOURCES = {"hkjc_results_final"}
 
 EXOTIC_PRODUCTS = {
     "QIN": {"label": "連贏", "size": 2, "ordered": False, "top_k": 2},
@@ -349,6 +350,7 @@ def decision_eligibility(
     edge: float | None,
     required_ev: float,
     required_edge_value: float,
+    price_status: object | None = None,
 ) -> tuple[bool, str]:
     if not odds or odds <= 1:
         return False, "未有官方賠率"
@@ -358,7 +360,14 @@ def decision_eligibility(
         return False, "已開跑，停止下注"
     if market in {"WIN", "PLACE"} and source not in LIVE_ODDS_SOURCES:
         return False, "未有官方實時賠率"
-    if source == "hkjc_results_final":
+    if market not in {"WIN", "PLACE"}:
+        if source in FINAL_DIVIDEND_SOURCES:
+            return False, "賽果派彩，只作回測"
+        if source not in LIVE_ODDS_SOURCES:
+            return False, "未有官方組合彩池派彩"
+        if str(price_status or "probable") != "probable":
+            return False, "組合彩池派彩狀態未可落注"
+    if source in FINAL_DIVIDEND_SOURCES:
         return False, "賽後賠率，只作回測"
     if expected_value is None or edge is None:
         return False, "資料不足"
@@ -451,6 +460,7 @@ def build_exotic_candidates(
             combination_key = exotic_combination_key(code, horse_numbers)
             dividend_row = (exotic_dividends or {}).get((code, combination_key))
             dividend = safe_float(dividend_row.get("dividend")) if dividend_row else None
+            dividend_quality = exotic_dividend_quality(dividend_row)
             expected_value = probability * dividend - 1.0 if dividend else None
             adjusted_ev = cost_adjusted_expected_value(expected_value, code)
             req_dividend = required_dividend(probability, code, RISK_PROFILES["standard"].min_expected_value)
@@ -491,6 +501,11 @@ def build_exotic_candidates(
                     "dividend": dividend,
                     "dividend_status": dividend_row.get("dividend_status") if dividend_row else None,
                     "dividend_source": dividend_row.get("source") if dividend_row else None,
+                    "dividend_quality": dividend_quality["quality"],
+                    "dividend_quality_label": dividend_quality["label"],
+                    "dividend_is_official": dividend_quality["is_official"],
+                    "dividend_is_live": dividend_quality["is_live"],
+                    "dividend_gate_reason": dividend_quality["reason"],
                     "expected_value": round(expected_value, 6) if expected_value is not None else None,
                     "cost_adjusted_expected_value": round(adjusted_ev, 6) if adjusted_ev is not None else None,
                     "combination_count": structure["combination_count"],
@@ -536,6 +551,50 @@ def pace_probability_multiplier(pace_payload: dict[str, Any]) -> float:
     return clamp_value(multiplier, 0.82, 1.14)
 
 
+def exotic_dividend_quality(row: dict[str, Any] | None) -> dict[str, Any]:
+    if not row:
+        return {
+            "quality": "missing",
+            "label": "未有官方派彩",
+            "is_official": False,
+            "is_live": False,
+            "reason": "未有官方可能派彩，候選只可觀察。",
+        }
+    source = str(row.get("source") or "")
+    status = str(row.get("dividend_status") or "")
+    if source in LIVE_ODDS_SOURCES and status == "probable":
+        return {
+            "quality": "official_probable",
+            "label": "官方即時派彩",
+            "is_official": True,
+            "is_live": True,
+            "reason": "官方即時可能派彩，可進入下注 gate。",
+        }
+    if source in FINAL_DIVIDEND_SOURCES or status == "final":
+        return {
+            "quality": "final_result",
+            "label": "賽果最終派彩",
+            "is_official": True,
+            "is_live": False,
+            "reason": "賽果派彩只供回測/結算，不可臨場落注。",
+        }
+    if status == "estimated":
+        return {
+            "quality": "estimated",
+            "label": "模型估算派彩",
+            "is_official": False,
+            "is_live": False,
+            "reason": "估算派彩不可作臨場下注依據。",
+        }
+    return {
+        "quality": "unverified",
+        "label": "未核實派彩",
+        "is_official": False,
+        "is_live": False,
+        "reason": "派彩來源未核實，只可用作分析，等官方價先落注。",
+    }
+
+
 def build_exotic_decisions(
     candidates: list[dict[str, Any]],
     race_status: str,
@@ -568,6 +627,7 @@ def build_exotic_decisions(
             edge,
             req_ev,
             req_edge,
+            candidate.get("dividend_status"),
         )
         action = action_label(eligible, expected_value, edge, profile, reason)
         stake_fraction = capped_fraction if action == "有值博" else 0.0
@@ -595,6 +655,12 @@ def build_exotic_decisions(
                 "probability": round(probability, 6) if probability is not None else None,
                 "odds": dividend,
                 "odds_source": candidate.get("dividend_source"),
+                "price_status": candidate.get("dividend_status"),
+                "price_quality": candidate.get("dividend_quality"),
+                "price_quality_label": candidate.get("dividend_quality_label"),
+                "price_is_official": candidate.get("dividend_is_official"),
+                "price_is_live": candidate.get("dividend_is_live"),
+                "price_gate_reason": candidate.get("dividend_gate_reason"),
                 "fair_odds": round(fair_odds, 3) if fair_odds else None,
                 "market_probability": round(market_probability, 6) if market_probability is not None else None,
                 "edge": round(edge, 6) if edge is not None else None,
@@ -686,6 +752,11 @@ def pool_choice_market_row(
             "best_minimum_ticket_cost": rule["min_unit"],
             "best_recommended_stake": 0.0,
             "best_combination": "",
+            "official_price_count": 0,
+            "price_quality": "missing",
+            "price_quality_label": "未有派彩",
+            "price_gate_reason": "未有候選或官方派彩。",
+            "price_coverage": 0.0,
             "leverage_index": 0.0,
             "efficiency_gap": None,
             "risk_penalty": 0.0,
@@ -704,6 +775,9 @@ def pool_choice_market_row(
     adjusted_ev = safe_float(best_source.get("cost_adjusted_expected_value"))
     minimum_cost = safe_float(best_source.get("minimum_ticket_cost")) or float(rule["min_unit"])
     recommended_stake = safe_float(best_source.get("recommended_stake")) or 0.0
+    official_price_count = sum(1 for row in sources if pool_price_is_official(market, row))
+    price_coverage = official_price_count / max(len(sources), 1)
+    price_quality = pool_price_quality(market, best_source)
     leverage = max((dividend or required or 1.0) - 1.0, 0.0)
     efficiency_gap = (dividend - required) if dividend is not None and required is not None else None
     risk_penalty = pool_choice_risk_penalty(market, probability, minimum_cost, leverage)
@@ -716,6 +790,7 @@ def pool_choice_market_row(
         minimum_cost=minimum_cost,
         risk_penalty=risk_penalty,
         actionable=bool(actionable),
+        price_quality_score=float(price_quality["score"]),
     )
     return {
         "market": market,
@@ -735,10 +810,15 @@ def pool_choice_market_row(
         "best_minimum_ticket_cost": round(minimum_cost, 1),
         "best_recommended_stake": round(recommended_stake, 1),
         "best_combination": str(best_source.get("combination") or best_source.get("horse_name") or ""),
+        "official_price_count": official_price_count,
+        "price_coverage": round(price_coverage, 4),
+        "price_quality": price_quality["quality"],
+        "price_quality_label": price_quality["label"],
+        "price_gate_reason": price_quality["reason"],
         "leverage_index": round(leverage, 3),
         "efficiency_gap": round(efficiency_gap, 3) if efficiency_gap is not None else None,
         "risk_penalty": round(risk_penalty, 4),
-        "verdict": pool_choice_verdict(adjusted_ev, efficiency_gap, actionable, risk_penalty),
+        "verdict": pool_choice_verdict(market, adjusted_ev, efficiency_gap, actionable, risk_penalty, bool(price_quality["is_official"])),
     }
 
 
@@ -751,6 +831,7 @@ def pool_choice_item_score(row: dict[str, Any]) -> float:
     stake = safe_float(row.get("recommended_stake")) or 0.0
     pace_fit = safe_float(row.get("pace_fit_score")) or 0.0
     pace_risk = safe_float(row.get("pace_risk_score")) or 0.0
+    quality = pool_price_quality(str(row.get("market") or ""), row)
     return (
         (adjusted_ev if adjusted_ev is not None else -0.25) * 100.0
         + probability * 8.0
@@ -758,7 +839,57 @@ def pool_choice_item_score(row: dict[str, Any]) -> float:
         + pace_fit * 2.0
         - max(pace_risk - 0.55, 0.0) * 2.5
         + (5.0 if stake > 0 else 0.0)
+        + float(quality["score"]) * 6.0
     )
+
+
+def pool_price_is_official(market: str, row: dict[str, Any]) -> bool:
+    return bool(pool_price_quality(market, row)["is_official"])
+
+
+def pool_price_quality(market: str, row: dict[str, Any]) -> dict[str, Any]:
+    if market in {"WIN", "PLACE"}:
+        source = str(row.get("odds_source") or "")
+        if source in LIVE_ODDS_SOURCES:
+            return {
+                "quality": "official_live",
+                "label": "官方即時賠率",
+                "reason": "官方 WIN/PLACE 即時賠率可作下注依據。",
+                "is_official": True,
+                "score": 1.0,
+            }
+        if source in FINAL_DIVIDEND_SOURCES:
+            return {
+                "quality": "final_result",
+                "label": "賽果賠率",
+                "reason": "賽果賠率只供回測，不可臨場落注。",
+                "is_official": True,
+                "score": 0.2,
+            }
+        return {
+            "quality": "missing",
+            "label": "未有官方賠率",
+            "reason": "未有官方即時賠率，不能落注。",
+            "is_official": False,
+            "score": -1.0,
+        }
+    quality = str(row.get("dividend_quality") or row.get("price_quality") or "")
+    label = str(row.get("dividend_quality_label") or row.get("price_quality_label") or "")
+    reason = str(row.get("dividend_gate_reason") or row.get("price_gate_reason") or "")
+    is_official = bool(row.get("dividend_is_official") or row.get("price_is_official"))
+    if quality == "official_probable":
+        return {"quality": quality, "label": label or "官方即時派彩", "reason": reason or "官方可能派彩可作下注依據。", "is_official": True, "score": 1.0}
+    if quality == "final_result":
+        return {"quality": quality, "label": label or "賽果最終派彩", "reason": reason or "賽果派彩只供回測。", "is_official": True, "score": 0.2}
+    if not quality:
+        quality = "missing"
+    return {
+        "quality": quality,
+        "label": label or ("未有官方派彩" if quality == "missing" else "未核實派彩"),
+        "reason": reason or "未有官方組合彩池派彩，不能落注。",
+        "is_official": is_official,
+        "score": -1.0,
+    }
 
 
 def pool_choice_score(
@@ -770,6 +901,7 @@ def pool_choice_score(
     minimum_cost: float,
     risk_penalty: float,
     actionable: bool,
+    price_quality_score: float = 0.0,
 ) -> float:
     ev_component = (adjusted_ev if adjusted_ev is not None else -0.25) * 100.0
     probability_component = (probability or 0.0) * 8.0
@@ -777,7 +909,8 @@ def pool_choice_score(
     leverage_component = min(leverage, 80.0) * 0.04
     cost_penalty = min(max(minimum_cost - 1.0, 0.0), 30.0) * 0.08
     action_bonus = 8.0 if actionable else 0.0
-    return ev_component + probability_component + gap_component + leverage_component + action_bonus - takeout * 12.0 - cost_penalty - risk_penalty
+    quality_component = price_quality_score * 6.0
+    return ev_component + probability_component + gap_component + leverage_component + action_bonus + quality_component - takeout * 12.0 - cost_penalty - risk_penalty
 
 
 def pool_choice_risk_penalty(market: str, probability: float | None, minimum_cost: float, leverage: float) -> float:
@@ -791,13 +924,17 @@ def pool_choice_risk_penalty(market: str, probability: float | None, minimum_cos
 
 
 def pool_choice_verdict(
+    market: str,
     adjusted_ev: float | None,
     efficiency_gap: float | None,
     actionable: list[dict[str, Any]] | bool,
     risk_penalty: float,
+    official_price: bool,
 ) -> str:
     if adjusted_ev is None:
         return "need_dividend"
+    if market not in {"WIN", "PLACE"} and not official_price:
+        return "need_official_dividend"
     if adjusted_ev <= 0:
         return "no_edge_after_cost"
     if efficiency_gap is not None and efficiency_gap < 0:

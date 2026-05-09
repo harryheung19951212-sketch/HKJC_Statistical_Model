@@ -16,6 +16,14 @@ This is the current handoff note for the next Codex agent. Treat this section as
 - Public app URL: `http://43.228.125.192:8765/`
 - Production app uses Docker Compose with PostgreSQL. Do not commit `.env`, `.env.production`, data DBs, raw data, model snapshots, reports, passwords, tokens, or server secrets.
 
+### Current Development Focus - Official Exotic Dividend Gate
+
+- The latest local work strengthens indicator 24 彩池選擇模型 and indicator 25 組合派彩預測.
+- Exotic dividends are now classified as official probable, final result, estimated, unverified, or missing.
+- Only HKJC GraphQL/MQTT `probable` exotic dividends can pass the live betting gate. Final result dividends are replay/settlement only; manual/unverified prices are watch-only even when EV is positive.
+- Pool-choice rows now expose official price coverage, price quality, and `need_official_dividend` verdicts so another Codex can continue with real pool replay and final-dividend calibration.
+- UI candidate cards show dividend quality and the exact price-gate reason.
+
 ### Recent Betting And Settlement Changes
 
 - Payout reconciliation is now limited to rows whose `betting_recommendations.execution_status` is `confirmed`.

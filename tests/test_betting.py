@@ -195,7 +195,7 @@ def test_exotic_candidate_structure_does_not_drag_too_many_legs() -> None:
         ("FIRST4", "1+2+3+4"): {
             "dividend": 40.0,
             "dividend_status": "probable",
-            "source": "manual_test",
+            "source": "hkjc_graphql",
         }
     }
 
@@ -235,7 +235,7 @@ def test_trio_exact_three_selection_is_box_not_banker_leg() -> None:
         ("TRIO", "1+2+3"): {
             "dividend": 120.0,
             "dividend_status": "probable",
-            "source": "manual_test",
+            "source": "hkjc_graphql",
         }
     }
 
@@ -273,7 +273,7 @@ def test_exotic_dividend_turns_candidate_into_ev_ticket() -> None:
         ("QPL", "1+2"): {
             "dividend": 20.0,
             "dividend_status": "probable",
-            "source": "manual_test",
+            "source": "hkjc_graphql",
         }
     }
 
@@ -301,6 +301,52 @@ def test_exotic_dividend_turns_candidate_into_ev_ticket() -> None:
     qpl_pool = next(row for row in result["pool_choice"]["markets"] if row["market"] == "QPL")
     assert qpl_pool["best_cost_adjusted_expected_value"] > 0
     assert qpl_pool["takeout_rate"] > 0
+    assert qpl_pool["official_price_count"] > 0
+    assert qpl_pool["price_quality"] == "official_probable"
+    assert qpl_pool["verdict"] == "actionable"
+
+
+def test_unverified_exotic_dividend_is_watch_only_not_ticket() -> None:
+    predictions = [
+        {
+            "horse_id": f"H00{index}",
+            "horse_no": index,
+            "display_name": f"馬{index}",
+            "win_probability": probability,
+            "latest_win_odds": 3.0 + index,
+            "latest_win_odds_source": "hkjc_mqtt",
+            "top3_probability": min(probability * 3, 0.9),
+            "place_odds": 1.5,
+            "place_odds_source": "hkjc_mqtt",
+        }
+        for index, probability in enumerate([0.34, 0.24, 0.18, 0.12, 0.07, 0.05], start=1)
+    ]
+    dividends = {
+        ("QPL", "1+2"): {
+            "dividend": 60.0,
+            "dividend_status": "probable",
+            "source": "manual_test",
+        }
+    }
+
+    result = build_betting_decisions(
+        predictions,
+        "scheduled",
+        bankroll=10000,
+        risk_profile="standard",
+        exotic_dividends=dividends,
+    )
+
+    qpl_candidate = next(row for row in result["exotic_candidates"] if row["market"] == "QPL" and row["combination_key"] == "1+2")
+    qpl_pool = next(row for row in result["pool_choice"]["markets"] if row["market"] == "QPL")
+
+    assert qpl_candidate["expected_value"] > 0
+    assert qpl_candidate["dividend_quality"] == "unverified"
+    assert qpl_candidate["recommended_stake"] == 0.0
+    assert "未有官方組合彩池派彩" in qpl_candidate["stake_reason"]
+    assert all(ticket["market"] != "QPL" for ticket in result["tickets"])
+    assert qpl_pool["official_price_count"] == 0
+    assert qpl_pool["verdict"] == "need_official_dividend"
 
 
 def test_ordered_exotic_box_counts_all_permutation_tickets() -> None:
@@ -322,7 +368,7 @@ def test_ordered_exotic_box_counts_all_permutation_tickets() -> None:
         ("TCE", "1>2>3"): {
             "dividend": 120.0,
             "dividend_status": "probable",
-            "source": "manual_test",
+            "source": "hkjc_graphql",
         }
     }
 
@@ -360,12 +406,12 @@ def test_pool_choice_prefers_higher_ev_upgrade_pool_when_available() -> None:
         ("QPL", "1+2"): {
             "dividend": 8.0,
             "dividend_status": "probable",
-            "source": "manual_test",
+            "source": "hkjc_graphql",
         },
         ("TRIO", "1+2+3"): {
             "dividend": 80.0,
             "dividend_status": "probable",
-            "source": "manual_test",
+            "source": "hkjc_graphql",
         },
     }
 
@@ -437,12 +483,12 @@ def test_bet_slip_engine_ranks_tickets_and_builds_strategy_options() -> None:
         ("QPL", "1+2"): {
             "dividend": 16.0,
             "dividend_status": "probable",
-            "source": "manual_test",
+            "source": "hkjc_graphql",
         },
         ("TRIO", "1+2+3"): {
             "dividend": 80.0,
             "dividend_status": "probable",
-            "source": "manual_test",
+            "source": "hkjc_graphql",
         },
     }
 
@@ -486,22 +532,22 @@ def test_correlated_exposure_reduces_shared_horse_and_leg_stakes() -> None:
         ("QPL", "1+2"): {
             "dividend": 30.0,
             "dividend_status": "probable",
-            "source": "manual_test",
+            "source": "hkjc_graphql",
         },
         ("QIN", "1+2"): {
             "dividend": 40.0,
             "dividend_status": "probable",
-            "source": "manual_test",
+            "source": "hkjc_graphql",
         },
         ("FCT", "1>2"): {
             "dividend": 40.0,
             "dividend_status": "probable",
-            "source": "manual_test",
+            "source": "hkjc_graphql",
         },
         ("TRIO", "1+2+3"): {
             "dividend": 80.0,
             "dividend_status": "probable",
-            "source": "manual_test",
+            "source": "hkjc_graphql",
         },
     }
 
