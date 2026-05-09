@@ -27,6 +27,10 @@ MATURITY_OVERRIDES = {
         0.62,
         "已接入 probable/final dividend 儲存、官方派彩 gate、final dividend audit、自動補抓對數、分池 replay stake gate 及情境切片校準；仍未有完整彩池深度和長期 final-dividend 校準。",
     ),
+    30: (
+        0.58,
+        "已由離線可靠度分桶推進到即場同分熔斷：當能力/融合模型對全場輸出近乎完全平均概率時，會改用最新獨贏/位置市場公平機率，避免 live 頁面出現假平均勝率或由平均底噪製造假正 EV；仍未完成組合彩池結構層校準。",
+    ),
     35: (
         0.64,
         "已由純 scorecard gate 推前到 walk-forward 候選模型排序、model registry 升級 gate 及彩池 optimizer 注碼調整，用 OOS Log Loss、Brier、Top1、Top3、ROI、最大回撤加權選候選並按 replay ROI/回撤/retention 調整注碼；仍未把權重自動反饋到特徵搜尋。",
@@ -560,8 +564,8 @@ def coverage_items() -> list[dict[str, Any]]:
             STATUS_PARTIAL,
             ["賽果", "模型預測", "walk-forward", "下注建議"],
             ["src/racing_model/evolution.py", "src/racing_model/calibration_gate.py", "src/racing_model/pool_calibration.py", "src/racing_model/betting.py", "src/racing_model/model_registry.py"],
-            "已有 Brier、log loss、整體/分片可靠度分桶、WIN/PLACE/組合彩池投注留痕校準、calibration stake gate、promotion calibration blocker，以及下注時 execution ROI / 回撤升級 blocker。",
-            "已加入場地、跑道、路程、場地狀況、班次、馬匹數、市場熱門分片、候選模型 OOS reliability artifact 及按彩池校準 gate；仍未按實際組合結構做分層校準。",
+            "已有 Brier、log loss、整體/分片可靠度分桶、WIN/PLACE/組合彩池投注留痕校準、calibration stake gate、promotion calibration blocker、下注時 execution ROI / 回撤升級 blocker，以及 live 同分概率熔斷。",
+            "已加入場地、跑道、路程、場地狀況、班次、馬匹數、市場熱門分片、候選模型 OOS reliability artifact、按彩池校準 gate 及即場市場 fallback；仍未按實際組合結構做分層校準。",
             "把組合彩池再拆到 QPL/TRIO/TCE/FIRST4/QUARTET 結構層，並用真實投注回放檢查 Kelly 注碼安全。",
             ["30% 勝率長期是否真贏 30%", "Kelly 安全", "reliability bins", "分片校準", "分彩池校準"],
             "極高：概率未校準會破壞所有 EV 與 Kelly。",

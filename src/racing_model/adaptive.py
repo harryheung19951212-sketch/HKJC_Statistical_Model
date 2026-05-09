@@ -9,6 +9,8 @@ from .model_compare import ABILITY_FEATURES, dual_model_backtest, masked_model
 
 
 MARKET_BLEND_WEIGHT = 0.35
+UNIFORM_PROBABILITY_EPSILON = 0.000001
+UNIFORM_MARKET_FALLBACK_WEIGHT = 1.0
 
 
 def adaptive_prediction_policy(conn: sqlite3.Connection, model: RankingModel) -> dict[str, Any]:
@@ -50,15 +52,23 @@ def adaptive_predict_race(
     race_id: str,
     policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    policy = policy or adaptive_prediction_policy(conn, model)
+    policy = dict(policy or adaptive_prediction_policy(conn, model))
     runners = build_race_features(conn, race_id)
     active_model = masked_model(model, ABILITY_FEATURES) if policy.get("mode") == "ability" else model
     rows = active_model.predict_race(runners)
     if policy.get("mode") == "market_blend":
         rows = blend_market_probabilities(rows, float(policy.get("market_blend_weight") or MARKET_BLEND_WEIGHT))
+    rows, safeguard = stabilize_uniform_probabilities(rows)
+    if safeguard:
+        policy["safeguard"] = safeguard["code"]
+        policy["safeguard_reason"] = safeguard["reason"]
+        policy["safeguard_weight"] = safeguard["market_weight"]
     for row in rows:
         row["prediction_mode"] = policy.get("mode")
         row["prediction_policy"] = policy.get("reason")
+        if safeguard:
+            row["prediction_safeguard"] = safeguard["code"]
+            row["prediction_safeguard_reason"] = safeguard["reason"]
     return {"predictions": rows, "policy": policy}
 
 
@@ -85,6 +95,81 @@ def blend_market_probabilities(rows: list[dict[str, Any]], market_weight: float)
         recalculate_value_fields(item)
         blended.append(item)
     return sorted(blended, key=lambda row: float(row.get("win_probability") or 0.0), reverse=True)
+
+
+def stabilize_uniform_probabilities(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+    """Use live market probabilities when the active model produces a no-signal tie."""
+
+    if not rows:
+        return rows, None
+    win_uniform = probability_is_uniform(rows, "win_probability")
+    top3_uniform = probability_is_uniform(rows, "top3_probability")
+    if not win_uniform and not top3_uniform:
+        return rows, None
+
+    runner_count = len(rows)
+    win_market = normalized_probability(rows, "market_probability", target_sum=1.0)
+    place_market = normalized_probability(rows, "place_market_probability", target_sum=min(3.0, float(runner_count)))
+    if not has_probability_spread(place_market):
+        place_market = normalized_probability(rows, "market_probability", target_sum=min(3.0, float(runner_count)))
+
+    use_win_market = win_uniform and has_probability_spread(win_market)
+    use_place_market = top3_uniform and has_probability_spread(place_market)
+    if not use_win_market and not use_place_market:
+        return rows, None
+
+    market_weight = UNIFORM_MARKET_FALLBACK_WEIGHT
+    model_weight = 1.0 - market_weight
+    stabilized = []
+    for row in rows:
+        item = dict(row)
+        horse_id = str(item.get("horse_id"))
+        original_win = float(item.get("win_probability") or 0.0)
+        original_top3 = float(item.get("top3_probability") or 0.0)
+        item.setdefault("raw_model_win_probability", original_win)
+        item.setdefault("raw_model_top3_probability", original_top3)
+        if use_win_market:
+            item["win_probability"] = model_weight * original_win + market_weight * win_market.get(horse_id, original_win)
+        if use_place_market:
+            item["top3_probability"] = min(
+                1.0,
+                model_weight * original_top3 + market_weight * place_market.get(horse_id, original_top3),
+            )
+        recalculate_value_fields(item)
+        if use_win_market:
+            item["value_gap"] = 0.0
+            item["expected_value"] = None
+        if use_place_market:
+            item["top3_value_gap"] = 0.0
+            item["top3_expected_value"] = None
+        item["market_fallback_no_edge"] = True
+        stabilized.append(item)
+
+    reason = "模型即場輸出全馬同分，已改用最新獨贏/位置市場公平機率，避免顯示假平均勝率或製造假正 EV。"
+    return (
+        sorted(stabilized, key=lambda row: float(row.get("win_probability") or 0.0), reverse=True),
+        {
+            "code": "uniform_probability_market_fallback",
+            "reason": reason,
+            "market_weight": market_weight,
+            "win_uniform": win_uniform,
+            "top3_uniform": top3_uniform,
+        },
+    )
+
+
+def probability_is_uniform(rows: list[dict[str, Any]], key: str) -> bool:
+    values = [float(row.get(key) or 0.0) for row in rows]
+    if len(values) <= 1:
+        return False
+    return max(values) - min(values) <= UNIFORM_PROBABILITY_EPSILON
+
+
+def has_probability_spread(probabilities: dict[str, float]) -> bool:
+    if len(probabilities) <= 1:
+        return False
+    values = list(probabilities.values())
+    return max(values) - min(values) > UNIFORM_PROBABILITY_EPSILON
 
 
 def normalized_probability(rows: list[dict[str, Any]], key: str, target_sum: float) -> dict[str, float]:
