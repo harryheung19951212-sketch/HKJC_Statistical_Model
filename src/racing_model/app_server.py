@@ -1221,8 +1221,7 @@ def api_betting(
         cached = None if refresh_odds_live else state.cached_race_predictions(race_id, state.odds_interval_seconds + 5) if state is not None else None
         if cached:
             predictions = cached["predictions"]
-            if policy is None:
-                policy = cached["policy"]
+            policy = cached.get("policy") or policy
         else:
             adaptive = adaptive_predict_race(conn, model, race_id, policy)
             predictions = adaptive["predictions"]
