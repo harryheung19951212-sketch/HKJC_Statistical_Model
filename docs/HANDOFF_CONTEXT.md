@@ -461,7 +461,9 @@ foreach ($t in $tests) {
    - 仍需用錯誤分類直接決定下一輪特徵實驗及驗證目標。
 
 19. 多目標優化
-   - 尚未同時優化 ROI、命中率、Brier、log loss、最大回撤、volatility、分彩池 ROI。
+   - 已加入 walk-forward 多目標候選排序：Log Loss、Brier、Top1、Top3、ROI、最大回撤會用固定權重合成 `multi_objective_score`，候選版本唔再只靠 Log Loss / Brier 排第一。
+   - Promotion Scorecard / UI 會顯示多目標分。
+   - 仍未把多目標權重自動反饋到特徵搜尋、訓練 loss、注碼策略調參及分彩池 ROI 權重。
 
 20. 真實落注執行層
    - 未做自動下注。
@@ -479,3 +481,10 @@ foreach ($t in $tests) {
 5. `late market flow feature validation`
 
 每一步都要有測試，並用 walk-forward / out-of-sample / replay 證明沒有破壞模型。
+
+## 2026-05-09 Update
+
+- `src/racing_model/walk_forward.py` 新增 OOS 多目標候選排序，權重覆蓋 Log Loss、Brier、Top1、Top3、ROI、最大回撤。
+- `src/racing_model/promotion_scorecard.py` 及 UI 顯示 `multi_objective_score`，方便判斷最佳版本是否只是命中率好、但 ROI 或回撤差。
+- `src/racing_model/coverage.py` 已更新第 35 項「多目標優化」maturity，覆蓋分應由 52.8% 推高到約 53.0%，狀態進度分亦會跟住郁。
+- 下一步建議：把多目標分數接入特徵實驗搜尋及注碼策略調參，並加入分池 ROI / volatility 權重。

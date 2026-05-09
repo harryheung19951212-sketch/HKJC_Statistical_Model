@@ -27,6 +27,10 @@ MATURITY_OVERRIDES = {
         0.62,
         "已接入 probable/final dividend 儲存、官方派彩 gate、final dividend audit、自動補抓對數、分池 replay stake gate 及情境切片校準；仍未有完整彩池深度和長期 final-dividend 校準。",
     ),
+    35: (
+        0.58,
+        "已由純 scorecard gate 推前到 walk-forward 候選模型排序層，用 OOS Log Loss、Brier、Top1、Top3、ROI、最大回撤加權選候選；仍未把權重自動反饋到特徵搜尋/注碼調參。",
+    ),
 }
 
 
@@ -636,9 +640,9 @@ def coverage_items() -> list[dict[str, Any]]:
                 "src/racing_model/betting.py",
                 "src/racing_model/promotion_scorecard.py",
             ],
-            "已有多目標 Promotion Scorecard v1，同時檢查 Top1、Top3、ROI、execution ROI、最大回撤、Sharpe-like、分彩池 ROI 及分片 OOS；賽前補飛排序會先重視勝率/三甲率/命中概率，再看 EV、edge 及賠率 gap。",
-            "仍未把多目標權重自動反饋到訓練目標，暫時是 gate / scorecard 層。",
-            "下一步把 scorecard 結果回饋到候選模型搜尋及注碼策略調參，並校準補飛樣本對訓練資料的影響。",
+            "已有多目標 Promotion Scorecard v1，同時檢查 Top1、Top3、ROI、execution ROI、最大回撤、Sharpe-like、分彩池 ROI 及分片 OOS；walk-forward 候選模型排序已加入多目標 OOS 分，唔再只用 Log Loss/Brier 排第一；賽前補飛排序會先重視勝率/三甲率/命中概率，再看 EV、edge 及賠率 gap。",
+            "仍未把多目標權重自動反饋到特徵搜尋、模型訓練 loss 或注碼策略調參。",
+            "下一步把多目標分數接入候選模型搜尋及注碼策略調參，並校準補飛樣本對訓練資料的影響。",
             ["Top1", "Top3", "ROI", "最大回撤", "Sharpe-like", "每種彩池 ROI"],
             "高：只追命中率會傷害 ROI，只追 ROI 可能爆回撤。",
             "所有主目標要過 gate，分池/分片不可明顯惡化。",

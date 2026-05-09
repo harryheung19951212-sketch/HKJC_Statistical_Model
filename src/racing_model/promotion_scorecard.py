@@ -86,6 +86,7 @@ def build_promotion_scorecard(
         "folds": metrics["folds"],
         "best_variant_id": metrics["best_variant_id"],
         "best_label": metrics["best_label"],
+        "best_multi_objective_score": metrics["best_multi_objective_score"],
         "baseline_variant_id": metrics["baseline_variant_id"],
         "blocked_sections": sum(1 for row in sections if row["status"] == "block"),
         "warning_sections": sum(1 for row in sections if row["status"] == "warn"),
@@ -154,6 +155,8 @@ def overall_metrics(
         "drawdown_delta": nullable_delta(best_drawdown, baseline_drawdown),
         "baseline_return_to_drawdown": return_to_drawdown(baseline_profit, baseline_drawdown),
         "best_return_to_drawdown": return_to_drawdown(best_profit, best_drawdown),
+        "baseline_multi_objective_score": optional_float(baseline.get("multi_objective_score")) if isinstance(baseline, dict) else None,
+        "best_multi_objective_score": optional_float(best.get("multi_objective_score")) if isinstance(best, dict) else None,
     }
 
 

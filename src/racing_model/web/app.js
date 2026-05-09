@@ -1911,8 +1911,10 @@ function renderModelVersions(data) {
           <div><label>首選</label><b>${formatPct(metrics.top_pick_hit_rate)}</b></div>
           <div><label>對數損失</label><b>${formatNum(metrics.log_loss, 3)}</b></div>
           <div><label>布萊爾</label><b>${formatNum(metrics.brier_score, 3)}</b></div>
+          <div><label>Top 3</label><b>${formatPct(metrics.top3_hit_rate)}</b></div>
           <div><label>頭馬排名</label><b>${formatNum(metrics.avg_winner_rank, 1)}</b></div>
           <div><label>價值回報率</label><b class="${evClass(metrics.value_roi)}">${formatPct(metrics.value_roi)}</b></div>
+          <div><label>多目標分</label><b class="${evClass(version.multi_objective_score)}">${formatSigned(version.multi_objective_score, 3)}</b></div>
         </div>
         <span class="version-verdict">${version.verdict}</span>
       </div>
@@ -1934,6 +1936,7 @@ function renderPromotionScorecard(data) {
     <div class="stat"><label>總 Gate</label><strong>${summary.gate_label || summary.gate}</strong></div>
     <div class="stat"><label>最佳版本</label><strong>${summary.best_label || "-"}</strong></div>
     <div class="stat"><label>OOS folds</label><strong>${summary.folds || 0}</strong></div>
+    <div class="stat"><label>多目標分</label><strong class="${evClass(summary.best_multi_objective_score)}">${summary.best_multi_objective_score === null || summary.best_multi_objective_score === undefined ? "-" : formatSigned(summary.best_multi_objective_score, 3)}</strong></div>
     <div class="stat"><label>Log Loss 改善</label><strong class="${evClass(metrics.log_loss_improvement_pct)}">${metrics.log_loss_improvement_pct === null || metrics.log_loss_improvement_pct === undefined ? "-" : formatPct(metrics.log_loss_improvement_pct)}</strong></div>
     <div class="stat"><label>Top1 差異</label><strong class="${evClass(metrics.top_pick_delta)}">${metrics.top_pick_delta === null || metrics.top_pick_delta === undefined ? "-" : formatSigned(metrics.top_pick_delta, 3)}</strong></div>
     <div class="stat"><label>Top3 差異</label><strong class="${evClass(metrics.top3_delta)}">${metrics.top3_delta === null || metrics.top3_delta === undefined ? "-" : formatSigned(metrics.top3_delta, 3)}</strong></div>

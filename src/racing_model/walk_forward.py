@@ -16,6 +16,16 @@ from .model import RankingModel
 from .storage import fetch_all
 
 
+MULTI_OBJECTIVE_WEIGHTS = {
+    "log_loss": 0.28,
+    "brier_score": 0.18,
+    "top_pick_hit_rate": 0.18,
+    "top3_hit_rate": 0.12,
+    "value_roi": 0.18,
+    "max_drawdown": 0.06,
+}
+
+
 @dataclass(frozen=True)
 class ModelVariant:
     variant_id: str
@@ -115,8 +125,8 @@ def run_walk_forward_versions(
         fold_rows.append(fold)
 
     versions = [finalize_variant_state(state[variant.variant_id]) for variant in variants]
-    versions.sort(key=lambda row: (row["metrics"]["log_loss"], row["metrics"]["brier_score"]))
     baseline = next((row for row in versions if row["variant_id"] == "baseline"), None)
+    versions = rank_versions_by_multi_objective(versions, baseline)
     best = versions[0] if versions else None
     recommendation = build_recommendation(best, baseline)
     oos_gate = build_oos_slice_gate(best, baseline)
@@ -400,6 +410,119 @@ def finalize_variant_state(state: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def rank_versions_by_multi_objective(
+    versions: list[dict[str, Any]],
+    baseline: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    scored = [attach_multi_objective_score(row, baseline) for row in versions]
+    return sorted(
+        scored,
+        key=lambda row: (
+            -float(row.get("multi_objective_score", 0.0) or 0.0),
+            metric_sort_value((row.get("metrics", {}) or {}).get("log_loss")),
+            metric_sort_value((row.get("metrics", {}) or {}).get("brier_score")),
+            str(row.get("variant_id") or ""),
+        ),
+    )
+
+
+def attach_multi_objective_score(
+    version: dict[str, Any],
+    baseline: dict[str, Any] | None,
+) -> dict[str, Any]:
+    metrics = version.get("metrics", {}) if isinstance(version, dict) else {}
+    baseline_metrics = baseline.get("metrics", {}) if isinstance(baseline, dict) else {}
+    components = multi_objective_components(metrics, baseline_metrics)
+    score = sum(
+        float(components[key]["score"]) * float(MULTI_OBJECTIVE_WEIGHTS[key])
+        for key in MULTI_OBJECTIVE_WEIGHTS
+    )
+    result = dict(version)
+    result["multi_objective_score"] = round(score, 6)
+    result["multi_objective_scorecard"] = {
+        "schema_version": 1,
+        "purpose": "用 walk-forward OOS 多目標分數選候選模型，避免只追 Log Loss 或命中率。",
+        "weights": dict(MULTI_OBJECTIVE_WEIGHTS),
+        "baseline_variant_id": baseline.get("variant_id") if isinstance(baseline, dict) else None,
+        "score": round(score, 6),
+        "components": components,
+    }
+    return result
+
+
+def multi_objective_components(
+    metrics: dict[str, Any],
+    baseline_metrics: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    return {
+        "log_loss": lower_is_better_component(metrics, baseline_metrics, "log_loss"),
+        "brier_score": lower_is_better_component(metrics, baseline_metrics, "brier_score"),
+        "top_pick_hit_rate": higher_is_better_component(metrics, baseline_metrics, "top_pick_hit_rate"),
+        "top3_hit_rate": higher_is_better_component(metrics, baseline_metrics, "top3_hit_rate"),
+        "value_roi": higher_is_better_component(metrics, baseline_metrics, "value_roi"),
+        "max_drawdown": lower_is_better_component(metrics, baseline_metrics, "max_drawdown"),
+    }
+
+
+def lower_is_better_component(
+    metrics: dict[str, Any],
+    baseline_metrics: dict[str, Any],
+    key: str,
+) -> dict[str, Any]:
+    value = optional_metric(metrics, key)
+    baseline = optional_metric(baseline_metrics, key)
+    if value is None or baseline is None:
+        return score_component(value, baseline, None, 0.0, "缺少 OOS 數據")
+    denominator = max(abs(baseline), 1e-9)
+    improvement = (baseline - value) / denominator
+    return score_component(value, baseline, improvement, clamp(improvement, -1.0, 1.0), component_reason(improvement))
+
+
+def higher_is_better_component(
+    metrics: dict[str, Any],
+    baseline_metrics: dict[str, Any],
+    key: str,
+) -> dict[str, Any]:
+    value = optional_metric(metrics, key)
+    baseline = optional_metric(baseline_metrics, key)
+    if value is None or baseline is None:
+        return score_component(value, baseline, None, 0.0, "缺少 OOS 數據")
+    improvement = value - baseline
+    return score_component(value, baseline, improvement, clamp(improvement, -1.0, 1.0), component_reason(improvement))
+
+
+def score_component(
+    value: float | None,
+    baseline: float | None,
+    delta: float | None,
+    score: float,
+    reason: str,
+) -> dict[str, Any]:
+    return {
+        "value": value,
+        "baseline": baseline,
+        "delta": delta,
+        "score": round(score, 6),
+        "reason": reason,
+    }
+
+
+def component_reason(delta: float) -> str:
+    if delta > 0:
+        return "較 Baseline 改善"
+    if delta < 0:
+        return "較 Baseline 退步"
+    return "與 Baseline 相同"
+
+
+def clamp(value: float, low: float, high: float) -> float:
+    return max(low, min(high, value))
+
+
+def metric_sort_value(value: object) -> float:
+    return float(value) if value is not None else 999.0
+
+
 def public_fold_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
     return {
         key: value
@@ -444,6 +567,8 @@ def build_experiment_manifest(
             "added_features": added_features,
             "metrics": compact_manifest_metrics(metrics),
             "deltas_vs_baseline": metric_deltas(metrics, baseline_metrics),
+            "multi_objective_score": version.get("multi_objective_score") if isinstance(version, dict) else None,
+            "multi_objective_scorecard": version.get("multi_objective_scorecard") if isinstance(version, dict) else None,
         }
         variant_rows.append(row)
         if variant.variant_id != "baseline":
@@ -458,6 +583,7 @@ def build_experiment_manifest(
                     "feature_count_delta": len(variant.feature_names) - len(baseline_features),
                     "metrics": compact_manifest_metrics(metrics),
                     "deltas_vs_baseline": metric_deltas(metrics, baseline_metrics),
+                    "multi_objective_score": version.get("multi_objective_score") if isinstance(version, dict) else None,
                     "verdict": version.get("verdict") if isinstance(version, dict) else None,
                 }
             )
@@ -486,6 +612,8 @@ def build_experiment_manifest(
         "promotion_gate_inputs": {
             "oos_slice_gate": oos_gate,
             "candidate_calibration_gate": candidate_calibration_gate,
+            "multi_objective_weights": dict(MULTI_OBJECTIVE_WEIGHTS),
+            "multi_objective_best_score": best.get("multi_objective_score") if isinstance(best, dict) else None,
         },
         "variants": variant_rows,
         "ablation_trail": ablation_rows,
@@ -955,13 +1083,18 @@ def build_recommendation(best: dict[str, Any] | None, baseline: dict[str, Any] |
         return "未有足夠賽果做 walk-forward。"
     if int(best["metrics"]["races"]) < 30:
         return f"{best['label']} 暫時排第一，但樣本少於 30 場，只可當研究訊號。"
+    score = float(best.get("multi_objective_score", 0.0) or 0.0)
     if baseline and best["variant_id"] != "baseline":
         improvement = safe_div(
             float(baseline["metrics"]["log_loss"]) - float(best["metrics"]["log_loss"]),
             float(baseline["metrics"]["log_loss"]),
         )
-        if improvement >= 0.02:
-            return f"{best['label']} out-of-sample Log Loss 較 Baseline 改善 {improvement:.1%}，可列入升級候選。"
+        roi_delta = float(best["metrics"].get("value_roi", 0.0) or 0.0) - float(baseline["metrics"].get("value_roi", 0.0) or 0.0)
+        if improvement >= 0.02 or score > 0.02:
+            return (
+                f"{best['label']} 以多目標 OOS 分 {score:+.3f} 排第一；"
+                f"Log Loss 改善 {improvement:.1%}，ROI 差距 {roi_delta:+.1%}，可列入升級候選。"
+            )
     return "暫時保持 Baseline，繼續累積賽果。"
 
 
