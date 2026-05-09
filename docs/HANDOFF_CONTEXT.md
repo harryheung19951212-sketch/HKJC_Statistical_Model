@@ -30,8 +30,9 @@ This is the current handoff note for the next Codex agent. Treat this section as
 - The active race API caches this gate for 60 seconds so the 30-second race refresh does not recalculate full replay state every time.
 - Coverage scoring now uses per-item `maturity_score` instead of only coarse statuses. The old status-only score is still exposed as `status_coverage_score`; item 24 and 25 now move the overall score after the recent pool-choice/final-dividend work without pretending they are fully complete.
 - New in this turn: pool replay now builds contextual segments by track, distance bucket, class, track/distance, and track/distance/class. Active betting passes the current race row into `pool_replay_calibration()`. If a matching slice has enough settled samples, it can block/reduce a pool by slice ROI; if not, the system falls back to the global pool gate and shows that reason in pool-choice UI.
-- Coverage now shows overall `coverage_score` around 52.6% and old `status_coverage_score` around 51.8%. Item 24 maturity is 68%; item 25 maturity is 62%.
-- Next best step: turn contextual replay into trained walk-forward pool-choice optimizer thresholds by venue/distance/class and compare against single-pool baselines; do not raise coverage again unless the optimizer has tests/replay evidence.
+- New after that: pool replay now includes `pool_choice_optimizer`, a chronological walk-forward replay that only uses prior settled tickets to decide pass/reduce/block for each pool, then compares the gated result against the baseline all-ticket replay. Pool-choice UI shows optimizer status, policy, walk-forward ROI, ROI delta, and reason.
+- Coverage now shows overall `coverage_score` around 52.8% and old `status_coverage_score` around 51.8%. Item 24 maturity is 72%; item 25 maturity is 62%.
+- Next best step: extend the optimizer from per-pool global replay into per-context threshold tables and add statistical confidence/sample guards; do not raise coverage again unless tests/replay evidence exist.
 
 ### Recent Betting And Settlement Changes
 

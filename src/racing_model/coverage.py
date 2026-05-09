@@ -20,8 +20,8 @@ STATUS_WEIGHTS = {
 
 MATURITY_OVERRIDES = {
     24: (
-        0.68,
-        "已由純候選排序進展到官方派彩 gate、分池 replay gate、馬場/路程/班次情境切片、ROI 封鎖/降注及 UI 可解釋狀態；仍未完成正式 optimizer 閾值訓練。",
+        0.72,
+        "已由純候選排序進展到官方派彩 gate、分池 replay gate、馬場/路程/班次情境切片、walk-forward pool-choice optimizer、ROI 封鎖/降注及 UI 可解釋狀態；仍未完成更長期分切片閾值訓練。",
     ),
     25: (
         0.62,
@@ -462,12 +462,12 @@ def coverage_items() -> list[dict[str, Any]]:
             STATUS_PARTIAL,
             ["模型預測", "組合派彩", "投注候選"],
             ["src/racing_model/betting.py", "src/racing_model/exotic_dividends.py", "src/racing_model/pool_replay.py", "src/racing_model/web/app.js"],
-            "已產生多彩池候選，並把官方派彩覆蓋率、派彩質素、成本後 EV、所需派彩差、風險扣分、官方價 gate、分池 replay gate 及馬場/路程/班次情境切片納入 pool-choice 排序；若本場切片或全局 pool 已結算 ROI 太差、等待 final dividend 或等待對數，會自動封鎖/降注並在 UI 顯示原因。",
-            "仍未有正式 pool-choice optimizer 閾值訓練、跨場相關性、切片樣本穩定性檢定及長期 ROI 顯著性檢驗。",
-            "用 hit probability x official expected dividend x risk x takeout x contextual replay performance 做跨彩池 walk-forward，逐池驗證不下注/升級/降級規則。",
+            "已產生多彩池候選，並把官方派彩覆蓋率、派彩質素、成本後 EV、所需派彩差、風險扣分、官方價 gate、分池 replay gate、馬場/路程/班次情境切片及 walk-forward pool-choice optimizer 納入 pool-choice 排序；optimizer 會用當時之前的已結算樣本 replay 封池/降注政策，並與 baseline 全買比較 ROI/回撤。",
+            "仍未有跨場相關性、切片樣本穩定性檢定、長期 ROI 顯著性及更細 pool 結構 optimizer。",
+            "擴大 hit probability x official expected dividend x risk x takeout x contextual replay performance 的 walk-forward 樣本，逐池驗證不下注/升級/降級閾值。",
             ["位置Q", "連贏", "單T/三重彩", "四連環/四重彩", "中獎率 x 派彩 x 風險"],
             "極高：買錯玩法會大幅降低 ROI。",
-            "Pool-choice contextual replay 必須勝過單一彩池 baseline，且切片樣本不足時要能保守 fallback。",
+            "Pool-choice optimizer 必須在 walk-forward replay 中未差過單一彩池 baseline，且切片樣本不足時要能保守 fallback。",
             2,
         ),
         spec(

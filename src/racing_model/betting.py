@@ -234,6 +234,10 @@ def apply_pool_replay_stake_gate(
         decision["pool_replay_context_sample_size"] = market_gate.get("context_sample_size")
         decision["pool_replay_context_min_samples"] = market_gate.get("context_min_samples")
         decision["pool_replay_context_roi"] = market_gate.get("context_roi")
+        decision["pool_choice_optimizer_status"] = market_gate.get("optimizer_status")
+        decision["pool_choice_optimizer_policy"] = market_gate.get("optimizer_policy")
+        decision["pool_choice_optimizer_reason"] = market_gate.get("optimizer_reason")
+        decision["pool_choice_optimizer_delta_roi"] = market_gate.get("optimizer_delta_roi")
         original_stake = float(decision.get("recommended_stake") or 0.0)
         if original_stake <= 0 or factor >= 0.999:
             continue
@@ -862,6 +866,13 @@ def pool_choice_market_row(
             "context_roi": replay_gate.get("context_roi"),
             "global_status": replay_gate.get("global_status"),
             "global_roi": replay_gate.get("global_roi"),
+            "optimizer_status": replay_gate.get("optimizer_status"),
+            "optimizer_policy": replay_gate.get("optimizer_policy"),
+            "optimizer_reason": replay_gate.get("optimizer_reason"),
+            "optimizer_delta_roi": replay_gate.get("optimizer_delta_roi"),
+            "optimizer_baseline_roi": replay_gate.get("optimizer_baseline_roi"),
+            "optimizer_gated_roi": replay_gate.get("optimizer_gated_roi"),
+            "optimizer_retention_rate": replay_gate.get("optimizer_retention_rate"),
             "leverage_index": 0.0,
             "efficiency_gap": None,
             "risk_penalty": 0.0,
@@ -938,6 +949,13 @@ def pool_choice_market_row(
         "context_roi": replay_gate.get("context_roi"),
         "global_status": replay_gate.get("global_status"),
         "global_roi": replay_gate.get("global_roi"),
+        "optimizer_status": replay_gate.get("optimizer_status"),
+        "optimizer_policy": replay_gate.get("optimizer_policy"),
+        "optimizer_reason": replay_gate.get("optimizer_reason"),
+        "optimizer_delta_roi": replay_gate.get("optimizer_delta_roi"),
+        "optimizer_baseline_roi": replay_gate.get("optimizer_baseline_roi"),
+        "optimizer_gated_roi": replay_gate.get("optimizer_gated_roi"),
+        "optimizer_retention_rate": replay_gate.get("optimizer_retention_rate"),
         "leverage_index": round(leverage, 3),
         "efficiency_gap": round(efficiency_gap, 3) if efficiency_gap is not None else None,
         "risk_penalty": round(risk_penalty + replay_penalty, 4),

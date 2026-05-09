@@ -59,25 +59,35 @@ def pool_replay_report(conn: sqlite3.Connection, race_id: str | None = None) -> 
     summary = overall_summary(rows, markets, best)
     bankroll_replay = bankroll_replay_report(rows)
     context_segments = contextual_replay_segments(rows)
+    optimizer = pool_choice_optimizer(rows)
     return {
         "race_id": race_id,
         "summary": summary,
         "markets": markets,
         "context_segments": context_segments,
+        "pool_choice_optimizer": optimizer,
         "ranking": ranked,
         "bankroll_replay": bankroll_replay,
         "final_dividend_audit": dividend_audit,
-        "insights": replay_insights(markets, best),
+        "insights": replay_insights(markets, best, optimizer),
     }
 
 
 def pool_replay_calibration(report: dict[str, Any] | None, race_context: dict[str, Any] | None = None) -> dict[str, Any]:
     markets = list((report or {}).get("markets") or [])
+    optimizer_by_market = {
+        str(row.get("market") or "").upper(): row
+        for row in (((report or {}).get("pool_choice_optimizer") or {}).get("markets") or [])
+        if isinstance(row, dict)
+    }
     global_rows = [pool_replay_market_gate(row) for row in markets if isinstance(row, dict)]
     global_by_market = {str(row["market"]): row for row in global_rows}
     context = normalize_race_context(race_context or {})
     context_rows = contextual_pool_replay_gates(report or {}, context, global_by_market) if context else {}
-    rows = [context_rows.get(market, row) for market, row in global_by_market.items()]
+    rows = [
+        attach_pool_choice_optimizer(context_rows.get(market, row), optimizer_by_market.get(market))
+        for market, row in global_by_market.items()
+    ]
     by_market = {str(row["market"]): row for row in rows}
     blocked = [row for row in rows if row["status"] == "replay_block"]
     reduced = [row for row in rows if row["stake_factor"] < 1.0 and row["status"] != "replay_block"]
@@ -92,6 +102,23 @@ def pool_replay_calibration(report: dict[str, Any] | None, race_context: dict[st
         "reduced_markets": [row["market"] for row in reduced],
         "sample_building_markets": [row["market"] for row in sample_building],
     }
+
+
+def attach_pool_choice_optimizer(gate: dict[str, Any], optimizer: dict[str, Any] | None) -> dict[str, Any]:
+    row = dict(gate)
+    optimizer = optimizer or {}
+    row.update(
+        {
+            "optimizer_status": optimizer.get("optimizer_status", "no_sample"),
+            "optimizer_policy": optimizer.get("policy", "collect"),
+            "optimizer_reason": optimizer.get("reason", "未有 walk-forward optimizer 樣本。"),
+            "optimizer_delta_roi": optimizer.get("delta_roi"),
+            "optimizer_baseline_roi": optimizer.get("baseline_roi"),
+            "optimizer_gated_roi": optimizer.get("gated_roi"),
+            "optimizer_retention_rate": optimizer.get("retention_rate"),
+        }
+    )
+    return row
 
 
 def pool_replay_market_gate(
@@ -700,7 +727,11 @@ def overall_summary(rows: list[dict[str, Any]], markets: list[dict[str, Any]], b
     }
 
 
-def replay_insights(markets: list[dict[str, Any]], best: dict[str, Any] | None) -> list[dict[str, str]]:
+def replay_insights(
+    markets: list[dict[str, Any]],
+    best: dict[str, Any] | None,
+    optimizer: dict[str, Any] | None = None,
+) -> list[dict[str, str]]:
     by_market = {row["market"]: row for row in markets}
     insights: list[dict[str, str]] = []
     if best:
@@ -740,6 +771,15 @@ def replay_insights(markets: list[dict[str, Any]], best: dict[str, Any] | None) 
                 "body": f"建議 ROI {format_pct(worst['roi'])}，下注時 ROI {format_pct(worst['execution_roi'])}。要檢查賠率滑價同確認時間。",
             }
         )
+    optimizer_summary = (optimizer or {}).get("summary") if isinstance(optimizer, dict) else {}
+    if optimizer_summary and int(optimizer_summary.get("passed_markets") or 0) > 0:
+        insights.append(
+            {
+                "level": "focus",
+                "title": "彩池 optimizer 有樣本外改善",
+                "body": f"{optimizer_summary.get('passed_markets')} 個玩法的 walk-forward gate 未差過 baseline；最佳改善 {format_pct(optimizer_summary.get('best_delta_roi'))}。",
+            }
+        )
     if not insights:
         insights.append(
             {
@@ -749,6 +789,179 @@ def replay_insights(markets: list[dict[str, Any]], best: dict[str, Any] | None) 
             }
         )
     return insights
+
+
+def pool_choice_optimizer(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    by_market = {market: [] for market in POOL_RULES}
+    reconciled = [
+        row
+        for row in rows
+        if str(row.get("reconciliation_status") or "") == "reconciled"
+        and settled_stake(row) > 0
+        and safe_float(row.get("profit")) is not None
+    ]
+    for row in reconciled:
+        market = str(row.get("market") or "").upper()
+        if market in by_market:
+            by_market[market].append(row)
+    markets = [pool_choice_optimizer_market(market, by_market[market]) for market in POOL_RULES]
+    active = [row for row in markets if int(row.get("settled_tickets") or 0) > 0]
+    passed = [row for row in active if row.get("optimizer_status") == "pass"]
+    best = max(
+        [row for row in active if row.get("delta_roi") is not None],
+        key=lambda row: float(row.get("delta_roi") or -999.0),
+        default=None,
+    )
+    return {
+        "summary": {
+            "settled_tickets": len(reconciled),
+            "active_markets": len(active),
+            "passed_markets": len(passed),
+            "best_market": best.get("market") if best else None,
+            "best_market_label": best.get("market_label") if best else None,
+            "best_delta_roi": best.get("delta_roi") if best else None,
+            "status": "pass" if passed else "sample_building" if active else "no_sample",
+        },
+        "markets": markets,
+    }
+
+
+def pool_choice_optimizer_market(market: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
+    ordered = sorted(rows, key=lambda row: (str(row.get("race_date") or ""), str(row.get("race_id") or ""), str(row.get("created_at") or "")))
+    min_samples = POOL_REPLAY_MIN_SAMPLES.get(market, 10)
+    baseline = replay_profit_summary(ordered)
+    gated = walk_forward_gate_summary(ordered, min_samples)
+    delta_roi = None
+    if baseline["roi"] is not None and gated["roi"] is not None:
+        delta_roi = gated["roi"] - baseline["roi"]
+    optimizer_status = "no_sample"
+    policy = "collect"
+    if len(ordered) < min_samples:
+        optimizer_status = "sample_building" if ordered else "no_sample"
+        policy = "collect"
+    elif delta_roi is not None and delta_roi >= -0.02 and gated["max_drawdown"] >= baseline["max_drawdown"]:
+        optimizer_status = "pass"
+        policy = latest_optimizer_policy(ordered, min_samples)
+    elif delta_roi is not None and delta_roi < -0.02:
+        optimizer_status = "failed"
+        policy = "do_not_optimize"
+    else:
+        optimizer_status = "watch"
+        policy = "watch"
+    return {
+        "market": market,
+        "market_label": POOL_LABELS_ZH.get(market, market),
+        "settled_tickets": len(ordered),
+        "min_samples": min_samples,
+        "optimizer_status": optimizer_status,
+        "policy": policy,
+        "baseline_staked": baseline["staked"],
+        "baseline_profit": baseline["profit"],
+        "baseline_roi": baseline["roi"],
+        "baseline_max_drawdown": baseline["max_drawdown"],
+        "gated_staked": gated["staked"],
+        "gated_profit": gated["profit"],
+        "gated_roi": gated["roi"],
+        "gated_max_drawdown": gated["max_drawdown"],
+        "delta_roi": delta_roi,
+        "kept_tickets": gated["kept_tickets"],
+        "reduced_tickets": gated["reduced_tickets"],
+        "blocked_tickets": gated["blocked_tickets"],
+        "retention_rate": safe_divide(gated["kept_tickets"] + gated["reduced_tickets"], len(ordered)),
+        "reason": optimizer_reason(market, optimizer_status, policy, delta_roi, len(ordered), min_samples),
+    }
+
+
+def replay_profit_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    staked = 0.0
+    profit = 0.0
+    curve_rows: list[dict[str, Any]] = []
+    for row in rows:
+        stake = settled_stake(row)
+        row_profit = safe_float(row.get("profit")) or 0.0
+        staked += stake
+        profit += row_profit
+        curve_rows.append({"profit": row_profit, "race_date": row.get("race_date"), "race_id": row.get("race_id"), "created_at": row.get("created_at")})
+    return {
+        "staked": round(staked, 2),
+        "profit": round(profit, 2),
+        "roi": safe_divide(profit, staked),
+        "max_drawdown": max_drawdown(curve_rows),
+    }
+
+
+def walk_forward_gate_summary(rows: list[dict[str, Any]], min_samples: int) -> dict[str, Any]:
+    staked = 0.0
+    profit = 0.0
+    kept = 0
+    reduced = 0
+    blocked = 0
+    curve_rows: list[dict[str, Any]] = []
+    prior: list[dict[str, Any]] = []
+    for row in rows:
+        policy = prior_policy(prior, min_samples)
+        factor = {"block": 0.0, "reduce": 0.5}.get(policy, 1.0)
+        if factor <= 0.0:
+            blocked += 1
+        elif factor < 1.0:
+            reduced += 1
+        else:
+            kept += 1
+        stake = settled_stake(row) * factor
+        row_profit = (safe_float(row.get("profit")) or 0.0) * factor
+        staked += stake
+        profit += row_profit
+        curve_rows.append({"profit": row_profit, "race_date": row.get("race_date"), "race_id": row.get("race_id"), "created_at": row.get("created_at")})
+        prior.append(row)
+    return {
+        "staked": round(staked, 2),
+        "profit": round(profit, 2),
+        "roi": safe_divide(profit, staked),
+        "max_drawdown": max_drawdown(curve_rows),
+        "kept_tickets": kept,
+        "reduced_tickets": reduced,
+        "blocked_tickets": blocked,
+    }
+
+
+def latest_optimizer_policy(rows: list[dict[str, Any]], min_samples: int) -> str:
+    return prior_policy(rows, min_samples)
+
+
+def prior_policy(rows: list[dict[str, Any]], min_samples: int) -> str:
+    if len(rows) < min_samples:
+        return "collect"
+    summary = replay_profit_summary(rows)
+    roi = summary["roi"]
+    if roi is not None and roi <= -0.15:
+        return "block"
+    if roi is not None and roi < 0:
+        return "reduce"
+    return "pass"
+
+
+def optimizer_reason(market: str, status: str, policy: str, delta_roi: float | None, settled: int, min_samples: int) -> str:
+    label = POOL_LABELS_ZH.get(market, market)
+    if settled <= 0:
+        return f"{label} 未有已結算樣本，optimizer 暫時只收集資料。"
+    if settled < min_samples:
+        return f"{label} 已結算 {settled}/{min_samples} 張，未達 walk-forward optimizer 最低樣本。"
+    if status == "pass":
+        return f"{label} walk-forward gate 對 baseline 未見傷害，當前政策：{optimizer_policy_label(policy)}，ROI 改善 {format_pct(delta_roi)}。"
+    if status == "failed":
+        return f"{label} walk-forward gate 暫時差過 baseline，暫不使用 optimizer 強化限制。"
+    return f"{label} optimizer 樣本可用但仍需觀察，ROI 改善 {format_pct(delta_roi)}。"
+
+
+def optimizer_policy_label(policy: str) -> str:
+    return {
+        "collect": "累積樣本",
+        "pass": "正常",
+        "reduce": "降注",
+        "block": "封池",
+        "watch": "觀察",
+        "do_not_optimize": "不用 optimizer",
+    }.get(policy, policy or "-")
 
 
 def bankroll_replay_report(rows: list[dict[str, Any]]) -> dict[str, Any]:

@@ -2,6 +2,28 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-09 - Walk-Forward Pool Choice Optimizer
+
+Goal:
+
+- Continue indicator 24 彩池選擇模型 after the contextual replay gate.
+- Make pool-choice restrictions measurable against a baseline instead of relying only on full-sample ROI.
+- Move the coverage score only for tested model-control functionality.
+
+Changes:
+
+- Added `pool_choice_optimizer` to pool replay reports.
+- The optimizer replays each settled ticket chronologically and only uses prior settled tickets to decide whether that pool would have been pass/reduce/block at that moment.
+- Each pool now reports baseline ROI, walk-forward gated ROI, ROI delta, max drawdown, ticket retention, reduced tickets, blocked tickets, and current optimizer policy.
+- Betting pool-choice rows and UI cards now show optimizer status, policy, walk-forward ROI, and ROI improvement.
+- Updated coverage item 24 to reflect the new walk-forward optimizer layer.
+
+Verification:
+
+- `py -3.12 -m compileall -q src dashboard tests`
+- `node --check src\racing_model\web\app.js`
+- `$env:PYTHONPATH='src'; py -3.12 -m pytest tests\test_pool_replay.py tests\test_betting.py tests\test_coverage.py -q`
+
 ## 2026-05-09 - Contextual Pool Replay Gate
 
 Goal:

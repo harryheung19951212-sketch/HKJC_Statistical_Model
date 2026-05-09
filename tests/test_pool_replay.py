@@ -167,10 +167,16 @@ def test_pool_replay_calibration_blocks_poor_settled_pool(tmp_path: Path) -> Non
         conn.close()
 
     qpl = gate["markets"]["QPL"]
+    optimizer_qpl = next(row for row in report["pool_choice_optimizer"]["markets"] if row["market"] == "QPL")
     assert gate["status"] == "blocked"
     assert qpl["status"] == "replay_block"
     assert qpl["stake_factor"] == 0.0
     assert qpl["min_samples"] == 10
+    assert qpl["optimizer_status"] == "pass"
+    assert qpl["optimizer_policy"] == "block"
+    assert optimizer_qpl["optimizer_status"] == "pass"
+    assert optimizer_qpl["policy"] == "block"
+    assert optimizer_qpl["delta_roi"] == 0.0
     assert "暫停真注" in qpl["reason"]
 
 

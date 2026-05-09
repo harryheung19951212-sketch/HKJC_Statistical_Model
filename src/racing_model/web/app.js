@@ -956,8 +956,10 @@ function renderPoolChoiceCard(row) {
         <label>Replay ROI <b class="${evClass(row.pool_replay_roi)}">${row.pool_replay_roi === null || row.pool_replay_roi === undefined ? "-" : formatPct(row.pool_replay_roi)}</b></label>
         <label>Replay樣本 <b>${row.pool_replay_sample_size || 0}/${row.pool_replay_min_samples || "-"}</b></label>
         <label>本場切片 <b>${poolReplayContextLabel(row)}</b></label>
+        <label>Optimizer <b>${optimizerStatusLabel(row.optimizer_status)} / ${optimizerPolicyLabel(row.optimizer_policy)}</b></label>
+        <label>WF改善 <b class="${evClass(row.optimizer_delta_roi)}">${row.optimizer_delta_roi === null || row.optimizer_delta_roi === undefined ? "-" : formatPct(row.optimizer_delta_roi)}</b></label>
       </div>
-      <small>${[row.price_gate_reason, row.pool_replay_gate_reason].filter(Boolean).join("｜")}</small>
+      <small>${[row.price_gate_reason, row.pool_replay_gate_reason, row.optimizer_reason].filter(Boolean).join("｜")}</small>
     </div>
   `;
 }
@@ -973,6 +975,27 @@ function poolReplayContextLabel(row) {
     return `${row.context_segment_label || "切片"}，全局限制`;
   }
   return `${row.context_segment_label || "切片不足"} ${sample}/${min}`;
+}
+
+function optimizerStatusLabel(status) {
+  return {
+    pass: "通過",
+    failed: "未通過",
+    watch: "觀察",
+    sample_building: "樣本中",
+    no_sample: "未有樣本",
+  }[status] || status || "-";
+}
+
+function optimizerPolicyLabel(policy) {
+  return {
+    collect: "收集",
+    pass: "正常",
+    reduce: "降注",
+    block: "封池",
+    watch: "觀察",
+    do_not_optimize: "不用",
+  }[policy] || policy || "-";
 }
 
 function poolChoiceVerdict(value) {
@@ -2214,6 +2237,8 @@ function renderPoolReplay(data) {
   const riskAudit = bankrollReplay.risk_audit || {};
   const dividendAudit = data.final_dividend_audit || {};
   const dividendSummary = dividendAudit.summary || {};
+  const optimizer = data.pool_choice_optimizer || {};
+  const optimizerSummary = optimizer.summary || {};
   $("pool-replay-summary").innerHTML = `
     <div class="stat"><label>建議票數</label><strong>${summary.tickets || 0}</strong></div>
     <div class="stat"><label>已結算</label><strong>${summary.reconciled || 0}</strong></div>
@@ -2228,12 +2253,19 @@ function renderPoolReplay(data) {
     <div class="stat"><label>可對數組合票</label><strong>${(dividendSummary.final_ready_unreconciled || 0) + (dividendSummary.known_loss_unreconciled || 0)}</strong></div>
     <div class="stat"><label>日最大曝險</label><strong>${formatMoney((riskAudit.daily_max || {}).stake || 0)}</strong></div>
     <div class="stat"><label>風控違規</label><strong>${riskAudit.breach_count || 0}</strong></div>
+    <div class="stat"><label>Optimizer通過</label><strong>${optimizerSummary.passed_markets || 0}/${optimizerSummary.active_markets || 0}</strong></div>
+    <div class="stat"><label>最佳WF改善</label><strong class="${evClass(optimizerSummary.best_delta_roi)}">${optimizerSummary.best_delta_roi === null || optimizerSummary.best_delta_roi === undefined ? "-" : formatPct(optimizerSummary.best_delta_roi)}</strong></div>
   `;
   $("pool-replay-note").textContent = summary.best_market_label
     ? `${summary.best_market_label} 暫時 ROI ${formatPct(summary.best_market_roi)}；${dividendSummary.message || "仍要用更多賽日樣本確認。"}`
     : "未有足夠已結算投注建議，暫時未能比較投注方法。";
   const markets = data.markets || [];
-  $("pool-replay-markets").innerHTML = markets.map((row) => `
+  const optimizerMarkets = optimizer.markets || [];
+  const optimizerByMarket = {};
+  optimizerMarkets.forEach((row) => { optimizerByMarket[row.market] = row; });
+  $("pool-replay-markets").innerHTML = markets.map((row) => {
+    const opt = optimizerByMarket[row.market] || {};
+    return `
     <div class="pool-card ${row.verdict || ""}">
       <div class="version-head">
         <strong>${row.market_label || row.market}</strong>
@@ -2254,9 +2286,14 @@ function renderPoolReplay(data) {
         <div><label>薄利命中</label><b>${row.low_return_hits || 0}</b></div>
         <div><label>中票等派彩</label><b>${row.final_dividend_waiting_hits || 0}</b></div>
         <div><label>可對數組合</label><b>${(row.final_dividend_ready_hits || 0) + (row.exotic_unsettled_known_losses || 0)}</b></div>
+        <div><label>WF政策</label><b>${optimizerStatusLabel(opt.optimizer_status)} / ${optimizerPolicyLabel(opt.policy)}</b></div>
+        <div><label>WF ROI</label><b class="${evClass(opt.gated_roi)}">${opt.gated_roi === null || opt.gated_roi === undefined ? "-" : formatPct(opt.gated_roi)}</b></div>
+        <div><label>WF改善</label><b class="${evClass(opt.delta_roi)}">${opt.delta_roi === null || opt.delta_roi === undefined ? "-" : formatPct(opt.delta_roi)}</b></div>
       </div>
+      ${opt.reason ? `<small>${opt.reason}</small>` : ""}
     </div>
-  `).join("");
+  `;
+  }).join("");
   const insights = data.insights || [];
   $("pool-replay-insights").innerHTML = insights.map((row) => `
     <div class="pool-insight ${row.level || ""}">
