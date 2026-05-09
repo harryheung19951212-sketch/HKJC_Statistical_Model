@@ -72,6 +72,83 @@ def test_future_race_date_stays_scheduled_even_if_bad_results_exist(tmp_path: Pa
     assert status["status"] == "scheduled"
 
 
+def test_past_race_with_official_results_stays_resulted_when_runner_scratched(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    with connect(db_path) as conn:
+        insert_rows(
+            conn,
+            "races",
+            [
+                {
+                    "race_id": "HK20260506-ST-03",
+                    "date": "2026-05-06",
+                    "track": "Sha Tin",
+                    "course": "Turf",
+                    "distance_m": 1200,
+                    "going": "Good",
+                    "class_rating": "Class 4",
+                    "prize": 1000000,
+                    "race_name": "Scratched Runner Test",
+                }
+            ],
+        )
+        insert_rows(
+            conn,
+            "runners",
+            [
+                {
+                    "race_id": "HK20260506-ST-03",
+                    "horse_id": "H001",
+                    "horse_no": 1,
+                    "horse_name": "Winner",
+                    "jockey": "Jockey",
+                    "trainer": "Trainer",
+                    "draw": 1,
+                    "weight_lbs": 120,
+                    "official_rating": 50,
+                    "age": 4,
+                    "sex": "G",
+                    "running_style": "pace",
+                    "gear": "",
+                },
+                {
+                    "race_id": "HK20260506-ST-03",
+                    "horse_id": "H002",
+                    "horse_no": 2,
+                    "horse_name": "Scratched",
+                    "jockey": "Jockey",
+                    "trainer": "Trainer",
+                    "draw": 2,
+                    "weight_lbs": 119,
+                    "official_rating": 48,
+                    "age": 4,
+                    "sex": "G",
+                    "running_style": "closer",
+                    "gear": "",
+                },
+            ],
+        )
+        insert_rows(
+            conn,
+            "results",
+            [
+                {
+                    "race_id": "HK20260506-ST-03",
+                    "horse_id": "H001",
+                    "finish_position": 1,
+                    "finish_time_sec": 70.0,
+                    "margin_lengths": 0.0,
+                }
+            ],
+        )
+        conn.commit()
+        refresh_race_statuses(conn)
+        status = race_status(conn, "HK20260506-ST-03")
+
+    assert status["status"] == "resulted"
+
+
 def test_future_hkjc_race_date_accepts_hkjc_formats() -> None:
     assert is_future_hkjc_race_date("2099/01/01")
     assert is_future_hkjc_race_date("2099-01-01")

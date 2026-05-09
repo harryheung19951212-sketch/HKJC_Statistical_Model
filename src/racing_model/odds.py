@@ -378,7 +378,7 @@ def refresh_odds(
         note += f"; error={error[:180]}"
     runner_count = fetch_all(conn, "SELECT count(*) AS n FROM runners WHERE race_id = ?", (race_id,))[0]["n"]
     result_count = fetch_all(conn, "SELECT count(*) AS n FROM results WHERE race_id = ?", (race_id,))[0]["n"]
-    status = "resulted" if runner_count and result_count >= runner_count else current_status
+    status = "resulted" if result_count > 0 else current_status
     upsert_race_status(
         conn,
         race_id,

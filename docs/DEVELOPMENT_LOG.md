@@ -174,6 +174,26 @@ Verification:
 - `py -3.12 -m compileall -q src dashboard tests`
 - `node --check src\racing_model\web\app.js`
 - `$env:PYTHONPATH='src'; py -3.12 -m pytest tests\test_betting.py tests\test_exotic_dividends.py tests\test_exotic_live.py -q`
+## 2026-05-09 - Keep Partial Official Results Resulted
+
+Goal:
+
+- Fix same-day races that have official HKJC result rows but fewer result rows than runners, such as scratched/non-result runners, being downgraded back to scheduled.
+- Restore valid payout reconciliation tickets that were cleared from settlement only when they still pass the live model gate at the latest official pool price.
+
+Changes:
+
+- Updated race status refresh logic so a non-future race with any official result rows remains `resulted`.
+- Updated odds refresh status inference to keep races with result rows as `resulted` even when result count is below runner count.
+- Added regression coverage for a past race with one official result and one scratched runner.
+- Updated the coverage report source list for the lifecycle/feed-health item to include `src/racing_model/storage.py`.
+- Production maintenance: restored 3 gate-passing race 9 cleared tickets at latest official pool prices; kept 1 race 9 ticket blocked because latest WIN price 6.20 was below required 6.21.
+- Verified race 10 and race 11 across conservative, standard, and aggressive risk profiles currently return `no_edge`, so no ticket was forced before the 5-minute training-fill window.
+
+Verification:
+
+- `python -m pytest tests\test_race_status.py tests\test_active_race_refresh.py tests\test_betting_ledger.py tests\test_fast_betting_refresh.py tests\test_betting_settlement.py tests\test_coverage.py -q`
+- `python -m compileall -q src tests`
 
 ## 2026-05-09 - Refresh Codex Handoff Notes
 

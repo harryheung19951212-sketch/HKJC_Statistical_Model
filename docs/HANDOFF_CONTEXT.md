@@ -63,6 +63,8 @@ This is the current handoff note for the next Codex agent. Treat this section as
 - Cleared rows were marked with `execution_value_status='cleared_from_settlement'`.
 - Verified production confirmed ticket count: `194 -> 0`.
 - Verified production `/api/state` returned `ok` after deployment.
+- Follow-up production maintenance: race 9 had 4 cleared tickets. Three still passed the live execution gate at latest official prices and were restored as confirmed; one WIN ticket stayed blocked because latest price 6.20 was below required 6.21. Races 10 and 11 returned `no_edge` under conservative, standard, and aggressive profiles, so no tickets were forced before the 5-minute training-fill window.
+- Race status fix: a non-future race with any official result rows now remains `resulted`, even if result rows are fewer than runners because of scratched/non-result runners. This fixes race 3 staying scheduled after official results were imported.
 
 ### Files Most Relevant To Recent Work
 
