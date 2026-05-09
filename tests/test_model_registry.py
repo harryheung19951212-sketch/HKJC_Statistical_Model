@@ -7,6 +7,7 @@ from racing_model.model_registry import (
     apply_execution_gate,
     execution_gate_report,
     model_registry_report,
+    multi_objective_promotion_gate,
     promote_latest_model,
     run_and_record_model_registry,
     statistical_promotion_gate,
@@ -111,6 +112,81 @@ def test_candidate_oos_calibration_blocks_upgrade_candidate() -> None:
 
     assert calibration_gate["gate"] == "blocked"
     assert gate == "calibration_blocked"
+
+
+def test_multi_objective_gate_promotes_balanced_oos_candidate() -> None:
+    summary = {"folds": 30}
+    baseline = with_multi_objective(
+        version_row(
+            "baseline",
+            log_loss=1.20,
+            roi=0.02,
+            drawdown=20,
+            slice_log_loss=1.10,
+            slice_brier=0.60,
+            slice_top_pick=0.45,
+        ),
+        score=0.0,
+        top3=0.60,
+    )
+    candidate = with_multi_objective(
+        version_row(
+            "no_market",
+            log_loss=1.18,
+            roi=0.06,
+            drawdown=19,
+            slice_log_loss=1.08,
+            slice_brier=0.58,
+            slice_top_pick=0.46,
+        ),
+        score=0.055,
+        top3=0.64,
+    )
+
+    detail = multi_objective_promotion_gate(candidate, baseline)
+    gate = statistical_promotion_gate(summary, candidate, baseline)
+
+    assert detail["gate"] == "pass"
+    assert detail["metrics"]["score_delta"] == 0.055
+    assert gate == "upgrade_candidate"
+
+
+def test_multi_objective_gate_blocks_score_without_roi_or_top3_support() -> None:
+    summary = {"folds": 30}
+    baseline = with_multi_objective(
+        version_row(
+            "baseline",
+            log_loss=1.20,
+            roi=0.04,
+            drawdown=20,
+            slice_log_loss=1.10,
+            slice_brier=0.60,
+            slice_top_pick=0.45,
+        ),
+        score=0.0,
+        top3=0.65,
+    )
+    candidate = with_multi_objective(
+        version_row(
+            "no_market",
+            log_loss=1.16,
+            roi=0.01,
+            drawdown=19,
+            slice_log_loss=1.08,
+            slice_brier=0.58,
+            slice_top_pick=0.46,
+        ),
+        score=0.08,
+        top3=0.57,
+    )
+
+    detail = multi_objective_promotion_gate(candidate, baseline)
+    gate = statistical_promotion_gate(summary, candidate, baseline)
+
+    assert detail["gate"] == "blocked"
+    assert "ROI 退化" in detail["message"]
+    assert "Top3 退化" in detail["message"]
+    assert gate == "multi_objective_blocked"
 
 
 def test_execution_gate_blocks_or_holds_upgrade_candidates(tmp_path: Path) -> None:
@@ -370,6 +446,15 @@ def version_row(
             }
         ],
     }
+
+
+def with_multi_objective(row: dict[str, object], score: float, top3: float) -> dict[str, object]:
+    metrics = dict(row["metrics"])  # type: ignore[arg-type]
+    metrics["top3_hit_rate"] = top3
+    result = dict(row)
+    result["metrics"] = metrics
+    result["multi_objective_score"] = score
+    return result
 
 
 def executed_recommendation(

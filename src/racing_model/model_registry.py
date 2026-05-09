@@ -29,6 +29,7 @@ GATE_LABELS.update(
         "slice_blocked": "分片 OOS 阻擋",
         "calibration_unverified": "候選 OOS 校準樣本不足",
         "calibration_blocked": "候選 OOS 校準阻擋",
+        "multi_objective_blocked": "多目標 OOS 未過關",
     }
 )
 
@@ -100,6 +101,7 @@ def model_registry_report(conn: sqlite3.Connection, limit: int = 12) -> dict[str
         "latest_report": latest_report,
         "latest_oos_gate": latest_report.get("oos_gate") if isinstance(latest_report, dict) else None,
         "latest_candidate_calibration_gate": latest_report.get("candidate_calibration_gate") if isinstance(latest_report, dict) else None,
+        "latest_multi_objective_gate": latest_report.get("multi_objective_gate") if isinstance(latest_report, dict) else None,
         "latest_experiment_manifest": latest_report.get("experiment_manifest") if isinstance(latest_report, dict) else None,
         "clv_status": "升級 gate 已加入下注時 execution ROI / 回撤。未有足夠已確認下注樣本時，任何候選只可列為研究，不能正式替換模型。",
     }
@@ -242,6 +244,9 @@ def build_registry_row(
         if isinstance(report.get("candidate_calibration_gate"), dict)
         else build_oos_calibration_gate(best)
     )
+    multi_objective_gate = multi_objective_promotion_gate(best, baseline)
+    report = dict(report)
+    report["multi_objective_gate"] = multi_objective_gate
     return {
         "run_id": uuid.uuid4().hex,
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -266,7 +271,7 @@ def build_registry_row(
         "execution_max_drawdown": optional_float(execution.get("execution_max_drawdown")),
         "execution_gate": str(execution.get("gate") or "unverified"),
         "promotion_gate": gate,
-        "recommendation": registry_recommendation(summary, oos_gate, candidate_calibration_gate, gate),
+        "recommendation": registry_recommendation(summary, oos_gate, candidate_calibration_gate, multi_objective_gate, gate),
         "report_json": json.dumps(report, ensure_ascii=False, sort_keys=True),
     }
 
@@ -289,29 +294,122 @@ def statistical_promotion_gate(summary: dict[str, Any], best: dict[str, Any] | N
         return "calibration_blocked"
     if calibration_gate["gate"] in {"unverified", "no_data"}:
         return "calibration_unverified"
-    best_metrics = best.get("metrics", {})
-    baseline_metrics = baseline.get("metrics", {})
-    best_loss = float(best_metrics.get("log_loss", 0.0) or 0.0)
-    baseline_loss = float(baseline_metrics.get("log_loss", 0.0) or 0.0)
-    best_roi = float(best_metrics.get("value_roi", 0.0) or 0.0)
-    baseline_roi = float(baseline_metrics.get("value_roi", 0.0) or 0.0)
-    best_drawdown = float(best_metrics.get("max_drawdown", 0.0) or 0.0)
-    baseline_drawdown = float(baseline_metrics.get("max_drawdown", 0.0) or 0.0)
-    improvement = (baseline_loss - best_loss) / baseline_loss if baseline_loss else 0.0
-    if (
-        best.get("variant_id") != "baseline"
-        and improvement >= 0.02
-        and best_roi >= baseline_roi
-        and best_drawdown <= baseline_drawdown * 1.1
-    ):
+    multi_objective_gate = multi_objective_promotion_gate(best, baseline)
+    if multi_objective_gate["gate"] == "blocked":
+        return "multi_objective_blocked"
+    if multi_objective_gate["gate"] == "pass":
         return "upgrade_candidate"
     return "hold_baseline"
+
+
+def multi_objective_promotion_gate(
+    best: dict[str, Any] | None,
+    baseline: dict[str, Any] | None,
+    min_score_delta: float = 0.02,
+    max_log_loss_regression: float = 0.04,
+    max_brier_regression: float = 0.03,
+    max_top_pick_regression: float = 0.03,
+    max_top3_regression: float = 0.04,
+    max_drawdown_multiplier: float = 1.15,
+) -> dict[str, Any]:
+    if not best:
+        return gate_payload("no_data", "未有候選版本。", {})
+    if best.get("variant_id") == "baseline":
+        return gate_payload("hold", "Baseline 仍然係多目標最佳版本，保持現有模型。", {})
+    if not baseline:
+        return gate_payload("unverified", "未有 Baseline 可比較。", {})
+
+    best_metrics = best.get("metrics", {})
+    baseline_metrics = baseline.get("metrics", {})
+    best_score = optional_float(best.get("multi_objective_score"))
+    baseline_score = optional_float(baseline.get("multi_objective_score"))
+    score_delta = nullable_delta(best_score, baseline_score)
+    log_loss_delta = metric_delta(best_metrics, baseline_metrics, "log_loss")
+    brier_delta = metric_delta(best_metrics, baseline_metrics, "brier_score")
+    top_pick_delta = metric_delta(best_metrics, baseline_metrics, "top_pick_hit_rate")
+    top3_delta = metric_delta(best_metrics, baseline_metrics, "top3_hit_rate")
+    roi_delta = metric_delta(best_metrics, baseline_metrics, "value_roi")
+    drawdown_delta = metric_delta(best_metrics, baseline_metrics, "max_drawdown")
+    baseline_drawdown = optional_float(baseline_metrics.get("max_drawdown"))
+    best_drawdown = optional_float(best_metrics.get("max_drawdown"))
+    metrics = {
+        "best_score": best_score,
+        "baseline_score": baseline_score,
+        "score_delta": score_delta,
+        "min_score_delta": min_score_delta,
+        "log_loss_delta": log_loss_delta,
+        "brier_delta": brier_delta,
+        "top_pick_delta": top_pick_delta,
+        "top3_delta": top3_delta,
+        "roi_delta": roi_delta,
+        "drawdown_delta": drawdown_delta,
+        "best_drawdown": best_drawdown,
+        "baseline_drawdown": baseline_drawdown,
+        "max_drawdown_multiplier": max_drawdown_multiplier,
+    }
+    reasons = []
+    if score_delta is None:
+        legacy = legacy_log_loss_gate(best_metrics, baseline_metrics)
+        return gate_payload(legacy["gate"], legacy["message"], {**metrics, **legacy["metrics"]})
+    if score_delta < min_score_delta:
+        reasons.append(f"多目標分差 {score_delta:+.3f} 未達 {min_score_delta:+.3f}")
+    if log_loss_delta is not None and log_loss_delta > max_log_loss_regression:
+        reasons.append(f"Log Loss 退化 {log_loss_delta:+.3f}")
+    if brier_delta is not None and brier_delta > max_brier_regression:
+        reasons.append(f"Brier 退化 {brier_delta:+.3f}")
+    if top_pick_delta is not None and top_pick_delta < -max_top_pick_regression:
+        reasons.append(f"Top1 退化 {top_pick_delta:+.3f}")
+    if top3_delta is not None and top3_delta < -max_top3_regression:
+        reasons.append(f"Top3 退化 {top3_delta:+.3f}")
+    if roi_delta is not None and roi_delta < 0:
+        reasons.append(f"ROI 退化 {roi_delta:+.3f}")
+    if drawdown_regressed(best_drawdown, baseline_drawdown, max_drawdown_multiplier):
+        reasons.append("最大回撤放大超出門檻")
+    if reasons:
+        return gate_payload("blocked", "；".join(reasons), metrics)
+    return gate_payload("pass", f"多目標 OOS 分差 {score_delta:+.3f} 通過升級門檻。", metrics)
+
+
+def legacy_log_loss_gate(best_metrics: dict[str, Any], baseline_metrics: dict[str, Any]) -> dict[str, Any]:
+    best_loss = optional_float(best_metrics.get("log_loss")) or 0.0
+    baseline_loss = optional_float(baseline_metrics.get("log_loss")) or 0.0
+    best_roi = optional_float(best_metrics.get("value_roi")) or 0.0
+    baseline_roi = optional_float(baseline_metrics.get("value_roi")) or 0.0
+    best_drawdown = optional_float(best_metrics.get("max_drawdown")) or 0.0
+    baseline_drawdown = optional_float(baseline_metrics.get("max_drawdown")) or 0.0
+    improvement = (baseline_loss - best_loss) / baseline_loss if baseline_loss else 0.0
+    passed = improvement >= 0.02 and best_roi >= baseline_roi and best_drawdown <= baseline_drawdown * 1.1
+    return {
+        "gate": "pass" if passed else "blocked",
+        "message": (
+            f"舊版本未有多目標分，使用 legacy gate：Log Loss 改善 {improvement:.1%}。"
+            if passed
+            else f"舊版本未有多目標分，legacy gate 未過：Log Loss 改善 {improvement:.1%}。"
+        ),
+        "metrics": {
+            "legacy_log_loss_improvement": improvement,
+            "legacy_roi_delta": best_roi - baseline_roi,
+            "legacy_drawdown_delta": best_drawdown - baseline_drawdown,
+        },
+    }
+
+
+def gate_payload(gate: str, message: str, metrics: dict[str, Any]) -> dict[str, Any]:
+    labels = {
+        "pass": "多目標 OOS 通過",
+        "blocked": "多目標 OOS 阻擋",
+        "hold": "保持 Baseline",
+        "unverified": "多目標 OOS 樣本不足",
+        "no_data": "未有多目標 OOS",
+    }
+    return {"gate": gate, "label": labels.get(gate, gate), "message": message, "metrics": metrics}
 
 
 def registry_recommendation(
     summary: dict[str, Any],
     oos_gate: dict[str, Any],
     candidate_calibration_gate: dict[str, Any],
+    multi_objective_gate: dict[str, Any],
     gate: str,
 ) -> str:
     if gate == "slice_blocked":
@@ -322,6 +420,8 @@ def registry_recommendation(
         return f"候選 OOS 校準阻擋升級：{candidate_calibration_gate.get('message')}"
     if gate == "calibration_unverified":
         return f"候選 OOS 校準未確認：{candidate_calibration_gate.get('message')}"
+    if gate == "multi_objective_blocked":
+        return f"多目標 OOS gate 阻擋升級：{multi_objective_gate.get('message')}"
     return str(summary.get("recommendation") or "")
 
 
@@ -423,6 +523,24 @@ def metric_or_none(metrics: dict[str, Any], key: str) -> float | None:
     if value is None:
         return None
     return float(value)
+
+
+def metric_delta(metrics: dict[str, Any], baseline_metrics: dict[str, Any], key: str) -> float | None:
+    return nullable_delta(optional_float(metrics.get(key)), optional_float(baseline_metrics.get(key)))
+
+
+def nullable_delta(value: float | None, baseline: float | None) -> float | None:
+    if value is None or baseline is None:
+        return None
+    return value - baseline
+
+
+def drawdown_regressed(value: float | None, baseline: float | None, multiplier: float) -> bool:
+    if value is None or baseline is None:
+        return False
+    if baseline <= 0:
+        return value > 0
+    return value > baseline * multiplier
 
 
 def optional_float(value: object) -> float | None:

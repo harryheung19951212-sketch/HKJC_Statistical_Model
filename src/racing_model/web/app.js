@@ -2046,6 +2046,7 @@ function renderModelRegistry(data) {
   const summary = data.summary || {};
   const oosGate = data.latest_oos_gate || {};
   const calibrationGate = data.latest_candidate_calibration_gate || {};
+  const multiGate = data.latest_multi_objective_gate || {};
   const manifest = data.latest_experiment_manifest || {};
   const ablationTrail = manifest.ablation_trail || [];
   const blockedSlices = (oosGate.slices || []).filter((row) => row.gate === "blocked");
@@ -2056,10 +2057,28 @@ function renderModelRegistry(data) {
     <div class="stat"><label>升級候選</label><strong>${summary.upgrade_candidates || 0}</strong></div>
     <div class="stat"><label>分片 OOS</label><strong>${oosGate.label || "-"}</strong></div>
     <div class="stat"><label>候選校準</label><strong>${calibrationGate.label || "-"}</strong></div>
+    <div class="stat"><label>多目標 Gate</label><strong>${multiGate.label || "-"}</strong></div>
     <div class="stat"><label>實驗 Manifest</label><strong>${(manifest.variants || []).length || 0}</strong></div>
   `;
   $("model-registry-clv").innerHTML = `
     <p>${data.clv_status || ""}</p>
+    ${multiGate.gate ? `
+      <div class="registry-card ${multiGate.gate === "blocked" ? "risk" : multiGate.gate === "pass" ? "candidate" : "unverified"}">
+        <div class="version-head">
+          <strong>${multiGate.label || "-"}</strong>
+          <span>分差 ${formatSigned((multiGate.metrics || {}).score_delta, 3)}｜門檻 ${formatSigned((multiGate.metrics || {}).min_score_delta, 3)}</span>
+        </div>
+        <p>${multiGate.message || ""}</p>
+        <div class="version-metrics">
+          <div><label>Log Loss</label><b>${formatSigned((multiGate.metrics || {}).log_loss_delta, 3)}</b></div>
+          <div><label>Brier</label><b>${formatSigned((multiGate.metrics || {}).brier_delta, 3)}</b></div>
+          <div><label>Top1</label><b>${formatSigned((multiGate.metrics || {}).top_pick_delta, 3)}</b></div>
+          <div><label>Top3</label><b>${formatSigned((multiGate.metrics || {}).top3_delta, 3)}</b></div>
+          <div><label>ROI</label><b>${formatSigned((multiGate.metrics || {}).roi_delta, 3)}</b></div>
+          <div><label>回撤</label><b>${formatSigned((multiGate.metrics || {}).drawdown_delta, 2)}</b></div>
+        </div>
+      </div>
+    ` : ""}
     ${manifest.artifact_type ? `
       <div class="registry-card">
         <div class="version-head">

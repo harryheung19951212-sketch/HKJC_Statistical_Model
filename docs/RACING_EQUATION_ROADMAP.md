@@ -165,7 +165,8 @@ Roadmap item 35 is now further implemented:
 
 - Walk-forward model comparison now assigns every candidate a multi-objective OOS score.
 - The score uses Log Loss, Brier, Top1 hit rate, Top3 hit rate, value ROI, and maximum drawdown.
-- Candidate ordering, experiment manifest, promotion scorecard, and UI now expose the multi-objective score.
+- Candidate ordering, model registry promotion gate, experiment manifest, promotion scorecard, and UI now expose/use the multi-objective score.
+- The promotion gate can now block a candidate with `multi_objective_blocked` when total score is not enough or ROI / Top3 / risk deteriorates.
 - Coverage item 35 has been updated so the 方程式覆蓋率 / 盲點報告 score moves with this real model-layer progress.
 
 Remaining work for item 35:
