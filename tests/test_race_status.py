@@ -149,6 +149,35 @@ def test_past_race_with_official_results_stays_resulted_when_runner_scratched(tm
     assert status["status"] == "resulted"
 
 
+def test_refresh_race_statuses_skips_unchanged_rows(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    with connect(db_path) as conn:
+        insert_rows(
+            conn,
+            "races",
+            [
+                {
+                    "race_id": "HK20260506-ST-01",
+                    "date": "2026-05-06",
+                    "track": "Sha Tin",
+                    "course": "Turf",
+                    "distance_m": 1200,
+                    "going": "Good",
+                    "class_rating": "Class 4",
+                    "prize": 1000000,
+                    "race_name": "Noop Status Test",
+                }
+            ],
+        )
+        refresh_race_statuses(conn)
+        changes_after_insert = conn.total_changes
+        refresh_race_statuses(conn)
+        changes_after_noop = conn.total_changes
+
+    assert changes_after_noop == changes_after_insert
+
+
 def test_future_hkjc_race_date_accepts_hkjc_formats() -> None:
     assert is_future_hkjc_race_date("2099/01/01")
     assert is_future_hkjc_race_date("2099-01-01")

@@ -782,14 +782,17 @@ def refresh_race_statuses(conn: sqlite3.Connection) -> None:
         race_date = race_rows[0]["date"] if race_rows else ""
         runner_count = fetch_all(conn, "SELECT count(*) AS n FROM runners WHERE race_id = ?", (race_id,))[0]["n"]
         result_count = fetch_all(conn, "SELECT count(*) AS n FROM results WHERE race_id = ?", (race_id,))[0]["n"]
+        current = race_status(conn, race_id)
         if is_future_race_date(race_date):
             status = "scheduled"
         elif result_count > 0:
             status = "resulted"
-        elif race_status(conn, race_id) and race_status(conn, race_id)["status"] == "live":
+        elif current and current["status"] == "live":
             status = "live"
         else:
             status = "scheduled"
+        if current and current["status"] == status:
+            continue
         upsert_race_status(conn, race_id, status)
     conn.commit()
 

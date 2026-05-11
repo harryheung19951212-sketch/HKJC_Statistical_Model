@@ -2,6 +2,26 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-12 - Reduce Race Status Refresh Locking
+
+Goal:
+
+- Fix the production app hanging on loading screens when concurrent API requests and the 30-second background refresh collide on `race_status` writes.
+- Keep the race status refresh behavior, but avoid rewriting every race row when the derived status has not changed.
+
+Changes:
+
+- Updated `refresh_race_statuses()` to skip `race_status` upserts for unchanged rows.
+- This prevents read-heavy endpoints such as `/api/state`, `/api/races`, and analytics refreshes from generating hundreds of unnecessary row writes per request.
+- Added regression coverage that verifies a second unchanged race-status refresh performs no extra database writes.
+- Production was manually restarted first to clear the existing blocked transactions and restore service before the code fix.
+
+Verification:
+
+- `python -m pytest tests\test_race_status.py tests\test_active_race_refresh.py tests\test_coverage.py -q`
+- `python -m compileall -q src tests`
+- Production smoke check after restart: `/api/state`, `/api/races`, and `/api/lifecycle` returned in under 1 second.
+
 ## 2026-05-09 - Coverage Status Progress Score
 
 Goal:
