@@ -13,6 +13,7 @@ Changes:
 
 - Added HKJC result-page void detection for races declared void by the stewards.
 - Void races now keep the official runner roster and race metadata, but do not create fake finishing positions, odds, or payouts.
+- Result-page runner fallback rows now carry empty localization fields so partial Chinese result-page matches cannot insert `NULL` into production runner columns.
 - `load_hkjc_race_day()` and manual result refresh now mark official void races as `resulted` with `official_void_race` notes.
 - `refresh_race_statuses()` preserves that verified void-result state even when there are no result rows.
 - Updated the coverage report to mention official void-race recognition as part of data quality/risk handling.

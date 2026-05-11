@@ -310,6 +310,9 @@ def test_parse_results_builds_fallback_race_and_runners() -> None:
     assert parsed["runners"][0]["draw"] == 2
     assert parsed["runners"][0]["weight_lbs"] == 128.0
     assert parsed["runners"][0]["body_weight_lbs"] == 1101.0
+    assert parsed["runners"][0]["horse_name_zh"] == ""
+    assert parsed["runners"][0]["jockey_zh"] == ""
+    assert parsed["runners"][0]["trainer_zh"] == ""
     assert parsed["results"][0]["finish_position"] == 1
     assert parsed["results"][0]["running_positions"] == "7/7/5/1"
     assert parsed["odds_ticks"][0]["source"] == "hkjc_results_final"
