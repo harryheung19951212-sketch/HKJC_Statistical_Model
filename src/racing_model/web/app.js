@@ -426,7 +426,7 @@ async function refreshSupplementalRacePanels(raceKey) {
 
 async function refreshModelReports(options = {}) {
   const includeCoverage = options.includeCoverage !== false;
-  const dashboard = await api(`/api/analytics-dashboard?include_coverage=${includeCoverage ? "1" : "0"}`);
+  const dashboard = await api(`/api/analytics-dashboard?include_coverage=${includeCoverage ? "1" : "0"}&fast=1`);
   renderBacktest(dashboard.backtest || {});
   renderEvolution({ ...(dashboard.evolution || {}), calibration_gate: dashboard.calibration_gate });
   renderDualTrackBacktest(dashboard.dual_track || {});
@@ -1855,6 +1855,10 @@ function renderFactorSection(title, factors, kind) {
 }
 
 function renderBacktest(data) {
+  if (data && data.deferred) {
+    $("backtest").innerHTML = `<div class="stat"><label>狀態</label><strong>快速載入</strong></div>`;
+    return;
+  }
   $("backtest").innerHTML = `
     <div class="stat"><label>\u7368\u8d0f\u6ce8\u6578</label><strong>${data.bets}</strong></div>
     <div class="stat"><label>\u7368\u8d0f\u547d\u4e2d</label><strong>${data.wins}</strong></div>

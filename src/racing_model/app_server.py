@@ -491,7 +491,8 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(api_race_dashboard(conn, self.app_state, race_id, bankroll, risk))
             elif path == "/api/analytics-dashboard":
                 include_coverage = query_bool(query, "include_coverage", False)
-                self.send_json(api_analytics_dashboard(conn, self.app_state, include_coverage))
+                fast = query_bool(query, "fast", True)
+                self.send_json(api_analytics_dashboard(conn, self.app_state, include_coverage, fast=fast))
             elif path == "/api/coverage":
                 self.send_json(build_coverage_report(conn))
             elif path == "/api/odds-history":
@@ -1085,7 +1086,29 @@ def api_fast_betting_preview(
     return payload
 
 
-def api_analytics_dashboard(conn, state: AppState, include_coverage: bool = False) -> dict[str, object]:
+def api_analytics_dashboard(conn, state: AppState, include_coverage: bool = False, fast: bool = True) -> dict[str, object]:
+    if fast:
+        payload: dict[str, object] = {
+            "backtest": {"deferred": True},
+            "evolution": {
+                "metrics": {},
+                "ideas": [],
+                "data_quality": ["Heavy model diagnostics are deferred so the dashboard stays responsive."],
+            },
+            "dual_track": {"summary": {}, "recommendation": {"message": "Dual-track backtest is deferred."}, "recent_races": []},
+            "taxonomy": {"summary": {"total": 0}, "items": [], "deferred": True},
+            "model_versions": {"summary": {"recommendation": "Walk-forward model comparison is deferred."}, "versions": []},
+            "model_registry": {"summary": {}, "runs": [], "deferred": True},
+            "calibration_gate": {"status": "deferred", "label": "Deferred", "stake_factor": 1.0},
+            "pool_replay": {"summary": {}, "markets": [], "insights": [], "deferred": True},
+            "promotion_scorecard": {"summary": {}, "sections": [], "slice_scorecard": [], "deferred": True},
+            "data_quality": data_quality_report(conn),
+            "fast": True,
+        }
+        if include_coverage:
+            payload["coverage"] = build_coverage_report(conn)
+        return payload
+
     model = state.model()
     model_versions = run_walk_forward_versions(conn)
     model_registry = model_registry_report(conn)

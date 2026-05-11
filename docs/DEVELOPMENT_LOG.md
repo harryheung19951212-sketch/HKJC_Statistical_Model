@@ -13,12 +13,16 @@ Changes:
 
 - Updated `refresh_race_statuses()` to skip `race_status` upserts for unchanged rows.
 - This prevents read-heavy endpoints such as `/api/state`, `/api/races`, and analytics refreshes from generating hundreds of unnecessary row writes per request.
+- Changed `/api/analytics-dashboard` to default to a fast/deferred payload so opening the analytics view no longer runs heavy full-history backtest, walk-forward, dual-track, registry, and pool replay reports inline.
+- Updated the frontend analytics refresh to request `fast=1` and show a quick-loaded state for deferred backtest data.
 - Added regression coverage that verifies a second unchanged race-status refresh performs no extra database writes.
+- Added regression coverage that fast analytics does not call heavy report builders.
 - Production was manually restarted first to clear the existing blocked transactions and restore service before the code fix.
 
 Verification:
 
 - `python -m pytest tests\test_race_status.py tests\test_active_race_refresh.py tests\test_coverage.py -q`
+- `python -m pytest tests\test_analytics_dashboard.py -q`
 - `python -m compileall -q src tests`
 - Production smoke check after restart: `/api/state`, `/api/races`, and `/api/lifecycle` returned in under 1 second.
 
