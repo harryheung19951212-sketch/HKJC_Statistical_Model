@@ -2,6 +2,33 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-12 - Restore Analytics Reports and Historical Backfill Discipline
+
+Goal:
+
+- Restore the backtest / intelligent iteration center and model version center so they do not stop at a deferred placeholder.
+- Make historical HKJC backfill crawl a day once, persist it, then use the database cache for completed meetings.
+- Skip date/venue combinations that do not have a matching HKJC meeting instead of repeatedly crawling every race number.
+- Preserve the 2026-05-08 baseline model file in Git so deployment cannot fall back to all-zero probabilities again.
+
+Changes:
+
+- The analytics page still quick-loads with `/api/analytics-dashboard?fast=1`, then now fetches the real heavy reports in the background: backtest, evolution, dual-track comparison, error taxonomy, model versions, model registry, pool replay, promotion scorecard, and coverage.
+- Replaced the "Walk-forward model comparison is deferred" placeholder with a loading state that gets overwritten by real `/api/model-versions` output.
+- Capped immediate walk-forward comparison to a short recent rolling window by default, and reduced the browser/API epochs, so the model version center returns real out-of-sample evidence without re-fitting the whole historical universe on every page load.
+- Capped browser/API backtest to a recent race window; full-history backtest remains available to CLI/offline workflows by omitting the limit.
+- Capped browser/API evolution diagnostics to a recent race window so the intelligent iteration view can update without tying up the server.
+- Historical date-range backfill now checks completed meetings in `races` / `runners` / `results` / `race_status` before any HKJC crawl.
+- Backfill now probes only race 1 for date/venue availability and skips non-meeting days with `no_matching_hkjc_meeting`.
+- Training after backfill now includes a black-box fake-ticket replay: train on prior old races, emit fake WIN and PLACE tickets for the next old race, compare with actual results, then refit the final model on all stored results.
+- Added `models/baseline.json` as a tracked model artifact while leaving other generated model JSON files ignored.
+
+Verification:
+
+- `python -m pytest tests/test_backfill_cache.py tests/test_ui_localization.py -q`
+- `python -m pytest tests/test_backfill_cache.py tests/test_race_status.py tests/test_active_race_refresh.py tests/test_model_registry.py tests/test_model_compare.py tests/test_promotion_scorecard.py -q`
+- `python -m compileall src/racing_model/backfill.py src/racing_model/app_server.py`
+
 ## 2026-05-12 - Handle Official HKJC Void Races
 
 Goal:

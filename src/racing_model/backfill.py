@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .features import build_training_races
-from .live import load_hkjc_race_day, parse_hkjc_race_id
+from .live import load_hkjc_race_day, parse_hkjc_race_id, usable_races
 from .model import RankingModel
 from .scrapers.base import PoliteHttpClient
 from .scrapers.hkjc import HKJCSource, merge_declaration_runners
@@ -38,8 +38,12 @@ def load_hkjc_date_range(
         "imported_runners": 0,
         "imported_results": 0,
         "imported_odds": 0,
+        "skipped_completed": 0,
+        "skipped_days": 0,
+        "no_meeting_days": 0,
         "errors": 0,
     }
+    source = HKJCSource(PoliteHttpClient(user_agent, delay_seconds))
 
     for day_index, race_date in enumerate(dates, start=1):
         def day_progress(done: int, total: int, message: str) -> None:
@@ -53,15 +57,20 @@ def load_hkjc_date_range(
 
         if progress:
             progress(current_units, total_units, f"開始回填 {race_date} ({day_index}/{len(dates)})")
-        result = load_hkjc_race_day(
-            conn,
-            race_date,
-            venue,
-            race_count,
-            user_agent,
-            delay_seconds,
-            progress=day_progress,
-        )
+        if completed_meeting_cached(conn, race_date, venue, race_count):
+            result = skipped_day_result(race_date, venue, race_count, "database_completed")
+        elif not hkjc_meeting_available(source, race_date, venue):
+            result = skipped_day_result(race_date, venue, race_count, "no_matching_hkjc_meeting")
+        else:
+            result = load_hkjc_race_day(
+                conn,
+                race_date,
+                venue,
+                race_count,
+                user_agent,
+                delay_seconds,
+                progress=day_progress,
+            )
         day_results.append(result)
         for key in totals:
             totals[key] += int(result.get(key, 0) or 0)
@@ -89,6 +98,94 @@ def load_hkjc_date_range(
         "quality": quality,
         "model_versions": versions,
     }
+
+
+def skipped_day_result(race_date: str, venue: str, race_count: int, reason: str) -> dict[str, Any]:
+    return {
+        "date": normalize_hkjc_date(race_date),
+        "venue": venue.upper(),
+        "requested_races": race_count,
+        "imported_races": 0,
+        "imported_runners": 0,
+        "imported_results": 0,
+        "imported_odds": 0,
+        "skipped_completed": race_count if reason == "database_completed" else 0,
+        "skipped_days": 1,
+        "no_meeting_days": 1 if reason == "no_matching_hkjc_meeting" else 0,
+        "errors": 0,
+        "error_details": [],
+        "first_race_id": f"HK{normalize_hkjc_date(race_date).replace('/', '')}-{venue.upper()}-01",
+        "skip_reason": reason,
+    }
+
+
+def completed_meeting_cached(
+    conn: sqlite3.Connection,
+    race_date: str,
+    venue: str,
+    race_count: int,
+) -> bool:
+    rows = fetch_all(
+        conn,
+        """
+        SELECT r.race_id, COALESCE(s.status, '') AS status, COALESCE(s.notes, '') AS notes
+        FROM races r
+        LEFT JOIN race_status s ON s.race_id = r.race_id
+        WHERE r.date = ?
+          AND r.track = ?
+        ORDER BY r.race_id
+        """,
+        (normalize_hkjc_date(race_date), venue_track_name(venue)),
+    )
+    if len(rows) < race_count:
+        return False
+    for row in rows[:race_count]:
+        runner_count = scalar_for(conn, "SELECT count(*) FROM runners WHERE race_id = ?", (row["race_id"],))
+        result_count = scalar_for(conn, "SELECT count(*) FROM results WHERE race_id = ?", (row["race_id"],))
+        voided = "official_void_race" in str(row["notes"] or "")
+        if str(row["status"] or "") != "resulted":
+            return False
+        if runner_count <= 0:
+            return False
+        if result_count <= 0 and not voided:
+            return False
+    return True
+
+
+def hkjc_meeting_available(source: HKJCSource, race_date: str, venue: str) -> bool:
+    normalized_date = normalize_hkjc_date(race_date)
+    normalized_venue = venue.upper()
+    try:
+        racecard = source.fetch_racecard_page(normalized_date, normalized_venue, 1)
+        parsed_card = source.parse_racecard(racecard.body, normalized_date, normalized_venue, 1, None)
+        if usable_races(parsed_card.get("races", [])) or parsed_card.get("runners"):
+            return True
+    except Exception:
+        pass
+    try:
+        result = source.fetch_results_page(normalized_date, normalized_venue, 1)
+        try:
+            chinese_result = source.fetch_chinese_results_page(normalized_date, normalized_venue, 1).body
+        except Exception:
+            chinese_result = None
+        parsed_result = source.parse_results(result.body, normalized_date, normalized_venue, 1, chinese_result)
+        return bool(
+            usable_races(parsed_result.get("races", []))
+            or parsed_result.get("runners")
+            or parsed_result.get("results")
+            or parsed_result.get("voided")
+        )
+    except Exception:
+        return False
+
+
+def venue_track_name(venue: str) -> str:
+    code = venue.upper()
+    if code == "ST":
+        return "Sha Tin"
+    if code == "HV":
+        return "Happy Valley"
+    return venue
 
 
 def repair_orphan_result_runners(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -369,11 +466,13 @@ def train_model_if_requested(
     epochs: int,
 ) -> dict[str, Any]:
     races = build_training_races(conn)
+    replay = black_box_fake_ticket_replay(races, epochs=epochs)
     if not model_path or not races:
         return {
             "trained": False,
             "training_races": len(races),
             "model_path": str(model_path) if model_path else None,
+            "black_box_replay": replay,
         }
     model = RankingModel.new()
     model.fit(races, epochs=epochs)
@@ -383,6 +482,77 @@ def train_model_if_requested(
         "training_races": len(races),
         "model_path": str(model_path),
         "epochs": epochs,
+        "black_box_method": "walk_forward_fake_ticket_replay_then_refit",
+        "black_box_replay": replay,
+    }
+
+
+def black_box_fake_ticket_replay(
+    races: list[list[Any]],
+    epochs: int = 120,
+    max_races: int = 30,
+) -> dict[str, Any]:
+    if len(races) < 2:
+        return {
+            "status": "insufficient_history",
+            "replayed_races": 0,
+            "fake_tickets": 0,
+            "win_hit_rate": None,
+            "place_hit_rate": None,
+        }
+    start_index = max(1, len(races) - max_races)
+    replay_epochs = max(5, min(int(epochs // 4 or epochs), 20))
+    win_tickets = 0
+    win_hits = 0
+    win_profit = 0.0
+    place_tickets = 0
+    place_hits = 0
+    place_profit = 0.0
+    replayed_races = 0
+    for race_index in range(start_index, len(races)):
+        history = races[:race_index]
+        target = races[race_index]
+        if not history or not target:
+            continue
+        model = RankingModel.new()
+        model.fit(history, epochs=replay_epochs)
+        predictions = model.predict_race(target)
+        if not predictions:
+            continue
+        finish_by_horse = {runner.horse_id: runner.finish_position for runner in target}
+        top_win = predictions[0]
+        win_tickets += 1
+        win_finish = finish_by_horse.get(str(top_win["horse_id"]))
+        if win_finish == 1:
+            win_hits += 1
+            win_profit += float(top_win.get("latest_win_odds") or 0.0) - 1.0
+        else:
+            win_profit -= 1.0
+
+        place_pick = max(predictions, key=lambda row: float(row.get("top3_probability") or 0.0))
+        place_tickets += 1
+        place_finish = finish_by_horse.get(str(place_pick["horse_id"]))
+        if place_finish is not None and int(place_finish) <= 3:
+            place_hits += 1
+            place_profit += float(place_pick.get("latest_place_odds") or 0.0) - 1.0
+        else:
+            place_profit -= 1.0
+        replayed_races += 1
+    fake_tickets = win_tickets + place_tickets
+    return {
+        "status": "ok" if replayed_races else "insufficient_history",
+        "method": "train_on_previous_races_emit_fake_win_and_place_tickets_compare_actual_results",
+        "replayed_races": replayed_races,
+        "fake_tickets": fake_tickets,
+        "replay_epochs": replay_epochs,
+        "win_tickets": win_tickets,
+        "win_hits": win_hits,
+        "win_hit_rate": win_hits / win_tickets if win_tickets else None,
+        "win_profit_units": round(win_profit, 4),
+        "place_tickets": place_tickets,
+        "place_hits": place_hits,
+        "place_hit_rate": place_hits / place_tickets if place_tickets else None,
+        "place_profit_units": round(place_profit, 4),
     }
 
 
@@ -528,6 +698,17 @@ def normalize_hkjc_date(value: str) -> str:
 
 def scalar(conn: sqlite3.Connection, sql: str) -> int:
     row = conn.execute(sql).fetchone()
+    if row is None:
+        return 0
+    if isinstance(row, dict):
+        value = next(iter(row.values()), 0)
+    else:
+        value = row[0]
+    return int(value or 0)
+
+
+def scalar_for(conn: sqlite3.Connection, sql: str, params: tuple[Any, ...]) -> int:
+    row = conn.execute(sql, params).fetchone()
     if row is None:
         return 0
     if isinstance(row, dict):

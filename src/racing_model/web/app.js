@@ -441,6 +441,48 @@ async function refreshModelReports(options = {}) {
     viewDataLoaded.coverage = true;
   }
   viewDataLoaded.analytics = true;
+  refreshDeferredModelReports(includeCoverage).catch((error) => {
+    $("system-status").textContent = `模型報表載入未完成：${error.message}`;
+  });
+}
+
+async function refreshDeferredModelReports(includeCoverage = true) {
+  $("version-recommendation").textContent = "Walk-forward 模型版本比較計算中...";
+  $("model-versions").innerHTML = `<p class="runner-subtitle">模型版本結果載入中...</p>`;
+  const endpoints = {
+    backtest: "/api/backtest",
+    evolution: "/api/evolution",
+    dualTrack: "/api/model-comparison-backtest",
+    taxonomy: "/api/error-taxonomy",
+    modelVersions: "/api/model-versions",
+    modelRegistry: "/api/model-registry",
+    poolReplay: "/api/pool-replay",
+    promotionScorecard: "/api/promotion-scorecard",
+    coverage: includeCoverage ? "/api/coverage" : null,
+  };
+  const entries = Object.entries(endpoints).filter(([, url]) => url);
+  const settled = await Promise.allSettled(entries.map(([, url]) => api(url)));
+  const payloads = {};
+  settled.forEach((result, index) => {
+    const [key] = entries[index];
+    if (result.status === "fulfilled") payloads[key] = result.value;
+  });
+  if (payloads.backtest) renderBacktest(payloads.backtest);
+  if (payloads.evolution) renderEvolution({ ...payloads.evolution, calibration_gate: payloads.evolution.calibration_gate });
+  if (payloads.dualTrack) renderDualTrackBacktest(payloads.dualTrack);
+  if (payloads.taxonomy) renderErrorTaxonomy(payloads.taxonomy);
+  if (payloads.modelVersions) renderModelVersions(payloads.modelVersions);
+  if (payloads.modelRegistry) renderModelRegistry(payloads.modelRegistry);
+  if (payloads.poolReplay) renderPoolReplay(payloads.poolReplay);
+  if (payloads.promotionScorecard) renderPromotionScorecard(payloads.promotionScorecard);
+  if (payloads.coverage) {
+    renderCoverage(payloads.coverage);
+    viewDataLoaded.coverage = true;
+  }
+  const failures = settled.filter((result) => result.status === "rejected").length;
+  if (failures) {
+    $("system-status").textContent = `部分模型報表未完成：${failures} 個 API 暫時未回應`;
+  }
 }
 
 function renderWeather(weather, options = {}) {
@@ -1898,6 +1940,10 @@ function renderModelVersions(data) {
   $("version-recommendation").textContent = summary.recommendation || "未有足夠資料比較模型版本。";
   const versions = data.versions || [];
   if (!versions.length) {
+    if (data.deferred) {
+      $("model-versions").innerHTML = `<p class="runner-subtitle">模型版本結果載入中...</p>`;
+      return;
+    }
     $("model-versions").innerHTML = `<p class="runner-subtitle">未有模型版本結果</p>`;
     return;
   }

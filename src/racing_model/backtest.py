@@ -29,6 +29,7 @@ def run_backtest(
     model: RankingModel,
     min_expected_value: float = 0.05,
     stake: float = 10.0,
+    max_races: int | None = None,
 ) -> BacktestResult:
     race_ids = [
         row["race_id"]
@@ -42,6 +43,8 @@ def run_backtest(
             """,
         )
     ]
+    if max_races is not None and max_races > 0:
+        race_ids = race_ids[-max_races:]
     bets = 0
     wins = 0
     returned = 0.0

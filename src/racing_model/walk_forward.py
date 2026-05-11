@@ -87,16 +87,30 @@ def run_walk_forward_versions(
     epochs: int = 80,
     min_expected_value: float = 0.05,
     stake: float = 10.0,
+    max_folds: int | None = 6,
+    max_train_races: int | None = 24,
 ) -> dict[str, Any]:
     race_ids = resulted_race_ids(conn)
     variants = default_variants()
     race_rows = race_metadata(conn)
-    race_features = {race_id: build_race_features(conn, race_id) for race_id in race_ids}
+    test_indices = list(range(min_train_races, len(race_ids)))
+    if max_folds is not None and max_folds > 0:
+        test_indices = test_indices[-max_folds:]
+    needed_ids = set()
+    for test_index in test_indices:
+        train_start = 0
+        if max_train_races is not None and max_train_races > 0:
+            train_start = max(0, test_index - max_train_races)
+        needed_ids.update(race_ids[train_start:test_index + 1])
+    race_features = {race_id: build_race_features(conn, race_id) for race_id in needed_ids}
     state = {variant.variant_id: new_variant_state(variant) for variant in variants}
     fold_rows = []
 
-    for test_index in range(min_train_races, len(race_ids)):
-        train_ids = race_ids[:test_index]
+    for test_index in test_indices:
+        train_start = 0
+        if max_train_races is not None and max_train_races > 0:
+            train_start = max(0, test_index - max_train_races)
+        train_ids = race_ids[train_start:test_index]
         test_id = race_ids[test_index]
         train_races = [race_features[race_id] for race_id in train_ids]
         test_runners = race_features[test_id]
@@ -148,8 +162,11 @@ def run_walk_forward_versions(
     return {
         "summary": {
             "race_count": len(race_ids),
+            "evaluated_race_count": len(needed_ids),
             "folds": len(fold_rows),
             "min_train_races": min_train_races,
+            "max_folds": max_folds,
+            "max_train_races": max_train_races,
             "best_variant_id": best["variant_id"] if best else None,
             "best_label": best["label"] if best else None,
             "recommendation": recommendation,

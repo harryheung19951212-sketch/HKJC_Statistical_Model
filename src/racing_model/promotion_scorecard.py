@@ -43,7 +43,7 @@ SLICE_DIMENSION_LABELS = {
 def promotion_scorecard(
     conn: sqlite3.Connection,
     min_train_races: int = 1,
-    epochs: int = 80,
+    epochs: int = 20,
     min_expected_value: float = 0.05,
     stake: float = 10.0,
 ) -> dict[str, Any]:

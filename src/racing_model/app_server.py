@@ -477,15 +477,15 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
             elif path == "/api/races":
                 self.send_json(api_races(conn))
             elif path == "/api/backtest":
-                result = run_backtest(conn, self.app_state.model())
+                result = run_backtest(conn, self.app_state.model(), max_races=80)
                 self.send_json(asdict(result))
             elif path == "/api/evolution":
-                self.send_json(evaluate_model_evolution(conn, self.app_state.model()))
+                self.send_json(evaluate_model_evolution(conn, self.app_state.model(), max_races=40))
             elif path == "/api/error-taxonomy":
                 refresh = query_bool(query, "refresh", False)
                 self.send_json(error_taxonomy_report(conn, self.app_state.model(), refresh=refresh))
             elif path == "/api/model-versions":
-                self.send_json(run_walk_forward_versions(conn))
+                self.send_json(run_walk_forward_versions(conn, epochs=20, max_folds=6, max_train_races=24))
             elif path == "/api/promotion-scorecard":
                 self.send_json(promotion_scorecard(conn))
             elif path == "/api/model-registry":
@@ -1114,11 +1114,15 @@ def api_analytics_dashboard(conn, state: AppState, include_coverage: bool = Fals
             "evolution": {
                 "metrics": {},
                 "ideas": [],
-                "data_quality": ["Heavy model diagnostics are deferred so the dashboard stays responsive."],
+                "data_quality": ["模型診斷正在背景計算，完成後會自動更新。"],
             },
-            "dual_track": {"summary": {}, "recommendation": {"message": "Dual-track backtest is deferred."}, "recent_races": []},
+            "dual_track": {"summary": {}, "recommendation": {"message": "雙軌回測正在背景計算。"}, "recent_races": []},
             "taxonomy": {"summary": {"total": 0}, "items": [], "deferred": True},
-            "model_versions": {"summary": {"recommendation": "Walk-forward model comparison is deferred."}, "versions": []},
+            "model_versions": {
+                "summary": {"recommendation": "Walk-forward 模型版本比較正在背景計算，完成後會自動更新。"},
+                "versions": [],
+                "deferred": True,
+            },
             "model_registry": {"summary": {}, "runs": [], "deferred": True},
             "calibration_gate": {"status": "deferred", "label": "Deferred", "stake_factor": 1.0},
             "pool_replay": {"summary": {}, "markets": [], "insights": [], "deferred": True},
@@ -1131,12 +1135,12 @@ def api_analytics_dashboard(conn, state: AppState, include_coverage: bool = Fals
         return payload
 
     model = state.model()
-    model_versions = run_walk_forward_versions(conn)
+    model_versions = run_walk_forward_versions(conn, epochs=20, max_folds=6, max_train_races=24)
     model_registry = model_registry_report(conn)
     pool_replay = pool_replay_report(conn)
     payload = {
-        "backtest": asdict(run_backtest(conn, model)),
-        "evolution": evaluate_model_evolution(conn, model),
+        "backtest": asdict(run_backtest(conn, model, max_races=80)),
+        "evolution": evaluate_model_evolution(conn, model, max_races=40),
         "dual_track": dual_model_backtest(conn, model),
         "taxonomy": error_taxonomy_report(conn, model),
         "model_versions": model_versions,

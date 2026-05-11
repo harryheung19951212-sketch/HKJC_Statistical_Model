@@ -77,6 +77,17 @@ def test_auto_refresh_preserves_existing_race_panels() -> None:
     assert 'folder.open = Boolean(raceFolderState[key] ?? (key === "upcoming"))' in js
 
 
+def test_analytics_view_fetches_deferred_model_reports() -> None:
+    js = (ROOT / "src/racing_model/web/app.js").read_text(encoding="utf-8")
+    server = (ROOT / "src/racing_model/app_server.py").read_text(encoding="utf-8")
+
+    assert "refreshDeferredModelReports(includeCoverage)" in js
+    assert 'modelVersions: "/api/model-versions"' in js
+    assert 'dualTrack: "/api/model-comparison-backtest"' in js
+    assert 'poolReplay: "/api/pool-replay"' in js
+    assert "Walk-forward model comparison is deferred." not in server
+
+
 def test_browser_refresh_preserves_page_and_tab_state() -> None:
     html = (ROOT / "src/racing_model/web/index.html").read_text(encoding="utf-8")
     js = (ROOT / "src/racing_model/web/app.js").read_text(encoding="utf-8")

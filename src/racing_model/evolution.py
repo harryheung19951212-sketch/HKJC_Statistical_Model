@@ -28,8 +28,11 @@ def evaluate_model_evolution(
     conn: sqlite3.Connection,
     model: RankingModel,
     min_expected_value: float = 0.05,
+    max_races: int | None = None,
 ) -> dict[str, Any]:
     race_ids = resulted_race_ids(conn)
+    if max_races is not None and max_races > 0:
+        race_ids = race_ids[-max_races:]
     race_rows = race_metadata(conn)
     bins = [new_calibration_bin(low, high) for low, high in CALIBRATION_BINS]
     slice_bins: dict[str, dict[str, Any]] = {}

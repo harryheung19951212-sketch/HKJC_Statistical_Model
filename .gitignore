@@ -12,4 +12,5 @@ data/raw/
 data/hkjc/
 reports/
 models/*.json
+!models/baseline.json
 .streamlit/secrets.toml
