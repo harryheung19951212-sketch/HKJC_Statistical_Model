@@ -11,7 +11,7 @@ from .exotic_dividends import upsert_exotic_dividends
 from .model import RankingModel
 from .scrapers.base import PoliteHttpClient
 from .scrapers.hkjc import HKJCSource, merge_declaration_runners
-from .storage import freeze_final_place_snapshots, insert_rows, upsert_race_status
+from .storage import fetch_all, freeze_final_place_snapshots, insert_rows, race_status, upsert_race_status
 
 
 @dataclass(frozen=True)
@@ -39,6 +39,15 @@ def refresh_hkjc_results_if_available(
     ref = parse_hkjc_race_id(race_id)
     if not ref:
         return None
+    cached = completed_result_cache(conn, race_id)
+    if cached and not (is_future_hkjc_race_date(ref.race_date) or before_hkjc_result_window(ref)):
+        return {
+            "race_id": race_id,
+            "results": cached["results"],
+            "odds_ticks": cached["odds_ticks"],
+            "status": "resulted",
+            "source": "database_cache",
+        }
     if is_future_hkjc_race_date(ref.race_date) or before_hkjc_result_window(ref):
         now = datetime.now(timezone.utc).isoformat()
         upsert_race_status(
@@ -132,6 +141,7 @@ def load_hkjc_race_day(
     imported_runners = 0
     imported_results = 0
     imported_odds = 0
+    skipped_completed = 0
     errors = []
     first_race_id = None
 
@@ -143,6 +153,11 @@ def load_hkjc_race_day(
             first_race_id = race_id
         try:
             ref = HKJCRaceRef(race_date, venue.upper(), race_no)
+            if completed_result_cache(conn, race_id):
+                skipped_completed += 1
+                if progress:
+                    progress(race_no, race_count, f"skipped_completed_race_{race_no}")
+                continue
             future_race = is_future_hkjc_race_date(race_date) or before_hkjc_result_window(ref)
             parsed_result = {"results": [], "odds_ticks": [], "races": [], "runners": []}
             if not future_race:
@@ -225,10 +240,23 @@ def load_hkjc_race_day(
         "imported_runners": imported_runners,
         "imported_results": imported_results,
         "imported_odds": imported_odds,
+        "skipped_completed": skipped_completed,
         "errors": len(errors),
         "error_details": errors,
         "first_race_id": first_race_id,
     }
+
+
+def completed_result_cache(conn: sqlite3.Connection, race_id: str) -> dict[str, int] | None:
+    status = race_status(conn, race_id)
+    if not status or status["status"] != "resulted":
+        return None
+    result_count = int(fetch_all(conn, "SELECT count(*) AS n FROM results WHERE race_id = ?", (race_id,))[0]["n"] or 0)
+    odds_count = int(fetch_all(conn, "SELECT count(*) AS n FROM odds_ticks WHERE race_id = ?", (race_id,))[0]["n"] or 0)
+    notes = str(status["notes"] or "")
+    if result_count <= 0 and "official_void_race" not in notes:
+        return None
+    return {"results": result_count, "odds_ticks": odds_count}
 
 
 def enrich_runners_with_horse_profiles(

@@ -5,7 +5,7 @@ import racing_model.live as live_module
 import racing_model.storage as storage_module
 from datetime import datetime
 
-from racing_model.live import HKJCRaceRef, before_hkjc_result_window, enrich_runners_with_horse_profiles, is_future_hkjc_race_date, refresh_hkjc_results_if_available
+from racing_model.live import HKJCRaceRef, before_hkjc_result_window, enrich_runners_with_horse_profiles, is_future_hkjc_race_date, load_hkjc_race_day, refresh_hkjc_results_if_available
 from racing_model.model import RankingModel
 from racing_model.storage import connect, init_db, insert_rows, race_status, refresh_race_statuses
 
@@ -244,6 +244,83 @@ def test_refresh_results_does_not_fetch_hkjc_before_result_window(tmp_path: Path
     assert result["status"] == "scheduled"
     assert status["status"] == "scheduled"
     assert status["notes"] == "race_not_due_for_official_results"
+
+
+def test_refresh_results_uses_completed_database_cache(tmp_path: Path, monkeypatch) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+
+    def fail_source(*args, **kwargs):
+        raise AssertionError("Completed races with stored results should not fetch HKJC again")
+
+    monkeypatch.setattr(live_module, "HKJCSource", fail_source)
+    with connect(db_path) as conn:
+        insert_rows(
+            conn,
+            "races",
+            [
+                {
+                    "race_id": "HK20251115-ST-01",
+                    "date": "2025-11-15",
+                    "track": "Sha Tin",
+                    "course": "Turf",
+                    "distance_m": 1200,
+                    "going": "Good",
+                    "class_rating": "Class 4",
+                    "prize": 1000000,
+                    "race_name": "Stored Result Test",
+                }
+            ],
+        )
+        insert_rows(conn, "results", [{"race_id": "HK20251115-ST-01", "horse_id": "H001", "finish_position": 1, "finish_time_sec": 70.0, "margin_lengths": 0.0}])
+        storage_module.upsert_race_status(conn, "HK20251115-ST-01", "resulted")
+        conn.commit()
+
+        result = refresh_hkjc_results_if_available(conn, "HK20251115-ST-01", RankingModel.new(), "test-agent", 0.0)
+
+    assert result["status"] == "resulted"
+    assert result["source"] == "database_cache"
+    assert result["results"] == 1
+
+
+def test_race_day_loader_skips_completed_database_rows(tmp_path: Path, monkeypatch) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+
+    class Source:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __getattr__(self, name):
+            raise AssertionError(f"Completed race should not call HKJC source: {name}")
+
+    monkeypatch.setattr(live_module, "HKJCSource", Source)
+    with connect(db_path) as conn:
+        insert_rows(
+            conn,
+            "races",
+            [
+                {
+                    "race_id": "HK20251115-ST-01",
+                    "date": "2025-11-15",
+                    "track": "Sha Tin",
+                    "course": "Turf",
+                    "distance_m": 1200,
+                    "going": "Good",
+                    "class_rating": "Class 4",
+                    "prize": 1000000,
+                    "race_name": "Stored Result Test",
+                }
+            ],
+        )
+        insert_rows(conn, "results", [{"race_id": "HK20251115-ST-01", "horse_id": "H001", "finish_position": 1, "finish_time_sec": 70.0, "margin_lengths": 0.0}])
+        storage_module.upsert_race_status(conn, "HK20251115-ST-01", "resulted")
+        conn.commit()
+
+        result = load_hkjc_race_day(conn, "2025/11/15", "ST", 1, "test-agent", 0.0)
+
+    assert result["skipped_completed"] == 1
+    assert result["imported_results"] == 0
 
 
 def test_runner_enrichment_uses_hkjc_horse_profile_history() -> None:

@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import racing_model.app_server as app_server
-from racing_model.app_server import AppState, active_refreshable_race_id, api_lifecycle, reconcile_pool_replay_with_final_dividends, run_lifecycle_step
+from racing_model.app_server import AppState, active_refreshable_race_id, api_lifecycle, current_refreshable_race_id, reconcile_pool_replay_with_final_dividends, run_lifecycle_step
 from racing_model.exotic_dividends import upsert_exotic_dividends
 from racing_model.betting_ledger import betting_ledger_report
 from racing_model.storage import connect, init_db, insert_rows, upsert_race_status
@@ -181,6 +181,23 @@ def test_manual_lifecycle_step_can_run_globally_without_active_race(tmp_path: Pa
         ("exotic", "HK20990101-ST-01"),
         ("results", "HK20990101-ST-01"),
     ]
+
+
+def test_global_refresh_ignores_stale_past_scheduled_races(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    state = AppState(tmp_path / "model.json", 30)
+    with connect(db_path) as conn:
+        add_race(conn, "HK20251115-ST-10", "2025-11-15")
+        add_race(conn, "HK20990101-ST-01", "2099-01-01")
+        conn.commit()
+
+        selected = current_refreshable_race_id(conn)
+        state.focus_race("HK20251115-ST-10", now=100.0)
+        focused = active_refreshable_race_id(conn, state)
+
+    assert selected == "HK20990101-ST-01"
+    assert focused is None
 
 
 def test_pool_replay_reconcile_refreshes_final_dividends_then_settles(tmp_path: Path) -> None:

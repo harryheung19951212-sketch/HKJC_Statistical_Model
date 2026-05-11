@@ -42,7 +42,7 @@ from .exotic_dividends import exotic_dividend_report, load_exotic_dividend_looku
 from .exotic_live import build_exotic_dividend_provider, refresh_exotic_dividends
 from .feed_health import odds_feed_health
 from .features import build_race_features
-from .live import load_hkjc_race_day, refresh_hkjc_results_if_available
+from .live import hong_kong_tz, load_hkjc_race_day, refresh_hkjc_results_if_available
 from .market_flow import market_flow_report
 from .model import RankingModel
 from .model_compare import dual_model_backtest, dual_model_comparison
@@ -1563,6 +1563,7 @@ def current_race_id(conn) -> str | None:
 
 
 def current_refreshable_race_id(conn) -> str | None:
+    today = datetime.now(hong_kong_tz()).date().isoformat()
     rows = fetch_all(
         conn,
         """
@@ -1570,9 +1571,11 @@ def current_refreshable_race_id(conn) -> str | None:
         FROM races r
         LEFT JOIN race_status s ON s.race_id = r.race_id
         WHERE COALESCE(s.status, 'scheduled') = 'scheduled'
+          AND r.date >= ?
         ORDER BY r.date, r.race_id
         LIMIT 1
         """,
+        (today,),
     )
     if rows:
         return rows[0]["race_id"]
@@ -1583,7 +1586,14 @@ def active_refreshable_race_id(conn, state: AppState) -> str | None:
     race_id = state.active_race()
     if not race_id:
         return None
-    if race_lifecycle_status(conn, race_id) not in {"scheduled", "live"}:
+    status = race_lifecycle_status(conn, race_id)
+    if status not in {"scheduled", "live"}:
+        return None
+    if status == "live":
+        return race_id
+    rows = fetch_all(conn, "SELECT date FROM races WHERE race_id = ?", (race_id,))
+    today = datetime.now(hong_kong_tz()).date().isoformat()
+    if rows and str(rows[0]["date"] or "") < today:
         return None
     return race_id
 
