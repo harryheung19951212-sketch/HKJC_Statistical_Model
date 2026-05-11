@@ -335,7 +335,7 @@ def build_odds_provider(settings) -> OddsProvider:
         return mqtt
     if provider == "dev":
         return fallback
-    return AutoOddsProvider([graphql, mqtt], fallback)
+    return build_official_odds_provider(settings)
 
 
 def build_official_odds_provider(settings) -> OddsProvider:
@@ -473,6 +473,13 @@ def odds_history(conn: sqlite3.Connection, race_id: str, limit: int = 300) -> li
         FROM odds_ticks o
         LEFT JOIN runners ru ON ru.race_id = o.race_id AND ru.horse_id = o.horse_id
         WHERE o.race_id = ?
+          AND o.source IN (
+            'hkjc_graphql',
+            'hkjc_mqtt',
+            'hkjc_results_final',
+            'hkjc_final_place_snapshot',
+            'hkjc_final_place_backfill'
+          )
         ORDER BY o.timestamp DESC
         LIMIT ?
         """,

@@ -9,6 +9,7 @@ Goal:
 - Correct the 2025-11-15 Sha Tin day where Race 8 was an official HKJC void race, not an upcoming race.
 - Make historical race-day loading include valid later races when the meeting has more races than previously requested.
 - Prevent completed races already stored in the database from being crawled again and blocking unfinished-race refresh.
+- Stop unfinished-race analysis from silently falling back to empty/untrained probabilities or development odds.
 
 Changes:
 
@@ -18,13 +19,17 @@ Changes:
 - Historical race-day loading now skips races already marked `resulted` when the database has result rows or an official void-race note.
 - Manual result refresh now returns `database_cache` for completed stored races instead of fetching HKJC again.
 - Global 30-second refresh selection now ignores stale past scheduled rows, while still allowing explicitly live races to keep refreshing.
+- The 30-second background loop now refreshes the next unfinished race globally when no race is actively focused.
+- `auto` odds refresh now uses only official HKJC GraphQL/MQTT sources; the development snapshot-jitter provider is available only when `RACING_ODDS_PROVIDER=dev` is explicitly set.
+- Prediction features, market-flow, odds history, and race-list odds counts now ignore development snapshot-jitter rows so stale dev data cannot masquerade as live official data.
+- Server startup now trains and saves `models/baseline.json` from the database if the model file is missing, instead of using an all-zero model that outputs uniform 8.3% / 25.0% probabilities.
 - `load_hkjc_race_day()` and manual result refresh now mark official void races as `resulted` with `official_void_race` notes.
 - `refresh_race_statuses()` preserves that verified void-result state even when there are no result rows.
 - Updated the coverage report to mention official void-race recognition as part of data quality/risk handling.
 
 Verification:
 
-- `python -m pytest tests\test_race_status.py tests\test_active_race_refresh.py tests\test_hkjc_parser.py tests\test_coverage.py -q`
+- `python -m pytest tests\test_race_status.py tests\test_active_race_refresh.py tests\test_hkjc_parser.py tests\test_odds_provider.py tests\test_market_flow.py tests\test_coverage.py tests\test_fast_betting_refresh.py -q`
 - `python -m compileall -q src tests`
 
 ## 2026-05-12 - Reduce Race Status Refresh Locking

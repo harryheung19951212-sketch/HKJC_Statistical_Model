@@ -414,7 +414,7 @@ def coverage_items() -> list[dict[str, Any]]:
             STATUS_PARTIAL,
             ["資料質素", "賠率 ticks", "模型報告"],
             ["src/racing_model/error_taxonomy.py", "src/racing_model/feed_health.py", "src/racing_model/walk_forward.py", "src/racing_model/live.py", "src/racing_model/storage.py", "src/racing_model/app_server.py", "src/racing_model/web/app.js"],
-            "已有 feed health、錯誤分類、walk-forward、資料品質檢查、HKJC 結果時間窗 guard、官方 void race 識別，以及已完賽 DB cache guard；未到官方結果時間或 HKJC 未有賽果/void 聲明時不會自動完場。",
+            "已有 feed health、錯誤分類、walk-forward、資料品質檢查、HKJC 結果時間窗 guard、官方 void race 識別、已完賽 DB cache guard、官方-only odds auto refresh 及缺失模型自動訓練；未到官方結果時間或 HKJC 未有賽果/void 聲明時不會自動完場。",
             "樣本偏差、市場效率、資料延遲、不可觀測因素、模型漂移及合規風險未成為硬 gate；賽程延誤仍需以 HKJC 官方狀態或結果頁確認。",
             "加入實戰風險 checklist 與 race-level confidence gate，資料不足時自動降注/不下注，並接入 HKJC 官方賽事狀態。",
             ["樣本偏差", "過度擬合", "市場效率", "資料延遲", "不可觀測因素", "模型漂移", "法律合規"],

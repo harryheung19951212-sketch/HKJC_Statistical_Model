@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Any
 
 from .pace_profile import build_race_pace_context, horse_pace_profile
-from .storage import fetch_all, latest_odds_by_race
+from .storage import LIVE_ODDS_SOURCES, fetch_all, latest_odds_by_race
 from .track_bias import same_day_track_bias, track_bias_features
 from .trip_diagnostics import horse_context_signals
 
@@ -672,17 +672,19 @@ def optional_float(value: object) -> float | None:
 
 
 def late_market_flow(conn: sqlite3.Connection, race_id: str) -> dict[str, dict[str, float]]:
+    live_sources = tuple(LIVE_ODDS_SOURCES)
+    placeholders = ",".join("?" for _ in live_sources)
     rows = fetch_all(
         conn,
-        """
+        f"""
         SELECT horse_id, timestamp, win_odds, source
         FROM odds_ticks
         WHERE race_id = ?
-          AND source != 'hkjc_results_final'
+          AND source IN ({placeholders})
           AND win_odds > 1
         ORDER BY timestamp
         """,
-        (race_id,),
+        (race_id, *live_sources),
     )
     parsed_rows = []
     for row in rows:

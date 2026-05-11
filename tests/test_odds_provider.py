@@ -1,4 +1,30 @@
-from racing_model.odds import graphql_odds_payload_to_rows, mqtt_messages_to_rows
+from racing_model.odds import OfficialOddsProviderChain, SnapshotJitterOddsProvider, build_odds_provider, graphql_odds_payload_to_rows, mqtt_messages_to_rows
+
+
+class Settings:
+    odds_provider = "auto"
+    hkjc_graphql_url = "https://example.test/graphql"
+    user_agent = "test-agent"
+    hkjc_mqtt_host = "mqtt.example.test"
+    hkjc_mqtt_port = 443
+    hkjc_mqtt_username = ""
+    hkjc_mqtt_password = ""
+    hkjc_mqtt_wait_seconds = 0.1
+
+
+def test_auto_odds_provider_uses_official_sources_without_dev_fallback() -> None:
+    provider = build_odds_provider(Settings())
+
+    assert isinstance(provider, OfficialOddsProviderChain)
+
+
+def test_dev_odds_provider_requires_explicit_dev_setting() -> None:
+    settings = Settings()
+    settings.odds_provider = "dev"
+
+    provider = build_odds_provider(settings)
+
+    assert isinstance(provider, SnapshotJitterOddsProvider)
 
 
 def test_graphql_odds_payload_matches_zero_padded_runner_numbers() -> None:

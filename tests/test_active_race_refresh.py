@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import racing_model.app_server as app_server
-from racing_model.app_server import AppState, active_refreshable_race_id, api_lifecycle, current_refreshable_race_id, reconcile_pool_replay_with_final_dividends, run_lifecycle_step
+from racing_model.app_server import AppState, active_refreshable_race_id, api_lifecycle, current_refreshable_race_id, ensure_model_file, reconcile_pool_replay_with_final_dividends, run_lifecycle_step
 from racing_model.exotic_dividends import upsert_exotic_dividends
 from racing_model.betting_ledger import betting_ledger_report
 from racing_model.storage import connect, init_db, insert_rows, upsert_race_status
@@ -198,6 +198,25 @@ def test_global_refresh_ignores_stale_past_scheduled_races(tmp_path: Path) -> No
 
     assert selected == "HK20990101-ST-01"
     assert focused is None
+
+
+def test_missing_server_model_is_trained_from_database(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    model_path = tmp_path / "models" / "baseline.json"
+    init_db(db_path)
+    with connect(db_path) as conn:
+        add_race(conn, "HK20260506-ST-02")
+        insert_rows(conn, "runners", [runner("H001", 1), runner("H002", 2)])
+        insert_rows(conn, "results", [result("H001", 1), result("H002", 2)])
+        conn.commit()
+
+        training = ensure_model_file(conn, model_path, epochs=1)
+        second = ensure_model_file(conn, model_path, epochs=1)
+
+    assert training["trained"] is True
+    assert training["training_races"] == 1
+    assert model_path.exists()
+    assert second["reason"] == "model_exists"
 
 
 def test_pool_replay_reconcile_refreshes_final_dividends_then_settles(tmp_path: Path) -> None:

@@ -231,7 +231,8 @@ class AppState:
         while not self.stop_event.is_set():
             try:
                 with connect(self.settings.db_path) as conn:
-                    run_lifecycle_step(conn, self)
+                    scope = "active" if self.active_race() else "global"
+                    run_lifecycle_step(conn, self, scope=scope)
             except Exception:
                 pass
             self.stop_event.wait(self.odds_interval_seconds)
@@ -420,7 +421,10 @@ class AppState:
 
 
 def run_server(host: str, port: int, model_path: Path, odds_interval_seconds: int) -> ThreadingHTTPServer:
-    init_db(get_settings().db_path)
+    settings = get_settings()
+    init_db(settings.db_path)
+    with connect(settings.db_path) as conn:
+        ensure_model_file(conn, model_path)
     state = AppState(model_path, odds_interval_seconds)
     state.start_refresh_loop()
 
@@ -435,6 +439,12 @@ def run_server(host: str, port: int, model_path: Path, odds_interval_seconds: in
     finally:
         state.stop_event.set()
     return server
+
+
+def ensure_model_file(conn, model_path: Path, epochs: int = 120) -> dict[str, object]:
+    if model_path.exists():
+        return {"trained": False, "model_path": str(model_path), "reason": "model_exists"}
+    return train_model_if_requested(conn, model_path, epochs)
 
 
 class RacingRequestHandler(BaseHTTPRequestHandler):
@@ -1021,7 +1031,18 @@ def api_races(conn) -> list[dict[str, object]]:
                s.notes,
                (SELECT count(*) FROM runners ru WHERE ru.race_id = r.race_id) AS runners,
                (SELECT count(*) FROM results x WHERE x.race_id = r.race_id) AS results,
-               (SELECT count(*) FROM odds_ticks o WHERE o.race_id = r.race_id) AS odds_ticks,
+               (
+                 SELECT count(*)
+                 FROM odds_ticks o
+                 WHERE o.race_id = r.race_id
+                   AND o.source IN (
+                     'hkjc_graphql',
+                     'hkjc_mqtt',
+                     'hkjc_results_final',
+                     'hkjc_final_place_snapshot',
+                     'hkjc_final_place_backfill'
+                   )
+               ) AS odds_ticks,
                (SELECT count(*) FROM exotic_dividends ed WHERE ed.race_id = r.race_id) AS exotic_dividends
         FROM races r
         LEFT JOIN race_status s ON s.race_id = r.race_id

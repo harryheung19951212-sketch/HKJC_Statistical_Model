@@ -5,7 +5,7 @@ from collections import defaultdict
 from typing import Any
 
 from .features import late_market_flow, parse_timestamp
-from .storage import FINAL_PLACE_SOURCES, fetch_all
+from .storage import LIVE_ODDS_SOURCES, fetch_all
 
 
 def market_flow_report(conn: sqlite3.Connection, race_id: str) -> dict[str, Any]:
@@ -109,9 +109,9 @@ def load_runners(conn: sqlite3.Connection, race_id: str) -> list[dict[str, Any]]
 
 
 def load_live_ticks(conn: sqlite3.Connection, race_id: str) -> list[dict[str, Any]]:
-    final_sources = tuple(FINAL_PLACE_SOURCES)
-    placeholders = ",".join("?" for _ in final_sources)
-    params: tuple[Any, ...] = (race_id, *final_sources)
+    live_sources = tuple(LIVE_ODDS_SOURCES)
+    placeholders = ",".join("?" for _ in live_sources)
+    params: tuple[Any, ...] = (race_id, *live_sources)
     return [
         dict(row)
         for row in fetch_all(
@@ -120,7 +120,7 @@ def load_live_ticks(conn: sqlite3.Connection, race_id: str) -> list[dict[str, An
             SELECT race_id, horse_id, timestamp, win_odds, place_odds, source
             FROM odds_ticks
             WHERE race_id = ?
-              AND source NOT IN ({placeholders})
+              AND source IN ({placeholders})
               AND win_odds > 1
             ORDER BY timestamp, horse_id
             """,

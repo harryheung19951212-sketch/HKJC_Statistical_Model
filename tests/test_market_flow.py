@@ -34,6 +34,7 @@ def test_market_flow_report_excludes_final_odds_and_flags_steam(tmp_path: Path) 
                 odds("R-FLOW", "H001", "2026-05-06T12:03:00+08:00", 4.0, "hkjc_mqtt"),
                 odds("R-FLOW", "H001", "2026-05-06T12:04:45+08:00", 3.5, "hkjc_mqtt"),
                 odds("R-FLOW", "H001", "2026-05-06T12:05:00+08:00", 2.0, "hkjc_results_final"),
+                odds("R-FLOW", "H001", "2026-05-06T12:06:00+08:00", 1.5, "dev_snapshot_jitter_fallback"),
                 odds("R-FLOW", "H002", "2026-05-06T12:00:00+08:00", 4.0, "hkjc_mqtt"),
                 odds("R-FLOW", "H002", "2026-05-06T12:03:00+08:00", 4.6, "hkjc_mqtt"),
                 odds("R-FLOW", "H002", "2026-05-06T12:04:45+08:00", 4.9, "hkjc_mqtt"),
