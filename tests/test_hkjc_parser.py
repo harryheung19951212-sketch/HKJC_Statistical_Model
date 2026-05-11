@@ -315,6 +315,53 @@ def test_parse_results_builds_fallback_race_and_runners() -> None:
     assert parsed["odds_ticks"][0]["source"] == "hkjc_results_final"
 
 
+def test_parse_void_result_page_keeps_runner_roster_without_fake_results() -> None:
+    lines = [
+        "This race is declared void. Under the Horse Race Betting Rules, Single Race Pools for this race, if any, will be refunded.",
+        "RACE 8 (186)",
+        "Class 4 - 1200M - (60-40)",
+        "Going :",
+        "LUKFOOK JEWELLERY CCOOL COLLECTION HANDICAP",
+        "Course :",
+        'TURF - "A+3" Course',
+        "HK$ 1,170,000",
+        "Pla.",
+        "Horse No.",
+        "Horse",
+        "Jockey",
+        "Trainer",
+        "Act. Wt.",
+        "Declar. Horse Wt.",
+        "Dr.",
+        "LBW",
+        "Finish Time",
+        "VOID",
+        "1",
+        "ENDUED",
+        "(K033)",
+        "H Bowman",
+        "J Size",
+        "---",
+        "---",
+        "12",
+        "---",
+        "---",
+        "Dividend",
+    ]
+    source = HKJCSource(PoliteHttpClient("test", 0))
+
+    parsed = source.parse_results("\n".join(f"<div>{line}</div>" for line in lines), "2025/11/15", "ST", 8)
+
+    assert parsed["voided"] is True
+    assert parsed["races"][0]["race_name"] == "LUKFOOK JEWELLERY CCOOL COLLECTION HANDICAP"
+    assert parsed["races"][0]["going"] == "VOID"
+    assert parsed["races"][0]["course"] == 'TURF - "A+3" Course'
+    assert parsed["results"] == []
+    assert parsed["odds_ticks"] == []
+    assert parsed["runners"][0]["horse_id"] == "K033"
+    assert parsed["runners"][0]["draw"] == 12
+
+
 def test_parse_result_dividend_table_imports_final_exotic_dividends() -> None:
     lines = [
         "Dividend",

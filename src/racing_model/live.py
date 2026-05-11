@@ -62,8 +62,21 @@ def refresh_hkjc_results_if_available(
     odds = parsed.get("odds_ticks", [])
     runners = parsed.get("runners", [])
     exotic_dividends = parsed.get("exotic_dividends", [])
+    voided = bool(parsed.get("voided"))
     now = datetime.now(timezone.utc).isoformat()
     if not results:
+        if voided:
+            insert_rows(conn, "races", usable_races(parsed.get("races", [])))
+            insert_rows(conn, "runners", runners)
+            upsert_race_status(
+                conn,
+                race_id,
+                "resulted",
+                last_result_refresh_at=now,
+                notes="official_void_race",
+            )
+            conn.commit()
+            return {"race_id": race_id, "results": 0, "odds_ticks": 0, "status": "resulted", "voided": 1}
         upsert_race_status(
             conn,
             race_id,
@@ -179,6 +192,7 @@ def load_hkjc_race_day(
             results = parsed_result.get("results", [])
             odds = parsed_result.get("odds_ticks", [])
             exotic_dividends = parsed_result.get("exotic_dividends", [])
+            voided = bool(parsed_result.get("voided"))
             if results:
                 imported_results += insert_rows(conn, "results", results)
                 imported_odds += insert_rows(conn, "odds_ticks", odds)
@@ -192,6 +206,8 @@ def load_hkjc_race_day(
                     )
                 imported_odds += freeze_final_place_snapshots(conn, race_id, datetime.now(timezone.utc).isoformat())
                 upsert_race_status(conn, race_id, "resulted")
+            elif voided:
+                upsert_race_status(conn, race_id, "resulted", notes="official_void_race")
             elif runners:
                 upsert_race_status(conn, race_id, "scheduled")
         except Exception as exc:

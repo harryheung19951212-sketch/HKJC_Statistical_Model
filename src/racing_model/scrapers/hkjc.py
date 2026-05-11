@@ -115,7 +115,11 @@ class HKJCSource:
         lines = html_lines(html)
         race_id = make_race_id(race_date, venue, race_no)
         race = parse_results_metadata(lines, race_date, venue, race_no)
+        voided = is_void_result_page(lines)
         raw_results = parse_result_rows(lines, race_id)
+        raw_runners = raw_results
+        if voided and not raw_runners:
+            raw_runners = parse_void_result_runners(lines, race_id)
         results = [
             {
                 key: value
@@ -138,7 +142,7 @@ class HKJCSource:
         ]
         runners = [
             result_runner_from_row(row)
-            for row in raw_results
+            for row in raw_runners
             if row.get("horse_id") and row.get("horse_name")
         ]
         if chinese_html:
@@ -163,6 +167,7 @@ class HKJCSource:
             "results": results,
             "odds_ticks": odds,
             "exotic_dividends": exotic_dividends,
+            "voided": voided,
         }
 
     def parse_trackwork(
@@ -245,9 +250,13 @@ def parse_results_metadata(
     if race_index is None:
         return None
     class_line = lines[race_index + 1] if race_index + 1 < len(lines) else ""
-    race_name = lines[race_index + 4] if race_index + 4 < len(lines) else lines[race_index]
-    prize_line = next((line for line in lines[race_index : race_index + 12] if line.upper().startswith("HK$")), "")
     going = value_after_label(lines, race_index, "Going :")
+    race_name_index = race_index + 4
+    if going and race_index + 4 < len(lines) and lines[race_index + 4].lower().startswith("course"):
+        race_name_index = race_index + 3
+        going = "VOID" if is_void_result_page(lines) else ""
+    race_name = lines[race_name_index] if race_name_index < len(lines) else lines[race_index]
+    prize_line = next((line for line in lines[race_index : race_index + 12] if line.upper().startswith("HK$")), "")
     course = value_after_label(lines, race_index, "Course :")
     distance_match = re.search(r"(\d{3,4})M", class_line, re.I)
     class_match = re.search(r"(Class\s+\d+)", class_line, re.I)
@@ -270,6 +279,10 @@ def value_after_label(lines: list[str], start: int, label: str) -> str:
     if index is None or index + 1 >= len(lines):
         return ""
     return lines[index + 1]
+
+
+def is_void_result_page(lines: list[str]) -> bool:
+    return any("declared void" in line.lower() for line in lines)
 
 
 def result_runner_from_row(row: dict[str, Any]) -> dict[str, Any]:
@@ -780,6 +793,48 @@ def parse_result_rows(lines: list[str], race_id: str) -> list[dict[str, Any]]:
                 }
             )
     return rows
+
+
+def parse_void_result_runners(lines: list[str], race_id: str) -> list[dict[str, Any]]:
+    start = find_line(lines, "Pla. Horse No. Horse")
+    if start is None:
+        start = find_line(lines, "Pla.")
+    if start is None:
+        return []
+    end = find_line(lines, "Dividend", start=start + 1)
+    tokens = lines[start + 1 : end if end is not None else len(lines)]
+    rows: list[dict[str, Any]] = []
+    index = 0
+    while index < len(tokens) - 8:
+        if not (
+            tokens[index].upper() == "VOID"
+            and is_int(tokens[index + 1])
+            and looks_like_parenthesized_brand(tokens[index + 3])
+        ):
+            index += 1
+            continue
+        try:
+            rows.append(
+                {
+                    "race_id": race_id,
+                    "horse_no": int(tokens[index + 1]),
+                    "horse_id": tokens[index + 3].strip("()"),
+                    "horse_name": normalize_horse_name(tokens[index + 2]),
+                    "jockey": strip_allowance(tokens[index + 4]),
+                    "trainer": tokens[index + 5],
+                    "draw": int(tokens[index + 8]) if is_int(tokens[index + 8]) else 0,
+                    "weight_lbs": 0.0,
+                    "body_weight_lbs": None,
+                    "running_style": "unknown",
+                    "last_six_runs": "",
+                    "win_odds": None,
+                    "place_odds": None,
+                }
+            )
+            index += 10
+        except (IndexError, ValueError):
+            index += 1
+    return dedupe_by_key(rows, "horse_id")
 
 
 def parse_result_tokens(tokens: list[str], race_id: str) -> list[dict[str, Any]]:

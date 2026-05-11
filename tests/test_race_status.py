@@ -178,6 +178,36 @@ def test_refresh_race_statuses_skips_unchanged_rows(tmp_path: Path) -> None:
     assert changes_after_noop == changes_after_insert
 
 
+def test_refresh_race_statuses_preserves_official_void_result(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    with connect(db_path) as conn:
+        insert_rows(
+            conn,
+            "races",
+            [
+                {
+                    "race_id": "HK20251115-ST-08",
+                    "date": "2025-11-15",
+                    "track": "Sha Tin",
+                    "course": 'TURF - "A+3" Course',
+                    "distance_m": 1200,
+                    "going": "VOID",
+                    "class_rating": "Class 4",
+                    "prize": 1170000,
+                    "race_name": "Void Race Test",
+                }
+            ],
+        )
+        storage_module.upsert_race_status(conn, "HK20251115-ST-08", "resulted", notes="official_void_race")
+        conn.commit()
+        refresh_race_statuses(conn)
+        status = race_status(conn, "HK20251115-ST-08")
+
+    assert status["status"] == "resulted"
+    assert status["notes"] == "official_void_race"
+
+
 def test_future_hkjc_race_date_accepts_hkjc_formats() -> None:
     assert is_future_hkjc_race_date("2099/01/01")
     assert is_future_hkjc_race_date("2099-01-01")

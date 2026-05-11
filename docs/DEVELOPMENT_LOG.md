@@ -2,6 +2,26 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-12 - Handle Official HKJC Void Races
+
+Goal:
+
+- Correct the 2025-11-15 Sha Tin day where Race 8 was an official HKJC void race, not an upcoming race.
+- Make historical race-day loading include valid later races when the meeting has more races than previously requested.
+
+Changes:
+
+- Added HKJC result-page void detection for races declared void by the stewards.
+- Void races now keep the official runner roster and race metadata, but do not create fake finishing positions, odds, or payouts.
+- `load_hkjc_race_day()` and manual result refresh now mark official void races as `resulted` with `official_void_race` notes.
+- `refresh_race_statuses()` preserves that verified void-result state even when there are no result rows.
+- Updated the coverage report to mention official void-race recognition as part of data quality/risk handling.
+
+Verification:
+
+- `python -m pytest tests\test_hkjc_parser.py tests\test_race_status.py tests\test_coverage.py -q`
+- `python -m compileall -q src tests`
+
 ## 2026-05-12 - Reduce Race Status Refresh Locking
 
 Goal:

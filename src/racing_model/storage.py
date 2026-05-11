@@ -787,6 +787,8 @@ def refresh_race_statuses(conn: sqlite3.Connection) -> None:
             status = "scheduled"
         elif result_count > 0:
             status = "resulted"
+        elif current and current["status"] == "resulted" and "official_void_race" in str(current["notes"] or ""):
+            status = "resulted"
         elif current and current["status"] == "live":
             status = "live"
         else:
