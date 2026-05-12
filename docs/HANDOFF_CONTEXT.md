@@ -524,7 +524,8 @@ foreach ($t in $tests) {
   - RankingModel epochs、learning rate、temperature。
   - 不投注 gate：最低 WIN EV、最低勝率、賠率上下限、每場最多下注數。
 - CLI 支援 `--max-train-races` 限制近期訓練窗口，及 `--progress-every` 定期輸出當前最佳 ROI / tickets，避免長訓練時看似卡住。
-- 第一輪 server training validation ROI 為正，但 2026-05-09 holdout WIN ROI 為負。用戶指示「場場買都可以，中就可以；捉市場錯估馬為主（+EV），之後勝率」，所以 objective 不應獎勵少下注；已改為鼓勵 ROI、平均 EV、命中率、賽事覆蓋率，同時保留回撤 penalty。
+- 第一輪 server training validation ROI 為正，但 2026-05-09 holdout WIN ROI 為負。用戶指示「場場買都可以，中就可以；捉市場錯估馬為主（+EV），之後勝率；獨贏可以搭配位置買」，所以 objective 不應獎勵少下注；已改為鼓勵 ROI、命中率、平均概率、平均 EV、賽事覆蓋率，賠率只作上下限和高賠風險 penalty。
+- Holdout place replay 會對通過 WIN gate 的馬自動加入 `PLACE_PAIRED` 票，再補充其他 +EV 位置票，用來量度「獨贏 + 位置」組合能否拉高 ROI。
 - 候選只按 validation 的 ROI、命中率、最大回撤、下注量 objective 選；再輸出 pre-holdout replay、holdout WIN replay、holdout PLACE replay。
 - 報告與模型 artifact 只寫入 `reports/ev_blackbox_*`，不自動覆蓋 `models/baseline.json`，避免 in-sample 高 ROI 直接污染 live 模型。
 - 方程式覆蓋率已更新第 35「多目標優化」及第 36「不下注決策」maturity，反映 EV 黑箱與 no-bet 門檻搜尋。

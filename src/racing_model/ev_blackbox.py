@@ -220,12 +220,12 @@ def random_candidate_config(
 ) -> CandidateConfig:
     mode = rng.choice(["all", "no_market", "market_only", "core", "core_no_late"])
     features = feature_names_for_mode(mode)
-    min_ev = rng.uniform(0.02, 1.25)
+    min_ev = rng.uniform(0.03, 0.95)
     policy = EVPolicy(
         min_win_ev=min_ev,
-        min_win_probability=rng.uniform(0.035, 0.28),
-        min_win_odds=rng.uniform(1.4, 6.0),
-        max_win_odds=rng.choice([18.0, 28.0, 45.0, 80.0, 120.0]),
+        min_win_probability=rng.uniform(0.07, 0.26),
+        min_win_odds=rng.uniform(1.4, 4.2),
+        max_win_odds=rng.choice([8.0, 12.0, 18.0, 28.0]),
         max_win_bets_per_race=rng.choice([1, 2, 2, 3, 3]),
         min_place_ev=max(0.01, min_ev * rng.uniform(0.35, 0.85)),
         min_place_probability=rng.uniform(0.18, 0.42),
@@ -306,12 +306,35 @@ def replay_races(
             )
             tickets.append(ticket)
             race_tickets.append(ticket)
+            if include_place and row.get("latest_place_odds"):
+                top3_ev = float(row.get("top3_expected_value") or -999)
+                top3_probability = float(row.get("top3_probability") or 0)
+                if top3_ev >= policy.min_place_ev and top3_probability >= policy.min_place_probability:
+                    place_ticket = settle_ticket(
+                        race_id=str(row["race_id"]),
+                        horse_id=str(row["horse_id"]),
+                        horse_no=row.get("horse_no"),
+                        horse_name=str(row.get("display_name") or row.get("horse_name") or row["horse_id"]),
+                        market="PLACE_PAIRED",
+                        probability=top3_probability,
+                        odds=float(row["latest_place_odds"] or 0),
+                        expected_value=top3_ev,
+                        finish_position=result_by_horse.get(str(row["horse_id"]), 99),
+                        stake=policy.stake,
+                        winning_positions={1, 2, 3},
+                    )
+                    tickets.append(place_ticket)
+                    race_tickets.append(place_ticket)
         if include_place:
             place_candidates = sorted(
                 [
                     row
                     for row in predictions
                     if row.get("latest_place_odds")
+                    and not any(
+                        ticket["horse_id"] == str(row["horse_id"]) and ticket["market"] == "PLACE_PAIRED"
+                        for ticket in race_tickets
+                    )
                     and float(row["top3_probability"] or 0) >= policy.min_place_probability
                     and float(row.get("top3_expected_value") or -999) >= policy.min_place_ev
                 ],
@@ -410,6 +433,16 @@ def summarize_tickets(tickets: list[dict[str, Any]], race_count: int, races: lis
             if tickets
             else 0.0
         ),
+        "mean_probability": (
+            sum(float(ticket["probability"]) for ticket in tickets) / len(tickets)
+            if tickets
+            else 0.0
+        ),
+        "mean_odds": (
+            sum(float(ticket["odds"]) for ticket in tickets) / len(tickets)
+            if tickets
+            else 0.0
+        ),
         "max_drawdown": round(max_drawdown, 4),
         "top_pick_hit_rate": top_pick_hit_rate(races),
         "top3_hit_rate": sum(1 for race in races if race.get("top3_hit")) / race_count if race_count else 0.0,
@@ -447,12 +480,24 @@ def blackbox_objective(replay: dict[str, Any]) -> float:
     roi = float(summary["roi"])
     hit_rate = float(summary["hit_rate"])
     mean_ev = float(summary.get("mean_expected_value") or 0.0)
+    mean_probability = float(summary.get("mean_probability") or 0.0)
+    mean_odds = float(summary.get("mean_odds") or 0.0)
     retention = min(1.0, bets / 65.0)
     coverage = float(summary["races_with_bets"]) / max(float(summary["race_count"]), 1.0)
     drawdown = float(summary["max_drawdown"])
     staked = max(float(summary["staked"]), 1.0)
     drawdown_penalty = drawdown / staked
-    return roi * retention + hit_rate * 0.22 + mean_ev * 0.08 + coverage * 0.06 + math.log1p(bets) * 0.025 - drawdown_penalty * 0.18
+    high_odds_penalty = max(0.0, mean_odds - 12.0) * 0.015
+    return (
+        roi * retention
+        + hit_rate * 0.35
+        + mean_probability * 0.25
+        + min(mean_ev, 2.0) * 0.08
+        + coverage * 0.04
+        + math.log1p(bets) * 0.02
+        - drawdown_penalty * 0.18
+        - high_odds_penalty
+    )
 
 
 def candidate_public(config: CandidateConfig) -> dict[str, Any]:
