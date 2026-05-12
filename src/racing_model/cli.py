@@ -95,6 +95,8 @@ def main() -> None:
     ev_blackbox_parser.add_argument("--min-epochs", type=int, default=80)
     ev_blackbox_parser.add_argument("--max-epochs", type=int, default=260)
     ev_blackbox_parser.add_argument("--stake", type=float, default=10.0)
+    ev_blackbox_parser.add_argument("--max-train-races", type=int, default=0)
+    ev_blackbox_parser.add_argument("--progress-every", type=int, default=0)
 
     registry_parser = sub.add_parser("model-registry")
     registry_parser.add_argument("--run", action="store_true", help="Run and persist a new out-of-sample registry entry.")
@@ -280,6 +282,8 @@ def main() -> None:
                 min_epochs=args.min_epochs,
                 max_epochs=args.max_epochs,
                 stake=args.stake,
+                max_train_races=args.max_train_races or None,
+                progress_every=args.progress_every,
             )
             print(json.dumps(result, indent=2, ensure_ascii=False))
         elif args.command == "model-registry":

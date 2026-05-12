@@ -65,6 +65,8 @@ def run_ev_blackbox_training(
     stake: float = 10.0,
     validation_fraction: float = 0.18,
     min_validation_races: int = 45,
+    max_train_races: int | None = None,
+    progress_every: int = 0,
 ) -> dict[str, Any]:
     race_ids = eligible_resulted_race_ids(conn)
     race_dates = race_date_lookup(conn)
@@ -78,6 +80,8 @@ def run_ev_blackbox_training(
     validation_size = min(max(validation_size, 1), max(len(pre_holdout_ids) - 1, 1))
     train_ids = pre_holdout_ids[:-validation_size]
     validation_ids = pre_holdout_ids[-validation_size:]
+    if max_train_races and max_train_races > 0:
+        train_ids = train_ids[-max_train_races:]
     if not train_ids or not validation_ids:
         raise ValueError("Not enough eligible races for black-box EV training.")
 
@@ -101,6 +105,21 @@ def run_ev_blackbox_training(
         candidates.append(row)
         if best is None or score > float(best["score"]):
             best = row
+        if progress_every and ((index + 1) % progress_every == 0 or index == 0):
+            best_summary = (best or row)["validation"]
+            print(
+                json.dumps(
+                    {
+                        "progress": index + 1,
+                        "trials": trials,
+                        "best_score": round(float((best or row)["score"]), 6),
+                        "best_roi": round(float(best_summary["roi"]), 6),
+                        "best_tickets": best_summary["ticket_count"],
+                    },
+                    ensure_ascii=False,
+                ),
+                flush=True,
+            )
 
     assert best is not None
     best_config = config_from_public(best["candidate"])
