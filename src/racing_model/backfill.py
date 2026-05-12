@@ -191,11 +191,13 @@ def venue_track_name(venue: str) -> str:
 
 
 def repair_orphan_result_runners(conn: sqlite3.Connection) -> dict[str, Any]:
+    refresh_race_statuses(conn)
     rows = fetch_all(
         conn,
         """
         SELECT x.race_id, x.horse_id, min(x.finish_position) AS finish_position, x.comment
         FROM results x
+        JOIN race_status s ON s.race_id = x.race_id AND s.status = 'resulted'
         LEFT JOIN runners ru ON ru.race_id = x.race_id AND ru.horse_id = x.horse_id
         WHERE ru.horse_id IS NULL
         GROUP BY x.race_id, x.horse_id
@@ -260,11 +262,13 @@ def repair_orphan_result_runners(conn: sqlite3.Connection) -> dict[str, Any]:
 
 def align_resulted_race_data(conn: sqlite3.Connection, sample_limit: int = 20) -> dict[str, Any]:
     """Keep resulted races aligned to actual starters and reuse known Chinese names."""
+    refresh_race_statuses(conn)
     stale_rows = fetch_all(
         conn,
         """
         SELECT ru.race_id, ru.horse_id, ru.horse_no, ru.horse_name
         FROM runners ru
+        JOIN race_status s ON s.race_id = ru.race_id AND s.status = 'resulted'
         WHERE EXISTS (SELECT 1 FROM results x WHERE x.race_id = ru.race_id)
           AND NOT EXISTS (
             SELECT 1
@@ -320,6 +324,7 @@ def fill_missing_chinese_by_key(conn: sqlite3.Connection, key_column: str, zh_co
         f"""
         SELECT missing.race_id, missing.horse_id, known.{zh_column} AS zh_value
         FROM runners missing
+        JOIN race_status ms ON ms.race_id = missing.race_id AND ms.status = 'resulted'
         JOIN (
           SELECT {key_column}, max({zh_column}) AS {zh_column}
           FROM runners
@@ -347,7 +352,9 @@ def infer_chinese_horse_names(conn: sqlite3.Connection) -> int:
         """
         SELECT race_id, horse_id, horse_name
         FROM runners
-        WHERE COALESCE(horse_name_zh, '') = ''
+        JOIN race_status s USING (race_id)
+        WHERE s.status = 'resulted'
+          AND COALESCE(horse_name_zh, '') = ''
           AND COALESCE(horse_name, '') != ''
         """,
     )
@@ -374,22 +381,24 @@ def complete_repaired_runners(
     delay_seconds: float,
     raw_dir: Path | str = "data/raw",
 ) -> dict[str, Any]:
+    refresh_race_statuses(conn)
     race_ids = [
         row["race_id"]
         for row in fetch_all(
             conn,
             """
-            SELECT DISTINCT race_id
-            FROM runners
-            WHERE gear = 'repaired_from_result'
-               OR COALESCE(last_six_runs, '') = ''
-               OR COALESCE(horse_name_zh, '') = ''
-               OR COALESCE(jockey_zh, '') = ''
-               OR COALESCE(trainer_zh, '') = ''
-               OR body_weight_lbs IS NULL
-               OR COALESCE(sire, '') = ''
-               OR COALESCE(dam, '') = ''
-            ORDER BY race_id
+            SELECT DISTINCT ru.race_id
+            FROM runners ru
+            JOIN race_status s ON s.race_id = ru.race_id AND s.status = 'resulted'
+            WHERE ru.gear = 'repaired_from_result'
+               OR COALESCE(ru.last_six_runs, '') = ''
+               OR COALESCE(ru.horse_name_zh, '') = ''
+               OR COALESCE(ru.jockey_zh, '') = ''
+               OR COALESCE(ru.trainer_zh, '') = ''
+               OR ru.body_weight_lbs IS NULL
+               OR COALESCE(ru.sire, '') = ''
+               OR COALESCE(ru.dam, '') = ''
+            ORDER BY ru.race_id
             """,
         )
     ]
@@ -685,12 +694,32 @@ def data_quality_report(conn: sqlite3.Connection) -> dict[str, Any]:
         issue_row(
             "missing_results",
             "有賽事但未有賽果",
-            scalar(conn, "SELECT count(*) FROM races r WHERE NOT EXISTS (SELECT 1 FROM results x WHERE x.race_id = r.race_id)"),
+            scalar(
+                conn,
+                """
+                SELECT count(*)
+                FROM races r
+                LEFT JOIN race_status s ON s.race_id = r.race_id
+                WHERE COALESCE(s.status, '') != 'scheduled'
+                  AND COALESCE(s.notes, '') != 'official_void_race'
+                  AND NOT EXISTS (SELECT 1 FROM results x WHERE x.race_id = r.race_id)
+                """,
+            ),
         ),
         issue_row(
             "missing_odds",
             "有賽事但冇賠率記錄",
-            scalar(conn, "SELECT count(*) FROM races r WHERE NOT EXISTS (SELECT 1 FROM odds_ticks o WHERE o.race_id = r.race_id)"),
+            scalar(
+                conn,
+                """
+                SELECT count(*)
+                FROM races r
+                LEFT JOIN race_status s ON s.race_id = r.race_id
+                WHERE COALESCE(s.status, '') != 'scheduled'
+                  AND COALESCE(s.notes, '') != 'official_void_race'
+                  AND NOT EXISTS (SELECT 1 FROM odds_ticks o WHERE o.race_id = r.race_id)
+                """,
+            ),
         ),
         issue_row(
             "incomplete_results",
