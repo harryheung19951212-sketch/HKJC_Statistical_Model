@@ -530,3 +530,12 @@ foreach ($t in $tests) {
 - 候選只按 validation 的 ROI、命中率、最大回撤、下注量 objective 選；再輸出 pre-holdout replay、holdout WIN replay、holdout PLACE replay。
 - 報告與模型 artifact 只寫入 `reports/ev_blackbox_*`，不自動覆蓋 `models/baseline.json`，避免 in-sample 高 ROI 直接污染 live 模型。
 - 方程式覆蓋率已更新第 35「多目標優化」及第 36「不下注決策」maturity，反映 EV 黑箱與 no-bet 門檻搜尋。
+
+### Server run result
+
+- 最近 20 個賽日 day-by-day micro-tune walk-forward 已在 server 跑完：`/opt/hkjc-model/reports/ev_daily_walk_forward_20260512_045914/report.json`。
+- Aggregate：178 場、209 張假飛、命中 133、總下注 2090、回收 4735、盈利 2645、ROI +126.6%。
+- 2026-05-09 holdout：11 場、17 張假飛、命中 3、下注 170、回收 227、盈利 57、ROI +33.5%。
+- 2026-05-09 命中：第7場 `金鑽精靈` WIN + PLACE_PAIRED、第9場 `飛來閃耀` PLACE。
+- 2026-05-09 未重現用戶列出的高 ROI 組合：`鵲橋飛昇`、`一鋪掂晒`、`君子`、`團結勇士`、第10場 `活力拍檔/榮駿大道` 及相關位置Q。
+- 注意：目前主要用歷史 final/closing win odds 做 EV replay，能驗證市場錯估方向，但仍未等同真實 bet-time odds / slippage / pool depth。
