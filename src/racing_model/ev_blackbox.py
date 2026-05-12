@@ -220,13 +220,13 @@ def random_candidate_config(
 ) -> CandidateConfig:
     mode = rng.choice(["all", "no_market", "market_only", "core", "core_no_late"])
     features = feature_names_for_mode(mode)
-    min_ev = rng.uniform(0.05, 1.6)
+    min_ev = rng.uniform(0.02, 1.25)
     policy = EVPolicy(
         min_win_ev=min_ev,
-        min_win_probability=rng.uniform(0.05, 0.38),
-        min_win_odds=rng.uniform(1.4, 9.0),
-        max_win_odds=rng.choice([12.0, 18.0, 28.0, 45.0, 80.0]),
-        max_win_bets_per_race=rng.choice([1, 1, 2, 2, 3]),
+        min_win_probability=rng.uniform(0.035, 0.28),
+        min_win_odds=rng.uniform(1.4, 6.0),
+        max_win_odds=rng.choice([18.0, 28.0, 45.0, 80.0, 120.0]),
+        max_win_bets_per_race=rng.choice([1, 2, 2, 3, 3]),
         min_place_ev=max(0.01, min_ev * rng.uniform(0.35, 0.85)),
         min_place_probability=rng.uniform(0.18, 0.42),
         max_place_bets_per_race=rng.choice([1, 2, 2, 3]),
@@ -405,6 +405,11 @@ def summarize_tickets(tickets: list[dict[str, Any]], race_count: int, races: lis
         "returned": round(returned, 4),
         "profit": round(profit, 4),
         "roi": profit / staked if staked else 0.0,
+        "mean_expected_value": (
+            sum(float(ticket["expected_value"]) for ticket in tickets) / len(tickets)
+            if tickets
+            else 0.0
+        ),
         "max_drawdown": round(max_drawdown, 4),
         "top_pick_hit_rate": top_pick_hit_rate(races),
         "top3_hit_rate": sum(1 for race in races if race.get("top3_hit")) / race_count if race_count else 0.0,
@@ -437,16 +442,17 @@ def prediction_public(row: dict[str, Any], result_by_horse: dict[str, int]) -> d
 def blackbox_objective(replay: dict[str, Any]) -> float:
     summary = replay["summary"]
     bets = int(summary["ticket_count"])
-    if bets < 8:
+    if bets < 12:
         return -10.0 + bets * 0.05
     roi = float(summary["roi"])
     hit_rate = float(summary["hit_rate"])
-    retention = min(1.0, bets / 35.0)
-    selectivity = 1.0 - (float(summary["races_with_bets"]) / max(float(summary["race_count"]), 1.0))
+    mean_ev = float(summary.get("mean_expected_value") or 0.0)
+    retention = min(1.0, bets / 65.0)
+    coverage = float(summary["races_with_bets"]) / max(float(summary["race_count"]), 1.0)
     drawdown = float(summary["max_drawdown"])
     staked = max(float(summary["staked"]), 1.0)
     drawdown_penalty = drawdown / staked
-    return roi * retention + hit_rate * 0.25 + selectivity * 0.08 + math.log1p(bets) * 0.02 - drawdown_penalty * 0.22
+    return roi * retention + hit_rate * 0.22 + mean_ev * 0.08 + coverage * 0.06 + math.log1p(bets) * 0.025 - drawdown_penalty * 0.18
 
 
 def candidate_public(config: CandidateConfig) -> dict[str, Any]:
