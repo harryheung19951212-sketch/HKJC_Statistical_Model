@@ -519,6 +519,7 @@ foreach ($t in $tests) {
 - 歷史資料確認：468 場已完賽賽事全部有獨贏賠率，可用「模型勝率 x 獨贏賠率 - 1」直接訓練/驗證 EV；位置賠率目前只有 2026-05-09 11 場完整，所以位置 ROI 暫時只適合 holdout replay，不適合長期訓練。
 - 新增 `src/racing_model/ev_blackbox.py` 及 CLI `python -m racing_model.cli blackbox-ev-train`。
 - Pipeline 用時間序切分：指定 holdout date（預設 2026-05-09）不參與候選選擇；用 holdout 前資料再切 train/validation。
+- 新增 `python -m racing_model.cli blackbox-ev-walk-forward-days`，按獨立賽日滾動：每個 test day 前，只用之前賽日 train，最近幾個賽日做微調/候選選擇，再測下一個賽日。
 - 黑箱搜尋內容：
   - 特徵組合：all / no_market / market_only / core / core_no_late。
   - RankingModel epochs、learning rate、temperature。

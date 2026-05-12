@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from racing_model.ev_blackbox import eligible_resulted_race_ids, run_ev_blackbox_training
+from racing_model.ev_blackbox import eligible_resulted_race_ids, run_ev_blackbox_training, run_ev_daily_walk_forward
 from racing_model.storage import connect, init_db, insert_rows
 
 
@@ -28,6 +28,36 @@ def test_ev_blackbox_training_writes_holdout_report(tmp_path: Path) -> None:
     assert report["best_candidate"]["policy"]["min_win_ev"] >= 0
     assert report["holdout_win_replay"]["summary"]["race_count"] == 1
     assert Path(report["model_path"]).exists()
+    assert Path(report["report_path"]).exists()
+
+
+def test_ev_daily_walk_forward_micro_tunes_before_test_day(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    with connect(db_path) as conn:
+        seed_ev_training_rows(conn)
+        report = run_ev_daily_walk_forward(
+            conn,
+            output_dir=tmp_path,
+            trials_per_day=2,
+            seed=11,
+            min_epochs=2,
+            max_epochs=3,
+            validation_dates=1,
+            min_train_dates=2,
+            max_train_races=8,
+            max_test_dates=1,
+            progress_every=0,
+        )
+
+    assert report["training_mode"] == "blackbox_ev_daily_micro_tune_walk_forward"
+    assert report["guardrails"]["test_day_used_for_selection"] is False
+    assert report["sample"]["tested_dates"] == 1
+    day = report["days"][0]
+    assert day["date"] == "2026-05-09"
+    assert day["train_races"] >= 2
+    assert day["test_races"] == 1
+    assert "roi" in day["test"]["summary"]
     assert Path(report["report_path"]).exists()
 
 

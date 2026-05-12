@@ -178,6 +178,143 @@ def run_ev_blackbox_training(
     return report
 
 
+def run_ev_daily_walk_forward(
+    conn,
+    output_dir: Path | str = "reports",
+    start_date: str | None = None,
+    end_date: str | None = None,
+    trials_per_day: int = 12,
+    seed: int = 20260509,
+    min_epochs: int = 40,
+    max_epochs: int = 120,
+    stake: float = 10.0,
+    validation_dates: int = 4,
+    min_train_dates: int = 8,
+    max_train_races: int | None = 260,
+    max_test_dates: int | None = None,
+    progress_every: int = 1,
+) -> dict[str, Any]:
+    race_ids = eligible_resulted_race_ids(conn)
+    race_dates = race_date_lookup(conn)
+    by_date: dict[str, list[str]] = {}
+    for race_id in race_ids:
+        by_date.setdefault(race_dates[race_id], []).append(race_id)
+    dates = sorted(by_date)
+    test_dates = [
+        race_date
+        for index, race_date in enumerate(dates)
+        if index >= min_train_dates
+        and (start_date is None or race_date >= start_date)
+        and (end_date is None or race_date <= end_date)
+    ]
+    if max_test_dates and max_test_dates > 0:
+        test_dates = test_dates[-max_test_dates:]
+    selected_ids = []
+    for race_date in dates:
+        if race_date in test_dates or race_date < (test_dates[0] if test_dates else "9999-99-99"):
+            selected_ids.extend(by_date[race_date])
+    race_features = {race_id: build_race_features(conn, race_id) for race_id in dict.fromkeys(selected_ids)}
+    rng = random.Random(seed)
+    day_reports = []
+
+    for day_index, test_date in enumerate(test_dates, start=1):
+        prior_dates = [race_date for race_date in dates if race_date < test_date]
+        if len(prior_dates) < min_train_dates:
+            continue
+        tuning_dates = prior_dates[-validation_dates:]
+        train_dates = prior_dates[:-validation_dates] or prior_dates[:-1]
+        train_ids = [race_id for race_date in train_dates for race_id in by_date[race_date]]
+        if max_train_races and max_train_races > 0:
+            train_ids = train_ids[-max_train_races:]
+        tuning_ids = [race_id for race_date in tuning_dates for race_id in by_date[race_date]]
+        test_ids = by_date[test_date]
+        if not train_ids or not tuning_ids or not test_ids:
+            continue
+
+        best: dict[str, Any] | None = None
+        candidates = []
+        for trial in range(max(trials_per_day, 1)):
+            config = random_candidate_config(rng, trial, min_epochs, max_epochs, stake)
+            model = model_from_config(config)
+            model.fit([race_features[race_id] for race_id in train_ids], epochs=config.epochs, learning_rate=config.learning_rate)
+            validation = replay_races(model, config.policy, [race_features[race_id] for race_id in tuning_ids])
+            score = blackbox_objective(validation)
+            row = {"candidate": candidate_public(config), "validation": validation["summary"], "score": score}
+            candidates.append(row)
+            if best is None or score > float(best["score"]):
+                best = row
+
+        assert best is not None
+        best_config = config_from_public(best["candidate"])
+        model = model_from_config(best_config)
+        micro_train_ids = [*train_ids, *tuning_ids]
+        if max_train_races and max_train_races > 0:
+            micro_train_ids = micro_train_ids[-max_train_races:]
+        model.fit([race_features[race_id] for race_id in micro_train_ids], epochs=best_config.epochs, learning_rate=best_config.learning_rate)
+        test_replay = replay_races(model, best_config.policy, [race_features[race_id] for race_id in test_ids], include_place=True)
+        day_report = {
+            "date": test_date,
+            "day_index": day_index,
+            "train_races": len(micro_train_ids),
+            "tuning_races": len(tuning_ids),
+            "test_races": len(test_ids),
+            "best_candidate": best["candidate"],
+            "validation": best["validation"],
+            "test": test_replay,
+            "top_candidates": sorted(candidates, key=lambda item: float(item["score"]), reverse=True)[:3],
+        }
+        day_reports.append(day_report)
+        if progress_every and (day_index % progress_every == 0 or day_index == 1):
+            summary = test_replay["summary"]
+            print(
+                json.dumps(
+                    {
+                        "progress_day": day_index,
+                        "test_dates": len(test_dates),
+                        "date": test_date,
+                        "roi": round(float(summary["roi"]), 6),
+                        "tickets": summary["ticket_count"],
+                        "hits": summary["hits"],
+                    },
+                    ensure_ascii=False,
+                ),
+                flush=True,
+            )
+
+    all_tickets = [ticket for day in day_reports for ticket in day["test"]["tickets"]]
+    pseudo_races = [
+        {"ticket_count": day["test"]["summary"]["ticket_count"], "top_pick": {}, "top3_hit": False}
+        for day in day_reports
+    ]
+    aggregate = summarize_tickets(all_tickets, sum(day["test_races"] for day in day_reports), pseudo_races)
+    created_at = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    target_dir = Path(output_dir) / f"ev_daily_walk_forward_{created_at}"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    report_path = target_dir / "report.json"
+    report = {
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "training_mode": "blackbox_ev_daily_micro_tune_walk_forward",
+        "guardrails": {
+            "test_day_used_for_selection": False,
+            "per_day_micro_tune": True,
+            "candidate_selection": "+EV/ROI/hit_rate/probability with drawdown penalty",
+        },
+        "sample": {
+            "eligible_races": len(race_ids),
+            "eligible_dates": len(dates),
+            "tested_dates": len(day_reports),
+            "start_date": day_reports[0]["date"] if day_reports else None,
+            "end_date": day_reports[-1]["date"] if day_reports else None,
+            "trials_per_day": trials_per_day,
+        },
+        "aggregate": aggregate,
+        "days": day_reports,
+        "report_path": str(report_path),
+    }
+    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    return report
+
+
 def eligible_resulted_race_ids(conn) -> list[str]:
     return [
         str(row["race_id"])

@@ -19,7 +19,7 @@ from .betting_ledger import betting_ledger_report, reconcile_betting_ledger
 from .config import display_database_target, get_settings
 from .db_migrate import database_counts, migrate_sqlite_to_database
 from .evolution import evaluate_model_evolution, generate_codex_iteration, generate_openai_iteration
-from .ev_blackbox import run_ev_blackbox_training
+from .ev_blackbox import run_ev_blackbox_training, run_ev_daily_walk_forward
 from .exotic_dividends import exotic_dividend_report, upsert_exotic_dividends
 from .exotic_live import build_exotic_dividend_provider, refresh_exotic_dividends
 from .features import build_race_features, build_training_races
@@ -97,6 +97,21 @@ def main() -> None:
     ev_blackbox_parser.add_argument("--stake", type=float, default=10.0)
     ev_blackbox_parser.add_argument("--max-train-races", type=int, default=0)
     ev_blackbox_parser.add_argument("--progress-every", type=int, default=0)
+
+    ev_daily_parser = sub.add_parser("blackbox-ev-walk-forward-days")
+    ev_daily_parser.add_argument("--output-dir", default="reports")
+    ev_daily_parser.add_argument("--start-date", default=None)
+    ev_daily_parser.add_argument("--end-date", default=None)
+    ev_daily_parser.add_argument("--trials-per-day", type=int, default=12)
+    ev_daily_parser.add_argument("--seed", type=int, default=20260509)
+    ev_daily_parser.add_argument("--min-epochs", type=int, default=40)
+    ev_daily_parser.add_argument("--max-epochs", type=int, default=120)
+    ev_daily_parser.add_argument("--stake", type=float, default=10.0)
+    ev_daily_parser.add_argument("--validation-dates", type=int, default=4)
+    ev_daily_parser.add_argument("--min-train-dates", type=int, default=8)
+    ev_daily_parser.add_argument("--max-train-races", type=int, default=260)
+    ev_daily_parser.add_argument("--max-test-dates", type=int, default=0)
+    ev_daily_parser.add_argument("--progress-every", type=int, default=1)
 
     registry_parser = sub.add_parser("model-registry")
     registry_parser.add_argument("--run", action="store_true", help="Run and persist a new out-of-sample registry entry.")
@@ -283,6 +298,24 @@ def main() -> None:
                 max_epochs=args.max_epochs,
                 stake=args.stake,
                 max_train_races=args.max_train_races or None,
+                progress_every=args.progress_every,
+            )
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        elif args.command == "blackbox-ev-walk-forward-days":
+            result = run_ev_daily_walk_forward(
+                conn,
+                output_dir=args.output_dir,
+                start_date=args.start_date,
+                end_date=args.end_date,
+                trials_per_day=args.trials_per_day,
+                seed=args.seed,
+                min_epochs=args.min_epochs,
+                max_epochs=args.max_epochs,
+                stake=args.stake,
+                validation_dates=args.validation_dates,
+                min_train_dates=args.min_train_dates,
+                max_train_races=args.max_train_races or None,
+                max_test_dates=args.max_test_dates or None,
                 progress_every=args.progress_every,
             )
             print(json.dumps(result, indent=2, ensure_ascii=False))
