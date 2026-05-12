@@ -32,8 +32,8 @@ MATURITY_OVERRIDES = {
         "已由離線可靠度分桶推進到即場同分熔斷：當能力/融合模型對全場輸出近乎完全平均概率時，會改用最新獨贏/位置市場公平機率計算概率及EV，並把 EV 標記為市場水位/抽水參考而非模型 edge，下注 gate 只會觀望；仍未完成組合彩池結構層校準。",
     ),
     35: (
-        0.72,
-        "已由純 scorecard gate 推前到 walk-forward 候選模型排序、model registry 升級 gate、彩池 optimizer 注碼調整，以及 EV 黑箱日滾動微調；可用歷史獨贏賠率按 +EV、平均概率/命中率、ROI、賽事覆蓋率及回撤搜尋模型與下注門檻，並逐個賽日先微調再測下一日；仍未接入正式自動 promotion。",
+        0.74,
+        "已由純 scorecard gate 推前到 walk-forward 候選模型排序、model registry 升級 gate、彩池 optimizer 注碼調整、EV 黑箱日滾動微調及全賽日 final refit；可用歷史獨贏賠率按 +EV、平均概率/命中率、ROI、賽事覆蓋率及回撤搜尋模型與下注門檻，先用最近賽日 tuning 選 candidate，再用所有 eligible 賽事 fit 最終模型；仍未接入正式自動 promotion。",
     ),
     36: (
         0.62,
@@ -649,7 +649,7 @@ def coverage_items() -> list[dict[str, Any]]:
                 "src/racing_model/betting.py",
                 "src/racing_model/promotion_scorecard.py",
             ],
-            "已有多目標 Promotion Scorecard v1，同時檢查 Top1、Top3、ROI、execution ROI、最大回撤、Sharpe-like、分彩池 ROI 及分片 OOS；walk-forward 候選模型排序與 model registry 升級 gate 已加入多目標 OOS 分，唔再只用 Log Loss/Brier 排第一；EV 黑箱訓練已改成逐賽日 micro-tune，候選按 +EV、平均概率/命中率、ROI、賽事覆蓋率及回撤選擇，避免只追少數高賠票。",
+            "已有多目標 Promotion Scorecard v1，同時檢查 Top1、Top3、ROI、execution ROI、最大回撤、Sharpe-like、分彩池 ROI 及分片 OOS；walk-forward 候選模型排序與 model registry 升級 gate 已加入多目標 OOS 分，唔再只用 Log Loss/Brier 排第一；EV 黑箱訓練已支援逐賽日 micro-tune 及全賽日 final refit，候選按 +EV、平均概率/命中率、ROI、賽事覆蓋率及回撤選擇，避免只追少數高賠票。",
             "仍未把 EV 黑箱候選接入正式 model registry promotion，也未有足夠歷史位置賠率做位置 ROI 長期訓練。",
             "下一步把 EV 黑箱報告接入 UI/model registry，並擴大位置賠率與組合彩池 final dividend 樣本。",
             ["Top1", "Top3", "ROI", "最大回撤", "Sharpe-like", "每種彩池 ROI"],

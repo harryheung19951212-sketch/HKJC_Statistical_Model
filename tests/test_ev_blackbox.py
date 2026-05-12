@@ -5,6 +5,7 @@ from racing_model.ev_blackbox import (
     eligible_resulted_race_ids,
     run_ev_blackbox_training,
     run_ev_daily_walk_forward,
+    run_ev_final_all_training,
 )
 from racing_model.storage import connect, init_db, insert_rows
 
@@ -97,6 +98,31 @@ def test_blackbox_objective_prefers_ev_probability_and_race_coverage() -> None:
     }
 
     assert blackbox_objective(broad_ev_probability) > blackbox_objective(narrow_high_odds)
+
+
+def test_ev_final_all_training_refits_on_every_eligible_race(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+    with connect(db_path) as conn:
+        seed_ev_training_rows(conn)
+        report = run_ev_final_all_training(
+            conn,
+            output_dir=tmp_path,
+            trials=2,
+            seed=17,
+            min_epochs=2,
+            max_epochs=3,
+            validation_dates=1,
+            progress_every=0,
+        )
+
+    assert report["training_mode"] == "blackbox_ev_final_all_racedays"
+    assert report["guardrails"]["final_model_trained_on_all_eligible_races"] is True
+    assert report["sample"]["final_train_races"] == 4
+    assert report["sample"]["tuning_start"] == "2026-05-09"
+    assert report["all_history_replay"]["summary"]["race_count"] == 4
+    assert Path(report["model_path"]).exists()
+    assert Path(report["report_path"]).exists()
 
 
 def seed_ev_training_rows(conn) -> None:

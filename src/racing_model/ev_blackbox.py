@@ -315,6 +315,123 @@ def run_ev_daily_walk_forward(
     return report
 
 
+def run_ev_final_all_training(
+    conn,
+    output_dir: Path | str = "reports",
+    trials: int = 80,
+    seed: int = 20260512,
+    min_epochs: int = 80,
+    max_epochs: int = 220,
+    stake: float = 10.0,
+    validation_dates: int = 4,
+    max_candidate_train_races: int | None = None,
+    progress_every: int = 0,
+) -> dict[str, Any]:
+    race_ids = eligible_resulted_race_ids(conn)
+    race_dates = race_date_lookup(conn)
+    by_date: dict[str, list[str]] = {}
+    for race_id in race_ids:
+        by_date.setdefault(race_dates[race_id], []).append(race_id)
+    dates = sorted(by_date)
+    if len(dates) < 2:
+        raise ValueError("Not enough eligible racedays for final all-day EV training.")
+
+    tuning_date_count = max(1, min(int(validation_dates or 1), len(dates) - 1))
+    tuning_dates = dates[-tuning_date_count:]
+    candidate_train_dates = dates[:-tuning_date_count]
+    candidate_train_ids = [race_id for race_date in candidate_train_dates for race_id in by_date[race_date]]
+    if max_candidate_train_races and max_candidate_train_races > 0:
+        candidate_train_ids = candidate_train_ids[-max_candidate_train_races:]
+    tuning_ids = [race_id for race_date in tuning_dates for race_id in by_date[race_date]]
+    if not candidate_train_ids or not tuning_ids:
+        raise ValueError("Not enough eligible races for final all-day EV candidate selection.")
+
+    selected_ids = list(dict.fromkeys([*candidate_train_ids, *tuning_ids, *race_ids]))
+    race_features = {race_id: build_race_features(conn, race_id) for race_id in selected_ids}
+    rng = random.Random(seed)
+    candidates = []
+    best: dict[str, Any] | None = None
+    for index in range(max(trials, 1)):
+        config = random_candidate_config(rng, index, min_epochs, max_epochs, stake)
+        model = model_from_config(config)
+        model.fit(
+            [race_features[race_id] for race_id in candidate_train_ids],
+            epochs=config.epochs,
+            learning_rate=config.learning_rate,
+        )
+        tuning = replay_races(model, config.policy, [race_features[race_id] for race_id in tuning_ids], include_place=True)
+        score = blackbox_objective(tuning)
+        row = {"candidate": candidate_public(config), "tuning": tuning["summary"], "score": score}
+        candidates.append(row)
+        if best is None or score > float(best["score"]):
+            best = row
+        if progress_every and ((index + 1) % progress_every == 0 or index == 0):
+            best_summary = (best or row)["tuning"]
+            print(
+                json.dumps(
+                    {
+                        "progress": index + 1,
+                        "trials": trials,
+                        "best_score": round(float((best or row)["score"]), 6),
+                        "best_roi": round(float(best_summary["roi"]), 6),
+                        "best_tickets": best_summary["ticket_count"],
+                    },
+                    ensure_ascii=False,
+                ),
+                flush=True,
+            )
+
+    assert best is not None
+    best_config = config_from_public(best["candidate"])
+    final_model = model_from_config(best_config)
+    final_model.fit(
+        [race_features[race_id] for race_id in race_ids],
+        epochs=best_config.epochs,
+        learning_rate=best_config.learning_rate,
+    )
+    all_history_replay = replay_races(final_model, best_config.policy, [race_features[race_id] for race_id in race_ids], include_place=True)
+    tuning_replay = replay_races(final_model, best_config.policy, [race_features[race_id] for race_id in tuning_ids], include_place=True)
+
+    created_at = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    target_dir = Path(output_dir) / f"ev_final_all_{created_at}"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    model_path = target_dir / "best_model.json"
+    report_path = target_dir / "report.json"
+    final_model.save(model_path)
+    report = {
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "training_mode": "blackbox_ev_final_all_racedays",
+        "guardrails": {
+            "candidate_selection_uses_recent_tuning_dates": True,
+            "final_model_trained_on_all_eligible_races": True,
+            "promotion": "manual_or_server_operator_only_after_review",
+            "candidate_selection": "+EV first, then probability/hit-rate, ROI, race coverage, and drawdown",
+        },
+        "sample": {
+            "eligible_races": len(race_ids),
+            "eligible_dates": len(dates),
+            "candidate_train_races": len(candidate_train_ids),
+            "candidate_train_start": race_dates.get(candidate_train_ids[0]),
+            "candidate_train_end": race_dates.get(candidate_train_ids[-1]),
+            "tuning_races": len(tuning_ids),
+            "tuning_start": tuning_dates[0],
+            "tuning_end": tuning_dates[-1],
+            "final_train_races": len(race_ids),
+            "final_train_start": race_dates.get(race_ids[0]),
+            "final_train_end": race_dates.get(race_ids[-1]),
+        },
+        "best_candidate": best["candidate"],
+        "candidate_count": len(candidates),
+        "top_candidates": sorted(candidates, key=lambda item: float(item["score"]), reverse=True)[:10],
+        "tuning_replay": tuning_replay,
+        "all_history_replay": all_history_replay,
+        "model_path": str(model_path),
+        "report_path": str(report_path),
+    }
+    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    return report
+
+
 def eligible_resulted_race_ids(conn) -> list[str]:
     return [
         str(row["race_id"])
