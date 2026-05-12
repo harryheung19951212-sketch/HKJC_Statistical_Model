@@ -2,6 +2,30 @@
 
 This file records cross-device Codex handoffs, audits, fixes, pushes, and server deployments.
 
+## 2026-05-12 - Complete Resulted Race Data Before Retraining
+
+Goal:
+
+- For every race currently marked `resulted` in production, align stored runner/result data before retraining the baseline model.
+- Retrain only after the completed-race data repair pass finishes.
+
+Production Operation:
+
+- Audited 347 resulted races in production.
+- Confirmed there were no resulted races missing runner rows and no non-void resulted races missing result rows.
+- Repaired result/runner alignment, adding 3336 runner rows that existed in official result rows but were missing from the runner table.
+- Completed runner fields for 337 resulted races from official HKJC racecard/result data, updating 4264 runner rows with zero per-race errors.
+- Rechecked result/runner mismatches after repair: reduced from 182 races to 0.
+- Attempted final place odds backfill for 335 resulted races; HKJC official odds source returned unavailable for all 335 historical requests, so no synthetic odds were inserted.
+- Retrained `models/baseline.json` after repair using 346 training races and the black-box fake-ticket replay path.
+
+Training Result:
+
+- `black_box_replay`: 30 old races replayed, 60 fake tickets.
+- WIN replay: 4/30 hit rate, -12.8 units.
+- PLACE replay: 14/30 hit rate, -6.6 units.
+- New tracked baseline model has 45 features, 37 non-zero win weights, and 37 non-zero top3 weights.
+
 ## 2026-05-12 - Restore Analytics Reports and Historical Backfill Discipline
 
 Goal:
