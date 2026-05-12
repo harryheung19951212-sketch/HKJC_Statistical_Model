@@ -137,6 +137,7 @@ def load_hkjc_race_day(
     progress: object | None = None,
 ) -> dict[str, object]:
     source = HKJCSource(PoliteHttpClient(user_agent, delay_seconds))
+    profile_cache: dict[str, str] = {}
     imported_races = 0
     imported_runners = 0
     imported_results = 0
@@ -194,7 +195,7 @@ def load_hkjc_race_day(
                 if runners:
                     if progress:
                         progress(race_no, race_count, f"loading_horse_profiles_{race_no}")
-                    runners = enrich_runners_with_horse_profiles(source, runners)
+                    runners = enrich_runners_with_horse_profiles(source, runners, conn=conn, profile_cache=profile_cache)
             except Exception:
                 races = usable_races(result_races)
                 runners = result_runners
@@ -262,23 +263,61 @@ def completed_result_cache(conn: sqlite3.Connection, race_id: str) -> dict[str, 
 def enrich_runners_with_horse_profiles(
     source: HKJCSource,
     runners: object,
+    conn: sqlite3.Connection | None = None,
+    profile_cache: dict[str, str] | None = None,
 ) -> list[dict[str, object]]:
     if not isinstance(runners, list):
         return []
+    cache = profile_cache if profile_cache is not None else {}
+    existing_last_six = cached_last_six_runs(conn, runners)
     enriched: list[dict[str, object]] = []
-    history_by_horse_id: dict[str, str] = {}
     for runner in runners:
         if not isinstance(runner, dict):
             continue
         updated = dict(runner)
         horse_id = str(runner.get("horse_id") or "").strip()
-        if horse_id:
-            if horse_id not in history_by_horse_id:
-                history_by_horse_id[horse_id] = fetch_profile_last_six_runs(source, horse_id)
-            if history_by_horse_id[horse_id]:
-                updated["last_six_runs"] = history_by_horse_id[horse_id]
+        if horse_id and not str(updated.get("last_six_runs") or "").strip():
+            cached = cache.get(horse_id) or existing_last_six.get(horse_id, "")
+            if not cached:
+                cached = fetch_profile_last_six_runs(source, horse_id)
+            if cached:
+                cache[horse_id] = cached
+                updated["last_six_runs"] = cached
         enriched.append(updated)
     return enriched
+
+
+def cached_last_six_runs(conn: sqlite3.Connection | None, runners: list[dict[str, object]]) -> dict[str, str]:
+    if conn is None:
+        return {}
+    horse_ids = sorted(
+        {
+            str(runner.get("horse_id") or "").strip()
+            for runner in runners
+            if str(runner.get("horse_id") or "").strip() and not str(runner.get("last_six_runs") or "").strip()
+        }
+    )
+    if not horse_ids:
+        return {}
+    placeholders = ", ".join("?" for _ in horse_ids)
+    rows = fetch_all(
+        conn,
+        f"""
+        SELECT horse_id, last_six_runs
+        FROM runners
+        WHERE horse_id IN ({placeholders})
+          AND COALESCE(last_six_runs, '') != ''
+        ORDER BY horse_id, race_id DESC
+        """,
+        tuple(horse_ids),
+    )
+    cached: dict[str, str] = {}
+    for row in rows:
+        horse_id = str(row["horse_id"] or "").strip()
+        last_six_runs = str(row["last_six_runs"] or "").strip()
+        if horse_id and last_six_runs and horse_id not in cached:
+            cached[horse_id] = last_six_runs
+    return cached
 
 
 def fetch_profile_last_six_runs(source: HKJCSource, horse_id: str) -> str:

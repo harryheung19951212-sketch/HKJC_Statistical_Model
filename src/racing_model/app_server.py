@@ -331,7 +331,7 @@ class AppState:
                         venue,
                         race_count,
                         self.settings.user_agent,
-                        self.settings.request_delay_seconds,
+                        self.settings.backfill_request_delay_seconds,
                         progress=update,
                     )
                 with self.jobs_lock:
@@ -393,7 +393,7 @@ class AppState:
                         venue,
                         race_count,
                         self.settings.user_agent,
-                        self.settings.request_delay_seconds,
+                        self.settings.backfill_request_delay_seconds,
                         model_path=self.model_path,
                         train_epochs=train_epochs,
                         progress=update,
@@ -441,7 +441,7 @@ class AppState:
                     completion = complete_repaired_runners(
                         conn,
                         self.settings.user_agent,
-                        self.settings.request_delay_seconds,
+                        self.settings.backfill_request_delay_seconds,
                     )
                 update("更新資料質素報告", 1, 2)
                 with connect(self.settings.db_path) as conn:

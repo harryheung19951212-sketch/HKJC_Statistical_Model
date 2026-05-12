@@ -208,7 +208,7 @@ def main() -> None:
         return
 
     if args.command == "fetch-hkjc":
-        client = PoliteHttpClient(settings.user_agent, settings.request_delay_seconds)
+        client = PoliteHttpClient(settings.user_agent, settings.backfill_request_delay_seconds)
         source = HKJCSource(client)
         if args.kind == "racecard":
             fetched = source.fetch_racecard_page(args.date, args.venue, args.race_no)
@@ -416,7 +416,7 @@ def main() -> None:
             }
             print(json.dumps(result, indent=2, ensure_ascii=False))
         elif args.command == "complete-runners":
-            completion = complete_repaired_runners(conn, settings.user_agent, settings.request_delay_seconds)
+            completion = complete_repaired_runners(conn, settings.user_agent, settings.backfill_request_delay_seconds)
             training = train_model_if_requested(conn, args.model_path, args.epochs)
             result = {
                 "completion": completion,
@@ -433,7 +433,7 @@ def main() -> None:
                 args.venue,
                 args.races,
                 settings.user_agent,
-                settings.request_delay_seconds,
+                settings.backfill_request_delay_seconds,
                 model_path=args.model_path,
                 train_epochs=args.epochs,
             )

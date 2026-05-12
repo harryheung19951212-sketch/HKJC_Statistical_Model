@@ -323,20 +323,67 @@ def test_race_day_loader_skips_completed_database_rows(tmp_path: Path, monkeypat
     assert result["imported_results"] == 0
 
 
-def test_runner_enrichment_uses_hkjc_horse_profile_history() -> None:
+def test_runner_enrichment_keeps_existing_last_six_runs_without_profile_fetch() -> None:
     class Source:
         def fetch_horse_profile_page(self, horse_id: str):
-            assert horse_id == "J488"
-            return type("Fetch", (), {"body": "profile"})()
+            raise AssertionError("horse profile should not be fetched when racecard already has last_six_runs")
 
         def parse_horse_profile(self, html: str):
-            assert html == "profile"
             return {"last_six_runs": "WV-A/12/4/1/4/8"}
 
     rows = enrich_runners_with_horse_profiles(
         Source(),  # type: ignore[arg-type]
         [{"race_id": "HK20260509-ST-02", "horse_id": "J488", "last_six_runs": "12/4/1/4/8/6"}],
     )
+
+    assert rows[0]["last_six_runs"] == "12/4/1/4/8/6"
+
+
+def test_runner_enrichment_uses_cached_database_last_six_runs(tmp_path: Path) -> None:
+    db_path = tmp_path / "racing.db"
+    init_db(db_path)
+
+    with connect(db_path) as conn:
+        insert_rows(
+            conn,
+            "runners",
+            [
+                {
+                    "race_id": "HK20260501-ST-01",
+                    "horse_id": "J488",
+                    "horse_no": 1,
+                    "horse_name": "Horse One",
+                    "last_six_runs": "WV-A/12/4/1/4/8",
+                    "horse_name_zh": "",
+                    "jockey": "Jockey",
+                    "jockey_zh": "",
+                    "trainer": "Trainer",
+                    "trainer_zh": "",
+                    "draw": 1,
+                    "weight_lbs": 118,
+                    "body_weight_lbs": 1050,
+                    "official_rating": 80,
+                    "age": 4,
+                    "sex": "G",
+                    "running_style": "mid",
+                    "gear": "",
+                }
+            ],
+        )
+        conn.commit()
+
+        class Source:
+            def fetch_horse_profile_page(self, horse_id: str):
+                raise AssertionError("horse profile should not be fetched when database already has last_six_runs")
+
+            def parse_horse_profile(self, html: str):
+                return {"last_six_runs": ""}
+
+        rows = enrich_runners_with_horse_profiles(
+            Source(),  # type: ignore[arg-type]
+            [{"race_id": "HK20260509-ST-02", "horse_id": "J488", "last_six_runs": ""}],
+            conn=conn,
+        )
 
     assert rows[0]["last_six_runs"] == "WV-A/12/4/1/4/8"
 

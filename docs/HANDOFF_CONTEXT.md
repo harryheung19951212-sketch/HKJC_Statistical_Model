@@ -543,3 +543,18 @@ foreach ($t in $tests) {
 - 2026-05-09 命中：第7場 `金鑽精靈` WIN + PLACE_PAIRED、第9場 `飛來閃耀` PLACE。
 - 2026-05-09 未重現用戶列出的高 ROI 組合：`鵲橋飛昇`、`一鋪掂晒`、`君子`、`團結勇士`、第10場 `活力拍檔/榮駿大道` 及相關位置Q。
 - 注意：目前主要用歷史 final/closing win odds 做 EV replay，能驗證市場錯估方向，但仍未等同真實 bet-time odds / slippage / pool depth。
+
+## 2026-05-12 回填速度優化
+
+- 用戶指出歷史回填速度過慢。定位後確認主要瓶頸唔係 server 資源，而係抓數策略：
+  - `PoliteHttpClient` 全域 request delay 預設 2 秒，歷史回填、賽日載入、補完 runners 都沿用同一節流。
+  - `load_hkjc_race_day()` 會對每場每匹馬補抓 horse profile，但原本即使 racecard 已有 `last_six_runs`，仍然照樣逐匹抓；而且 cache 只限單場內，不會先重用 database 已有值。
+- 已修正：
+  - `Settings` 新增 `RACING_BACKFILL_REQUEST_DELAY_SECONDS`，預設 `0.5`，只供歷史回填/賽日載入/complete-runners 使用；live refresh 仍保留原本 `RACING_REQUEST_DELAY_SECONDS`。
+  - `start_backfill_job()`、`start_race_day_job()`、`start_runner_completion_job()` 及 CLI `fetch-hkjc` / `backfill-hkjc` / `complete-runners` 已切到 backfill 專用 delay。
+  - `enrich_runners_with_horse_profiles()` 會先保留 racecard 已有 `last_six_runs`，只對真正缺失的馬補抓 profile。
+  - 同時新增 database reuse：如果同一 `horse_id` 喺舊 runners 已有 `last_six_runs`，會直接回填，不再打 HKJC horse profile 頁。
+  - `load_hkjc_race_day()` 新增跨整個賽日的 `profile_cache`，同一匹馬在同一次回填流程只抓一次。
+- 測試：
+  - `tests/test_race_status.py` 新增 coverage，驗證已有 `last_six_runs` 時不抓 profile，及 database 已有值時直接重用。
+  - 最新本機驗證：`pytest tests -q` 181 passed。

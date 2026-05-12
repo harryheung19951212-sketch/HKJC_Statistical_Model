@@ -19,6 +19,10 @@ STATUS_WEIGHTS = {
 }
 
 MATURITY_OVERRIDES = {
+    14: (
+        0.56,
+        "已加入回填吞吐優化：歷史回填/賽日載入/補完 runners 可用獨立 backfill request delay，並避免對已有 `last_six_runs` 的馬重覆抓 horse profile；缺失時會先重用資料庫歷史值，再退回抓 profile 頁。仍未做到跨日並行抓取及更細緻來源節流。",
+    ),
     24: (
         0.72,
         "已由純候選排序進展到官方派彩 gate、分池 replay gate、馬場/路程/班次情境切片、walk-forward pool-choice optimizer、ROI 封鎖/降注及 UI 可解釋狀態；仍未完成更長期分切片閾值訓練。",

@@ -22,6 +22,7 @@ class Settings:
     codex_timeout_seconds: int
     user_agent: str
     request_delay_seconds: float
+    backfill_request_delay_seconds: float
     odds_provider: str
     hkjc_graphql_url: str
     hkjc_mqtt_host: str
@@ -47,6 +48,7 @@ def get_settings() -> Settings:
         codex_timeout_seconds=int(os.getenv("RACING_CODEX_TIMEOUT_SECONDS", "180")),
         user_agent=os.getenv("RACING_USER_AGENT", "RacingModelResearchBot/0.1"),
         request_delay_seconds=float(os.getenv("RACING_REQUEST_DELAY_SECONDS", "2.0")),
+        backfill_request_delay_seconds=float(os.getenv("RACING_BACKFILL_REQUEST_DELAY_SECONDS", "0.5")),
         odds_provider=os.getenv("RACING_ODDS_PROVIDER", "auto"),
         hkjc_graphql_url=os.getenv("HKJC_GRAPHQL_URL", "https://info.cld.hkjc.com/graphql/base/"),
         hkjc_mqtt_host=os.getenv("HKJC_MQTT_HOST", "ueb.hkjc.com"),
