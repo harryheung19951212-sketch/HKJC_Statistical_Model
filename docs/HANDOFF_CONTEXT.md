@@ -513,3 +513,16 @@ foreach ($t in $tests) {
   - 用同一 `horse_id` / `jockey` / `trainer` 的既有中文資料回填缺失中文欄位。
 - `/api/repair-data` 及背景 `complete-runners` job 會一併執行 alignment，前端會顯示移除錯配馬及回填中文數量。
 - 新增 `tests/test_data_alignment.py` 覆蓋 prune non-starter、delete stale odds、回填中文資料；全測試 `176 passed`。
+
+## 2026-05-12 EV 黑箱深度訓練 pipeline
+
+- 歷史資料確認：468 場已完賽賽事全部有獨贏賠率，可用「模型勝率 x 獨贏賠率 - 1」直接訓練/驗證 EV；位置賠率目前只有 2026-05-09 11 場完整，所以位置 ROI 暫時只適合 holdout replay，不適合長期訓練。
+- 新增 `src/racing_model/ev_blackbox.py` 及 CLI `python -m racing_model.cli blackbox-ev-train`。
+- Pipeline 用時間序切分：指定 holdout date（預設 2026-05-09）不參與候選選擇；用 holdout 前資料再切 train/validation。
+- 黑箱搜尋內容：
+  - 特徵組合：all / no_market / market_only / core / core_no_late。
+  - RankingModel epochs、learning rate、temperature。
+  - 不投注 gate：最低 WIN EV、最低勝率、賠率上下限、每場最多下注數。
+- 候選只按 validation 的 ROI、命中率、最大回撤、下注量 objective 選；再輸出 pre-holdout replay、holdout WIN replay、holdout PLACE replay。
+- 報告與模型 artifact 只寫入 `reports/ev_blackbox_*`，不自動覆蓋 `models/baseline.json`，避免 in-sample 高 ROI 直接污染 live 模型。
+- 方程式覆蓋率已更新第 35「多目標優化」及第 36「不下注決策」maturity，反映 EV 黑箱與 no-bet 門檻搜尋。

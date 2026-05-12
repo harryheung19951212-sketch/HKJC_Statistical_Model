@@ -32,8 +32,12 @@ MATURITY_OVERRIDES = {
         "已由離線可靠度分桶推進到即場同分熔斷：當能力/融合模型對全場輸出近乎完全平均概率時，會改用最新獨贏/位置市場公平機率計算概率及EV，並把 EV 標記為市場水位/抽水參考而非模型 edge，下注 gate 只會觀望；仍未完成組合彩池結構層校準。",
     ),
     35: (
-        0.64,
-        "已由純 scorecard gate 推前到 walk-forward 候選模型排序、model registry 升級 gate 及彩池 optimizer 注碼調整，用 OOS Log Loss、Brier、Top1、Top3、ROI、最大回撤加權選候選並按 replay ROI/回撤/retention 調整注碼；仍未把權重自動反饋到特徵搜尋。",
+        0.68,
+        "已由純 scorecard gate 推前到 walk-forward 候選模型排序、model registry 升級 gate、彩池 optimizer 注碼調整，以及 EV 黑箱訓練 pipeline；可用歷史獨贏賠率按 validation ROI/回撤/命中/下注量搜尋模型與不投注門檻，並把指定賽日作 holdout replay；仍未接入正式自動 promotion。",
+    ),
+    36: (
+        0.58,
+        "已由靜態 EV gate 推進到黑箱 no-bet 門檻搜尋：候選會按最低 EV、最低勝率、賠率上下限及每場最多下注數決定是否不下注，用 validation ROI/回撤防止場場買；仍未按彩池和賽事風險做完整分層 no-bet gate。",
     ),
 }
 
@@ -641,12 +645,13 @@ def coverage_items() -> list[dict[str, Any]]:
             [
                 "src/racing_model/backtest.py",
                 "src/racing_model/walk_forward.py",
+                "src/racing_model/ev_blackbox.py",
                 "src/racing_model/betting.py",
                 "src/racing_model/promotion_scorecard.py",
             ],
-            "已有多目標 Promotion Scorecard v1，同時檢查 Top1、Top3、ROI、execution ROI、最大回撤、Sharpe-like、分彩池 ROI 及分片 OOS；walk-forward 候選模型排序與 model registry 升級 gate 已加入多目標 OOS 分，唔再只用 Log Loss/Brier 排第一；彩池 optimizer 已按 replay ROI、回撤及 retention 小幅加注/降注/封池；賽前補飛排序會先重視勝率/三甲率/命中概率，再看 EV、edge 及賠率 gap。",
-            "仍未把多目標權重自動反饋到特徵搜尋或模型訓練 loss。",
-            "下一步把多目標分數接入候選模型搜尋，並加入分池 volatility / CLV 權重。",
+            "已有多目標 Promotion Scorecard v1，同時檢查 Top1、Top3、ROI、execution ROI、最大回撤、Sharpe-like、分彩池 ROI 及分片 OOS；walk-forward 候選模型排序與 model registry 升級 gate 已加入多目標 OOS 分，唔再只用 Log Loss/Brier 排第一；新增 EV 黑箱訓練，用歷史獨贏賠率直接搜尋模型、EV 門檻、賠率上下限及每場下注數，以 validation ROI/回撤/命中/下注量選候選，再用指定賽日 holdout replay。",
+            "仍未把 EV 黑箱候選接入正式 model registry promotion，也未有足夠歷史位置賠率做位置 ROI 長期訓練。",
+            "下一步把 EV 黑箱報告接入 UI/model registry，並擴大位置賠率與組合彩池 final dividend 樣本。",
             ["Top1", "Top3", "ROI", "最大回撤", "Sharpe-like", "每種彩池 ROI"],
             "高：只追命中率會傷害 ROI，只追 ROI 可能爆回撤。",
             "所有主目標要過 gate，分池/分片不可明顯惡化。",
