@@ -494,3 +494,12 @@ foreach ($t in $tests) {
 - `src/racing_model/promotion_scorecard.py` 及 UI 顯示 `multi_objective_score` / 多目標 gate，方便判斷最佳版本是否只是命中率好、但 ROI 或回撤差。
 - `src/racing_model/coverage.py` 已更新第 35 項「多目標優化」maturity，覆蓋分應由 52.8% 推高到約 53.1% 以上，狀態進度分亦會跟住郁。
 - 下一步建議：把多目標分數接入特徵實驗搜尋，並加入分池 volatility / CLV 權重。
+
+## 2026-05-12 修復資料對齊卡住
+
+- Server 檢查時見到 app container CPU 約一個 core 滿載，Postgres 有多條 `idle in transaction`，其中「修復 / 補完」相關 request 會長時間開住 transaction。
+- `/api/repair-data` 原本做完 orphan result runner repair 後，仍會同步 `train_model_if_requested(..., 120)` 同 `run_walk_forward_versions(...)`；資料量增至數百場後，UI 會長時間停在「修復中...」，而且 DB transaction 會一路開住。
+- 已改為：`/api/repair-data` 只做資料對齊修復及 `data_quality_report`，不再 inline 重訓 / walk-forward；重訓應由獨立訓練或 model registry pipeline 做。
+- `/api/complete-runners` 已改成背景 job，前端用 `/api/job` 輪詢進度，避免瀏覽器 request 長時間吊住。
+- 前端訊息已由「並重新訓練模型」改為「資料質素已更新」，避免誤導用戶。
+- 測試新增 `test_data_repair_does_not_inline_retrain_or_block_completion`，並全測試 `160 passed`。

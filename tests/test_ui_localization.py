@@ -63,6 +63,22 @@ def test_coverage_items_expand_on_click() -> None:
     assert "<b>驗證門檻</b>" in js
 
 
+def test_data_repair_does_not_inline_retrain_or_block_completion() -> None:
+    server = (ROOT / "src/racing_model/app_server.py").read_text(encoding="utf-8")
+    js = (ROOT / "src/racing_model/web/app.js").read_text(encoding="utf-8")
+
+    repair_block = server[
+        server.index('elif path == "/api/repair-data"') : server.index('elif path == "/api/complete-runners"')
+    ]
+    assert "train_model_if_requested" not in repair_block
+    assert "run_walk_forward_versions" not in repair_block
+    assert "repair_data_no_inline_training" in repair_block
+    assert "start_runner_completion_job" in server
+    assert "watchRunnerCompletionJob(job.job_id)" in js
+    assert "並重新訓練模型" not in js
+    assert "資料質素已更新" in js
+
+
 def test_auto_refresh_preserves_existing_race_panels() -> None:
     js = (ROOT / "src/racing_model/web/app.js").read_text(encoding="utf-8")
 

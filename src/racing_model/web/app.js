@@ -2488,7 +2488,7 @@ async function repairData() {
   $("repair-message").textContent = "修復中...";
   const result = await api("/api/repair-data", { method: "POST" });
   const repair = result.repair || {};
-  $("repair-message").textContent = `已補回 ${repair.inserted_runners || 0} 匹缺失馬匹，並重新訓練模型。`;
+  $("repair-message").textContent = `已補回 ${repair.inserted_runners || 0} 匹缺失馬匹，資料質素已更新。`;
   renderDataQuality(result.quality || {});
   if (result.model_versions) renderModelVersions(result.model_versions);
   await refreshSelectedRace({ full: true });
@@ -2496,12 +2496,36 @@ async function repairData() {
 
 async function completeRunners() {
   $("completion-message").textContent = "補完中...";
-  const result = await api("/api/complete-runners", { method: "POST" });
-  const completion = result.completion || {};
-  $("completion-message").textContent = `已檢查 ${completion.races_checked || 0} 場，更新 ${completion.updated_runners || 0} 匹馬。`;
-  renderDataQuality(result.quality || {});
-  if (result.model_versions) renderModelVersions(result.model_versions);
-  await refreshSelectedRace({ full: true });
+  const job = await api("/api/complete-runners", { method: "POST" });
+  watchRunnerCompletionJob(job.job_id);
+}
+
+function watchRunnerCompletionJob(jobId) {
+  if (!jobId) return;
+  const timer = setInterval(async () => {
+    try {
+      const job = await api(`/api/job?id=${encodeURIComponent(jobId)}`);
+      const current = Number(job.current || 0);
+      const total = Number(job.total || 1);
+      $("completion-message").textContent = `補完中... ${current}/${total} ${job.message || ""}`;
+      if (job.status === "done") {
+        clearInterval(timer);
+        const result = job.result || {};
+        const completion = result.completion || {};
+        $("completion-message").textContent = `已檢查 ${completion.races_checked || 0} 場，更新 ${completion.updated_runners || 0} 匹馬。`;
+        renderDataQuality(result.quality || {});
+        if (result.model_versions) renderModelVersions(result.model_versions);
+        await refreshSelectedRace({ full: true });
+      }
+      if (job.status === "error") {
+        clearInterval(timer);
+        $("completion-message").textContent = `補完失敗：${job.error || ""}`;
+      }
+    } catch (error) {
+      clearInterval(timer);
+      $("completion-message").textContent = `補完狀態讀取失敗：${error.message}`;
+    }
+  }, 1500);
 }
 
 function renderCalibration(rows) {

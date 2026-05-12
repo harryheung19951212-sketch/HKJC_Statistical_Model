@@ -414,6 +414,61 @@ class AppState:
         threading.Thread(target=worker, daemon=True).start()
         return dict(job)
 
+    def start_runner_completion_job(self) -> dict[str, object]:
+        job_id = uuid.uuid4().hex
+        job = {
+            "job_id": job_id,
+            "kind": "runner_completion",
+            "status": "running",
+            "message": "準備補完馬匹資料",
+            "current": 0,
+            "total": 1,
+            "result": None,
+            "error": None,
+        }
+        with self.jobs_lock:
+            self.jobs[job_id] = job
+
+        def update(message: str, current: int = 0, total: int = 1) -> None:
+            with self.jobs_lock:
+                self.jobs[job_id].update({"current": current, "total": total, "message": message})
+
+        def worker() -> None:
+            try:
+                update("補完馬匹資料中", 0, 2)
+                with connect(self.settings.db_path) as conn:
+                    completion = complete_repaired_runners(
+                        conn,
+                        self.settings.user_agent,
+                        self.settings.request_delay_seconds,
+                    )
+                update("更新資料質素報告", 1, 2)
+                with connect(self.settings.db_path) as conn:
+                    quality = data_quality_report(conn)
+                result = {
+                    "status": "done",
+                    "completion": completion,
+                    "quality": quality,
+                    "training": {"trained": False, "reason": "runner_completion_no_inline_training"},
+                    "model_versions": None,
+                }
+                with self.jobs_lock:
+                    self.jobs[job_id].update(
+                        {
+                            "status": "done",
+                            "message": "補完完成",
+                            "current": 2,
+                            "total": 2,
+                            "result": result,
+                        }
+                    )
+            except Exception as exc:
+                with self.jobs_lock:
+                    self.jobs[job_id].update({"status": "error", "message": "補完失敗", "error": str(exc)})
+
+        threading.Thread(target=worker, daemon=True).start()
+        return dict(job)
+
     def get_job(self, job_id: str) -> dict[str, object] | None:
         with self.jobs_lock:
             job = self.jobs.get(job_id)
@@ -729,36 +784,18 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(self.app_state.start_backfill_job(start_date, end_date, venue, race_count, train_epochs))
             elif path == "/api/repair-data":
                 repair = repair_orphan_result_runners(conn)
-                training = train_model_if_requested(conn, self.app_state.model_path, 120)
                 quality = data_quality_report(conn)
-                versions = run_walk_forward_versions(conn)
                 self.send_json(
                     {
                         "status": "done",
                         "repair": repair,
-                        "training": training,
+                        "training": {"trained": False, "reason": "repair_data_no_inline_training"},
                         "quality": quality,
-                        "model_versions": versions,
+                        "model_versions": None,
                     }
                 )
             elif path == "/api/complete-runners":
-                completion = complete_repaired_runners(
-                    conn,
-                    self.app_state.settings.user_agent,
-                    self.app_state.settings.request_delay_seconds,
-                )
-                training = train_model_if_requested(conn, self.app_state.model_path, 120)
-                quality = data_quality_report(conn)
-                versions = run_walk_forward_versions(conn)
-                self.send_json(
-                    {
-                        "status": "done",
-                        "completion": completion,
-                        "training": training,
-                        "quality": quality,
-                        "model_versions": versions,
-                    }
-                )
+                self.send_json(self.app_state.start_runner_completion_job())
             elif path == "/api/gpt-iteration":
                 report = evaluate_model_evolution(conn, self.app_state.model())
                 report["model_versions"] = run_walk_forward_versions(conn)
