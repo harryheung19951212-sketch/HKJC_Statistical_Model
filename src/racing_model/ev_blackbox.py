@@ -150,7 +150,7 @@ def run_ev_blackbox_training(
         "guardrails": {
             "holdout_date": holdout_date,
             "holdout_used_for_selection": False,
-            "candidate_selection": "validation_roi_drawdown_hitrate_bet_count",
+            "candidate_selection": "+EV_first_probability_ROI_race_coverage_drawdown",
             "promotion": "manual_only_after_oos_review",
         },
         "sample": {
@@ -297,7 +297,7 @@ def run_ev_daily_walk_forward(
         "guardrails": {
             "test_day_used_for_selection": False,
             "per_day_micro_tune": True,
-            "candidate_selection": "+EV/ROI/hit_rate/probability with drawdown penalty",
+            "candidate_selection": "+EV first, then probability/hit-rate, ROI, race coverage, and drawdown",
         },
         "sample": {
             "eligible_races": len(race_ids),
@@ -357,16 +357,16 @@ def random_candidate_config(
 ) -> CandidateConfig:
     mode = rng.choice(["all", "no_market", "market_only", "core", "core_no_late"])
     features = feature_names_for_mode(mode)
-    min_ev = rng.uniform(0.03, 0.95)
+    min_ev = rng.uniform(0.01, 0.55)
     policy = EVPolicy(
         min_win_ev=min_ev,
-        min_win_probability=rng.uniform(0.07, 0.26),
-        min_win_odds=rng.uniform(1.4, 4.2),
-        max_win_odds=rng.choice([8.0, 12.0, 18.0, 28.0]),
-        max_win_bets_per_race=rng.choice([1, 2, 2, 3, 3]),
-        min_place_ev=max(0.01, min_ev * rng.uniform(0.35, 0.85)),
-        min_place_probability=rng.uniform(0.18, 0.42),
-        max_place_bets_per_race=rng.choice([1, 2, 2, 3]),
+        min_win_probability=rng.uniform(0.09, 0.32),
+        min_win_odds=rng.uniform(1.15, 3.2),
+        max_win_odds=rng.choice([6.0, 8.0, 10.0, 12.0, 18.0]),
+        max_win_bets_per_race=rng.choice([1, 2, 3, 3, 4, 5]),
+        min_place_ev=max(0.005, min_ev * rng.uniform(0.25, 0.75)),
+        min_place_probability=rng.uniform(0.24, 0.58),
+        max_place_bets_per_race=rng.choice([1, 2, 3, 3, 4, 5]),
         stake=stake,
     )
     return CandidateConfig(
@@ -612,28 +612,35 @@ def prediction_public(row: dict[str, Any], result_by_horse: dict[str, int]) -> d
 def blackbox_objective(replay: dict[str, Any]) -> float:
     summary = replay["summary"]
     bets = int(summary["ticket_count"])
-    if bets < 12:
-        return -10.0 + bets * 0.05
+    race_count = max(float(summary["race_count"]), 1.0)
+    minimum_bets = max(3, min(12, math.ceil(race_count * 0.45)))
+    if bets < minimum_bets:
+        return -10.0 + bets * 0.08
     roi = float(summary["roi"])
     hit_rate = float(summary["hit_rate"])
     mean_ev = float(summary.get("mean_expected_value") or 0.0)
     mean_probability = float(summary.get("mean_probability") or 0.0)
     mean_odds = float(summary.get("mean_odds") or 0.0)
-    retention = min(1.0, bets / 65.0)
-    coverage = float(summary["races_with_bets"]) / max(float(summary["race_count"]), 1.0)
+    coverage = float(summary["races_with_bets"]) / race_count
+    tickets_per_race = bets / race_count
+    retention = min(1.0, max(0.35, tickets_per_race / 1.15))
     drawdown = float(summary["max_drawdown"])
     staked = max(float(summary["staked"]), 1.0)
     drawdown_penalty = drawdown / staked
-    high_odds_penalty = max(0.0, mean_odds - 12.0) * 0.015
+    high_odds_penalty = max(0.0, mean_odds - 10.0) * 0.025
+    sparse_race_penalty = max(0.0, 0.55 - coverage) * 0.45
+    negative_roi_penalty = abs(min(roi, 0.0)) * 0.35
     return (
         roi * retention
-        + hit_rate * 0.35
-        + mean_probability * 0.25
-        + min(mean_ev, 2.0) * 0.08
-        + coverage * 0.04
-        + math.log1p(bets) * 0.02
+        + hit_rate * 0.42
+        + mean_probability * 0.34
+        + min(mean_ev, 2.0) * 0.18
+        + coverage * 0.22
+        + min(tickets_per_race, 2.5) * 0.035
         - drawdown_penalty * 0.18
         - high_odds_penalty
+        - sparse_race_penalty
+        - negative_roi_penalty
     )
 
 

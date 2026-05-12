@@ -526,6 +526,8 @@ foreach ($t in $tests) {
   - 不投注 gate：最低 WIN EV、最低勝率、賠率上下限、每場最多下注數。
 - CLI 支援 `--max-train-races` 限制近期訓練窗口，及 `--progress-every` 定期輸出當前最佳 ROI / tickets，避免長訓練時看似卡住。
 - 第一輪 server training validation ROI 為正，但 2026-05-09 holdout WIN ROI 為負。用戶指示「場場買都可以，中就可以；捉市場錯估馬為主（+EV），之後勝率；獨贏可以搭配位置買」，所以 objective 不應獎勵少下注；已改為鼓勵 ROI、命中率、平均概率、平均 EV、賽事覆蓋率，賠率只作上下限和高賠風險 penalty。
+- 最新修正：EV 黑箱候選搜尋已改為 `+EV first, then probability/hit-rate, ROI, race coverage, and drawdown`。WIN/PLACE 每場最多下注候選由 1-3 擴到最多 5，最低 odds 搜尋下限降至 1.15，EV 門檻上限收窄到 0.55，避免只等極高 EV/高賠冷馬；objective 對賽事覆蓋率、平均概率、平均 EV 加權提高，並懲罰覆蓋過低、高均賠及負 ROI。
+- 新增測試 `test_blackbox_objective_prefers_ev_probability_and_race_coverage()`，確保 broad +EV / 高概率 / 多賽事覆蓋策略會贏過少數高賠高 ROI 票。最新本機驗證：`python -m compileall -q src dashboard tests`、`pytest tests -q`（179 passed）、`node --check src\racing_model\web\app.js`。
 - Holdout place replay 會對通過 WIN gate 的馬自動加入 `PLACE_PAIRED` 票，再補充其他 +EV 位置票，用來量度「獨贏 + 位置」組合能否拉高 ROI。
 - 候選只按 validation 的 ROI、命中率、最大回撤、下注量 objective 選；再輸出 pre-holdout replay、holdout WIN replay、holdout PLACE replay。
 - 報告與模型 artifact 只寫入 `reports/ev_blackbox_*`，不自動覆蓋 `models/baseline.json`，避免 in-sample 高 ROI 直接污染 live 模型。

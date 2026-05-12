@@ -1,6 +1,11 @@
 from pathlib import Path
 
-from racing_model.ev_blackbox import eligible_resulted_race_ids, run_ev_blackbox_training, run_ev_daily_walk_forward
+from racing_model.ev_blackbox import (
+    blackbox_objective,
+    eligible_resulted_race_ids,
+    run_ev_blackbox_training,
+    run_ev_daily_walk_forward,
+)
 from racing_model.storage import connect, init_db, insert_rows
 
 
@@ -59,6 +64,39 @@ def test_ev_daily_walk_forward_micro_tunes_before_test_day(tmp_path: Path) -> No
     assert day["test_races"] == 1
     assert "roi" in day["test"]["summary"]
     assert Path(report["report_path"]).exists()
+
+
+def test_blackbox_objective_prefers_ev_probability_and_race_coverage() -> None:
+    narrow_high_odds = {
+        "summary": {
+            "race_count": 20,
+            "races_with_bets": 3,
+            "ticket_count": 12,
+            "hit_rate": 0.25,
+            "roi": 1.2,
+            "mean_expected_value": 1.1,
+            "mean_probability": 0.18,
+            "mean_odds": 18.0,
+            "max_drawdown": 60.0,
+            "staked": 120.0,
+        }
+    }
+    broad_ev_probability = {
+        "summary": {
+            "race_count": 20,
+            "races_with_bets": 15,
+            "ticket_count": 28,
+            "hit_rate": 0.46,
+            "roi": 0.95,
+            "mean_expected_value": 0.8,
+            "mean_probability": 0.36,
+            "mean_odds": 6.0,
+            "max_drawdown": 40.0,
+            "staked": 280.0,
+        }
+    }
+
+    assert blackbox_objective(broad_ev_probability) > blackbox_objective(narrow_high_odds)
 
 
 def seed_ev_training_rows(conn) -> None:
