@@ -15,6 +15,7 @@ from urllib.parse import parse_qs, urlparse
 from .adaptive import adaptive_prediction_policy, adaptive_predict_race
 from .backtest import run_backtest
 from .backfill import (
+    align_resulted_race_data,
     complete_repaired_runners,
     data_quality_report,
     load_hkjc_date_range,
@@ -444,10 +445,12 @@ class AppState:
                     )
                 update("更新資料質素報告", 1, 2)
                 with connect(self.settings.db_path) as conn:
+                    alignment = align_resulted_race_data(conn)
                     quality = data_quality_report(conn)
                 result = {
                     "status": "done",
                     "completion": completion,
+                    "alignment": alignment,
                     "quality": quality,
                     "training": {"trained": False, "reason": "runner_completion_no_inline_training"},
                     "model_versions": None,
@@ -784,11 +787,13 @@ class RacingRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(self.app_state.start_backfill_job(start_date, end_date, venue, race_count, train_epochs))
             elif path == "/api/repair-data":
                 repair = repair_orphan_result_runners(conn)
+                alignment = align_resulted_race_data(conn)
                 quality = data_quality_report(conn)
                 self.send_json(
                     {
                         "status": "done",
                         "repair": repair,
+                        "alignment": alignment,
                         "training": {"trained": False, "reason": "repair_data_no_inline_training"},
                         "quality": quality,
                         "model_versions": None,

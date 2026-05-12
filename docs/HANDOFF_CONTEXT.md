@@ -503,3 +503,13 @@ foreach ($t in $tests) {
 - `/api/complete-runners` 已改成背景 job，前端用 `/api/job` 輪詢進度，避免瀏覽器 request 長時間吊住。
 - 前端訊息已由「並重新訓練模型」改為「資料質素已更新」，避免誤導用戶。
 - 測試新增 `test_data_repair_does_not_inline_retrain_or_block_completion`，並全測試 `160 passed`。
+
+## 2026-05-12 資料質素 61.1% 對齊修復
+
+- Server 資料質素低分主因：362 場已完賽賽事 `runners` 數量大過 `results`，部分跑馬地場次出現 23/24 匹 runner 對 12 份賽果；另有約 1200 筆馬名 / 騎師 / 練馬師中文缺失。
+- 新增 `align_resulted_race_data()`：
+  - 已完賽賽事只保留有賽果對應的 actual starters。
+  - 同步刪走被移除 runner 的 odds ticks，避免修完 runner 後變成 orphan odds。
+  - 用同一 `horse_id` / `jockey` / `trainer` 的既有中文資料回填缺失中文欄位。
+- `/api/repair-data` 及背景 `complete-runners` job 會一併執行 alignment，前端會顯示移除錯配馬及回填中文數量。
+- 新增 `tests/test_data_alignment.py` 覆蓋 prune non-starter、delete stale odds、回填中文資料；全測試 `176 passed`。

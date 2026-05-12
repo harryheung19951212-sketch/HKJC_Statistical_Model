@@ -2488,7 +2488,8 @@ async function repairData() {
   $("repair-message").textContent = "修復中...";
   const result = await api("/api/repair-data", { method: "POST" });
   const repair = result.repair || {};
-  $("repair-message").textContent = `已補回 ${repair.inserted_runners || 0} 匹缺失馬匹，資料質素已更新。`;
+  const alignment = result.alignment || {};
+  $("repair-message").textContent = `已補回 ${repair.inserted_runners || 0} 匹缺失馬匹，移除 ${alignment.pruned_unmatched_resulted_runners || 0} 匹錯配馬，回填 ${alignment.filled_horse_chinese_names || 0} 個馬名中文。`;
   renderDataQuality(result.quality || {});
   if (result.model_versions) renderModelVersions(result.model_versions);
   await refreshSelectedRace({ full: true });
@@ -2512,7 +2513,8 @@ function watchRunnerCompletionJob(jobId) {
         clearInterval(timer);
         const result = job.result || {};
         const completion = result.completion || {};
-        $("completion-message").textContent = `已檢查 ${completion.races_checked || 0} 場，更新 ${completion.updated_runners || 0} 匹馬。`;
+        const alignment = result.alignment || {};
+        $("completion-message").textContent = `已檢查 ${completion.races_checked || 0} 場，更新 ${completion.updated_runners || 0} 匹馬，移除 ${alignment.pruned_unmatched_resulted_runners || 0} 匹錯配馬。`;
         renderDataQuality(result.quality || {});
         if (result.model_versions) renderModelVersions(result.model_versions);
         await refreshSelectedRace({ full: true });

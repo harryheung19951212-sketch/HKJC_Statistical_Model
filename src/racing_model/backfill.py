@@ -81,6 +81,7 @@ def load_hkjc_date_range(
     refresh_race_statuses(conn)
     repair = repair_orphan_result_runners(conn)
     completion = complete_repaired_runners(conn, user_agent, delay_seconds)
+    alignment = align_resulted_race_data(conn)
     quality = data_quality_report(conn)
     training = train_model_if_requested(conn, model_path, train_epochs)
     versions = run_walk_forward_versions(conn, epochs=60) if training["training_races"] else None
@@ -94,6 +95,7 @@ def load_hkjc_date_range(
         "day_results": day_results,
         "repair": repair,
         "completion": completion,
+        "alignment": alignment,
         "training": training,
         "quality": quality,
         "model_versions": versions,
@@ -254,6 +256,116 @@ def repair_orphan_result_runners(conn: sqlite3.Connection) -> dict[str, Any]:
         "inserted_runners": inserted,
         "repaired": repaired,
     }
+
+
+def align_resulted_race_data(conn: sqlite3.Connection, sample_limit: int = 20) -> dict[str, Any]:
+    """Keep resulted races aligned to actual starters and reuse known Chinese names."""
+    stale_rows = fetch_all(
+        conn,
+        """
+        SELECT ru.race_id, ru.horse_id, ru.horse_no, ru.horse_name
+        FROM runners ru
+        WHERE EXISTS (SELECT 1 FROM results x WHERE x.race_id = ru.race_id)
+          AND NOT EXISTS (
+            SELECT 1
+            FROM results x
+            WHERE x.race_id = ru.race_id AND x.horse_id = ru.horse_id
+          )
+        ORDER BY ru.race_id, COALESCE(ru.horse_no, 999), ru.horse_id
+        """,
+    )
+    pruned = []
+    deleted_odds = 0
+    deleted_runners = 0
+    for row in stale_rows:
+        params = (row["race_id"], row["horse_id"])
+        odds_cursor = conn.execute("DELETE FROM odds_ticks WHERE race_id = ? AND horse_id = ?", params)
+        runner_cursor = conn.execute("DELETE FROM runners WHERE race_id = ? AND horse_id = ?", params)
+        deleted_odds += int(getattr(odds_cursor, "rowcount", 0) or 0)
+        deleted_runners += int(getattr(runner_cursor, "rowcount", 0) or 0)
+        if len(pruned) < sample_limit:
+            pruned.append(dict(row))
+
+    horse_name_updates = fill_missing_chinese_by_key(
+        conn,
+        key_column="horse_id",
+        zh_column="horse_name_zh",
+    )
+    jockey_updates = fill_missing_chinese_by_key(
+        conn,
+        key_column="jockey",
+        zh_column="jockey_zh",
+    )
+    trainer_updates = fill_missing_chinese_by_key(
+        conn,
+        key_column="trainer",
+        zh_column="trainer_zh",
+    )
+    inferred_horse_zh = infer_chinese_horse_names(conn)
+    conn.commit()
+    refresh_race_statuses(conn)
+    return {
+        "pruned_unmatched_resulted_runners": deleted_runners,
+        "deleted_unmatched_odds_ticks": deleted_odds,
+        "filled_horse_chinese_names": horse_name_updates + inferred_horse_zh,
+        "filled_jockey_chinese_names": jockey_updates,
+        "filled_trainer_chinese_names": trainer_updates,
+        "sample_pruned": pruned,
+    }
+
+
+def fill_missing_chinese_by_key(conn: sqlite3.Connection, key_column: str, zh_column: str) -> int:
+    rows = fetch_all(
+        conn,
+        f"""
+        SELECT missing.race_id, missing.horse_id, known.{zh_column} AS zh_value
+        FROM runners missing
+        JOIN (
+          SELECT {key_column}, max({zh_column}) AS {zh_column}
+          FROM runners
+          WHERE COALESCE({key_column}, '') != ''
+            AND COALESCE({zh_column}, '') != ''
+          GROUP BY {key_column}
+        ) known ON known.{key_column} = missing.{key_column}
+        WHERE COALESCE(missing.{zh_column}, '') = ''
+          AND COALESCE(known.{zh_column}, '') != ''
+        """,
+    )
+    updated = 0
+    for row in rows:
+        cursor = conn.execute(
+            f"UPDATE runners SET {zh_column} = ? WHERE race_id = ? AND horse_id = ? AND COALESCE({zh_column}, '') = ''",
+            (row["zh_value"], row["race_id"], row["horse_id"]),
+        )
+        updated += int(getattr(cursor, "rowcount", 0) or 0)
+    return updated
+
+
+def infer_chinese_horse_names(conn: sqlite3.Connection) -> int:
+    rows = fetch_all(
+        conn,
+        """
+        SELECT race_id, horse_id, horse_name
+        FROM runners
+        WHERE COALESCE(horse_name_zh, '') = ''
+          AND COALESCE(horse_name, '') != ''
+        """,
+    )
+    updated = 0
+    for row in rows:
+        name = str(row["horse_name"] or "")
+        if not contains_cjk(name):
+            continue
+        cursor = conn.execute(
+            "UPDATE runners SET horse_name_zh = ? WHERE race_id = ? AND horse_id = ? AND COALESCE(horse_name_zh, '') = ''",
+            (name, row["race_id"], row["horse_id"]),
+        )
+        updated += int(getattr(cursor, "rowcount", 0) or 0)
+    return updated
+
+
+def contains_cjk(value: str) -> bool:
+    return any("\u3400" <= char <= "\u9fff" for char in value)
 
 
 def complete_repaired_runners(

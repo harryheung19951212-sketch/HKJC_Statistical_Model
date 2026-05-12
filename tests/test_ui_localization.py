@@ -76,7 +76,7 @@ def test_data_repair_does_not_inline_retrain_or_block_completion() -> None:
     assert "start_runner_completion_job" in server
     assert "watchRunnerCompletionJob(job.job_id)" in js
     assert "並重新訓練模型" not in js
-    assert "資料質素已更新" in js
+    assert "錯配馬" in js
 
 
 def test_auto_refresh_preserves_existing_race_panels() -> None:
